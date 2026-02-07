@@ -3,15 +3,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 /// Izumi App Typography
-/// Updated to match Apple Human Interface Guidelines (iOS 17+)
-/// Using Inter as SF Pro replacement
+/// Unified Enterprise Glass typography (Inter everywhere)
 class AppTypography {
   AppTypography._();
 
   // Font Family
   static String get fontFamily => GoogleFonts.inter().fontFamily!;
 
-  // Large Title (34pt)
+  // Screen Titles (SemiBold)
   static TextStyle get displayLarge => GoogleFonts.inter(
     fontSize: 34,
     fontWeight: FontWeight.w600, // SemiBold
@@ -20,7 +19,7 @@ class AppTypography {
     height: 1.2,
   );
 
-  // Title 1 (28pt)
+  // Section Title (SemiBold)
   static TextStyle get h1 => GoogleFonts.inter(
     fontSize: 28,
     fontWeight: FontWeight.w600, // SemiBold
@@ -29,7 +28,7 @@ class AppTypography {
     height: 1.2,
   );
 
-  // Title 2 (22pt)
+  // Section Header (SemiBold)
   static TextStyle get h2 => GoogleFonts.inter(
     fontSize: 22,
     fontWeight: FontWeight.w600, // SemiBold
@@ -38,16 +37,16 @@ class AppTypography {
     height: 1.3,
   );
 
-  // Title 3 (20pt)
+  // Section Header (Medium)
   static TextStyle get h3 => GoogleFonts.inter(
     fontSize: 20,
-    fontWeight: FontWeight.w600, // SemiBold
+    fontWeight: FontWeight.w500, // Medium
     color: AppColors.textPrimary,
     letterSpacing: -0.4,
     height: 1.3,
   );
 
-  // Headline (17pt Medium)
+  // Headline (Medium)
   static TextStyle get headline => GoogleFonts.inter(
     fontSize: 17,
     fontWeight: FontWeight.w500, // Medium
@@ -56,7 +55,7 @@ class AppTypography {
     height: 1.3,
   );
 
-  // Body (17pt Regular) - Standard iOS Body
+  // Body (Regular)
   static TextStyle get bodyLarge => GoogleFonts.inter(
     fontSize: 17,
     fontWeight: FontWeight.w400, // Regular
@@ -65,7 +64,7 @@ class AppTypography {
     height: 1.5,
   );
 
-  // Callout (16pt Regular)
+  // Body (Regular)
   static TextStyle get body => GoogleFonts.inter(
     fontSize: 16,
     fontWeight: FontWeight.w400, // Regular
@@ -74,7 +73,7 @@ class AppTypography {
     height: 1.5,
   );
 
-  // Subhead (15pt Regular)
+  // Body (Regular)
   static TextStyle get bodyMedium => GoogleFonts.inter(
     fontSize: 15,
     fontWeight: FontWeight.w400, // Regular
@@ -83,7 +82,7 @@ class AppTypography {
     height: 1.5,
   );
 
-  // Footnote (13pt Regular)
+  // Labels / Meta (Regular)
   static TextStyle get caption => GoogleFonts.inter(
     fontSize: 13,
     fontWeight: FontWeight.w400, // Regular
@@ -92,7 +91,7 @@ class AppTypography {
     height: 1.4,
   );
 
-  // Caption 2 (11pt Regular)
+  // Meta Small (Regular)
   static TextStyle get small => GoogleFonts.inter(
     fontSize: 11,
     fontWeight: FontWeight.w400, // Regular
@@ -105,7 +104,7 @@ class AppTypography {
   static TextStyle get buttonLarge => GoogleFonts.inter(
     fontSize: 17,
     fontWeight: FontWeight.w500, // Medium
-    color: Colors.white,
+    color: AppColors.textPrimary,
     letterSpacing: -0.4,
     height: 1.2,
   );
@@ -113,7 +112,7 @@ class AppTypography {
   static TextStyle get buttonMedium => GoogleFonts.inter(
     fontSize: 15,
     fontWeight: FontWeight.w500, // Medium
-    color: Colors.white,
+    color: AppColors.textPrimary,
     letterSpacing: -0.2,
     height: 1.2,
   );

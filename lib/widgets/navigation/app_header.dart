@@ -5,8 +5,10 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
 
-/// App Header Widget - Glassmorphism Style
-/// Shows logo/title with glass-style buttons
+/// App Header Widget - Unified Glass Header
+/// Primary: root/dashboard, Secondary: detail/drill-down
+enum AppHeaderType { primary, secondary }
+
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
   final bool showBackButton;
@@ -17,7 +19,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onBackTap;
   final VoidCallback? onNotificationTap;
   final List<Widget>? actions;
-  final bool lightContent; // Use white text/icons for gradient backgrounds
+  final AppHeaderType type;
 
   const AppHeader({
     super.key,
@@ -30,7 +32,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
     this.onBackTap,
     this.onNotificationTap,
     this.actions,
-    this.lightContent = true,
+    this.type = AppHeaderType.primary,
   });
 
   @override
@@ -38,125 +40,110 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final contentColor = lightContent
-        ? AppColors.textOnGradient
-        : AppColors.textPrimary;
+    final contentColor = AppColors.textPrimary;
 
-    return Container(
-      height: AppSpacing.headerHeight + MediaQuery.of(context).padding.top,
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top,
-        left: AppSpacing.lg,
-        right: AppSpacing.lg,
-      ),
-      child: Row(
-        children: [
-          // Back Button or Logo Icon
-          if (showBackButton)
-            _GlassIconButton(
-              icon: Icons.arrow_back_ios_new_rounded,
-              onTap: onBackTap ?? () => Navigator.of(context).pop(),
-              lightContent: lightContent,
-            )
-          else
-            _GlassIconButton(
-              icon: Iconsax.element_3,
-              onTap: null,
-              lightContent: lightContent,
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          height: AppSpacing.headerHeight + MediaQuery.of(context).padding.top,
+          padding: EdgeInsets.only(
+            top: MediaQuery.of(context).padding.top,
+            left: AppSpacing.lg,
+            right: AppSpacing.lg,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.glassHeader,
+            border: Border(
+              bottom: BorderSide(color: AppColors.glassBorder, width: 1),
             ),
-
-          const SizedBox(width: AppSpacing.md),
-
-          // Title or Brand
-          if (title != null)
-            Expanded(
-              child: Text(
-                title!,
-                style: AppTypography.h3.copyWith(
-                  color: contentColor,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            )
-          else
-            Expanded(
-              child: Text(
-                'Izumi',
-                style: AppTypography.h3.copyWith(
-                  color: contentColor,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-
-          // Actions
-          if (actions != null) ...actions!,
-
-          // Notification Bell
-          if (showNotification) ...[
-            Stack(
-              children: [
+          ),
+          child: Row(
+            children: [
+              // Back Button or Identity Icon
+              if (type == AppHeaderType.secondary || showBackButton)
                 _GlassIconButton(
-                  icon: Iconsax.notification,
-                  onTap: onNotificationTap,
-                  lightContent: lightContent,
+                  icon: Icons.arrow_back_ios_new_rounded,
+                  onTap: onBackTap ?? () => Navigator.of(context).pop(),
+                )
+              else
+                _GlassIconButton(
+                  icon: Iconsax.element_3,
+                  onTap: null,
                 ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: AppColors.error,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: lightContent
-                            ? AppColors.glassWhite
-                            : Colors.white,
-                        width: 1.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(width: AppSpacing.sm),
-          ],
 
-          // Avatar
-          if (showAvatar) ...[
-            GestureDetector(
-              onTap: onAvatarTap,
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.glassSlateSoft, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+              const SizedBox(width: AppSpacing.md),
+
+              // Title or Brand
+              Expanded(
+                child: Text(
+                  title ?? 'Izumi',
+                  style: AppTypography.h3.copyWith(color: contentColor),
+                ),
+              ),
+
+              // Actions
+              if (actions != null) ...actions!,
+
+              // Notification Bell
+              if (showNotification) ...[
+                Stack(
+                  children: [
+                    _GlassIconButton(
+                      icon: Iconsax.notification,
+                      onTap: onNotificationTap,
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: AppColors.error,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppColors.glassBorder,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                child: avatarUrl != null
-                    ? ClipOval(
-                        child: Image.network(
-                          avatarUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              _buildAvatarPlaceholder(),
-                        ),
-                      )
-                    : _buildAvatarPlaceholder(),
-              ),
-            ),
-          ],
-        ],
+                const SizedBox(width: AppSpacing.sm),
+              ],
+
+              // Avatar
+              if (showAvatar) ...[
+                GestureDetector(
+                  onTap: onAvatarTap,
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.glassBorder,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: avatarUrl != null
+                        ? ClipOval(
+                            child: Image.network(
+                              avatarUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  _buildAvatarPlaceholder(),
+                            ),
+                          )
+                        : _buildAvatarPlaceholder(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -168,7 +155,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
         shape: BoxShape.circle,
       ),
       child: const Center(
-        child: Icon(Icons.person, size: 22, color: Colors.white),
+        child: Icon(Icons.person, size: 22, color: AppColors.textPrimary),
       ),
     );
   }
@@ -178,12 +165,10 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
 class _GlassIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
-  final bool lightContent;
 
   const _GlassIconButton({
     required this.icon,
     this.onTap,
-    this.lightContent = true,
   });
 
   @override
@@ -198,14 +183,14 @@ class _GlassIconButton extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.glassSlateSoft, width: 1),
+              border: Border.all(color: AppColors.glassBorder, width: 1),
             ),
             child: Icon(
               icon,
               size: 22,
-              color: lightContent ? Colors.white : AppColors.textPrimary,
+              color: AppColors.textPrimary,
             ),
           ),
         ),
@@ -213,3 +198,4 @@ class _GlassIconButton extends StatelessWidget {
     );
   }
 }
+

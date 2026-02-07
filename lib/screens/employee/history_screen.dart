@@ -5,6 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/navigation/app_header.dart';
 
 /// History Screen - Redesigned per reference
 /// Shows monthly summary and daily session logs with timeline
@@ -139,27 +140,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
         bottom: false,
         child: Column(
           children: [
-            // Header with centered title
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Grid button
-                  _buildGlassButton(icon: Iconsax.element_3, onTap: () {}),
-                  // Centered title
-                  Text(
-                    'History',
-                    style: AppTypography.h2.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  // Placeholder for balance (no avatar per requirement)
-                  const SizedBox(width: 40),
-                ],
-              ),
+            const AppHeader(
+              title: 'History',
+              type: AppHeaderType.primary,
+              showAvatar: false,
             ),
 
             // Month Selector - Centered
@@ -250,11 +234,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.glassSlateBorder),
+              border: Border.all(color: AppColors.glassBorder),
             ),
-            child: Icon(icon, color: Colors.white, size: 20),
+            child: Icon(icon, color: AppColors.textPrimary, size: 20),
           ),
         ),
       ),
@@ -271,9 +255,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppColors.glassSlateBorder),
+              border: Border.all(color: AppColors.glassBorder),
               boxShadow: AppShadows.glass,
             ),
             child: Row(
@@ -313,7 +297,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       builder: (context) => Container(
         padding: const EdgeInsets.all(24),
         decoration: const BoxDecoration(
-          color: Colors.white,
+          color: AppColors.glassStrong,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
@@ -328,11 +312,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            Text('Select Month', style: AppTypography.h3),
+            Text(
+              'Select Month',
+              style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
+            ),
             const SizedBox(height: 16),
             ..._months.map(
               (month) => ListTile(
-                title: Text(month),
+                title: Text(
+                  month,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
                 trailing: _selectedMonth == month
                     ? Icon(Icons.check, color: AppColors.primary)
                     : null,
@@ -358,7 +350,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           decoration: BoxDecoration(
             gradient: AppColors.glassPanelGradient,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
             boxShadow: AppShadows.glass,
           ),
           child: Column(
@@ -385,8 +377,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 children: [
                   _buildStatCard(
                     icon: Iconsax.location,
-                    iconBgColor: const Color(0xFFE0F2F1),
-                    iconColor: const Color(0xFF00695C),
+                    iconBgColor: AppColors.success.withValues(alpha: 0.2),
+                    iconColor: AppColors.success,
                     label: 'Distance',
                     value: '${_monthSummary['distance']}',
                     unit: 'km',
@@ -394,8 +386,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   const SizedBox(width: 12),
                   _buildStatCard(
                     icon: Iconsax.timer_1,
-                    iconBgColor: const Color(0xFFFFF3E0),
-                    iconColor: const Color(0xFFEF6C00),
+                    iconBgColor: AppColors.warning.withValues(alpha: 0.2),
+                    iconColor: AppColors.warning,
                     label: 'Time',
                     value:
                         '${_monthSummary['hours']}h ${_monthSummary['minutes']}m',
@@ -404,8 +396,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   const SizedBox(width: 12),
                   _buildStatCard(
                     icon: Iconsax.calendar_tick,
-                    iconBgColor: const Color(0xFFE3F2FD),
-                    iconColor: const Color(0xFF1565C0),
+                    iconBgColor: AppColors.primary.withValues(alpha: 0.2),
+                    iconColor: AppColors.primary,
                     label: 'Active',
                     value: '${_monthSummary['activeDays']}',
                     unit: 'days',
@@ -431,9 +423,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.glassSlateSoft,
+          color: AppColors.glassPrimary,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.glassSlateBorder),
+          border: Border.all(color: AppColors.glassBorder),
         ),
         child: Column(
           children: [
@@ -496,13 +488,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Container(
             decoration: BoxDecoration(
               color: isToday
-                  ? AppColors.glassSlateStrong
-                  : AppColors.glassSlateSoft,
+                  ? AppColors.glassStrong
+                  : AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: isToday
                     ? AppColors.primary.withValues(alpha: 0.5)
-                    : AppColors.glassSlateBorder,
+                    : AppColors.glassBorder,
               ),
             ),
             child: Column(
@@ -525,10 +517,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           decoration: BoxDecoration(
                             color: isToday
                                 ? AppColors.primary.withValues(alpha: 0.1)
-                                : AppColors.glassSlateStrong,
+                                : AppColors.glassStrong,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: AppColors.glassSlateBorder,
+                              color: AppColors.glassBorder,
                             ),
                           ),
                           child: Center(
@@ -615,7 +607,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       decoration: BoxDecoration(
                         border: Border(
                           left: BorderSide(
-                            color: Colors.grey.withValues(alpha: 0.3),
+                            color: AppColors.glassBorder,
                             width: 2,
                           ),
                         ),
@@ -645,7 +637,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     decoration: BoxDecoration(
                       border: Border(
                         top: BorderSide(
-                          color: Colors.grey.withValues(alpha: 0.2),
+                          color: AppColors.glassBorder,
                         ),
                       ),
                     ),
@@ -693,10 +685,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     Color dotColor;
     switch (type) {
       case 'start':
-        dotColor = Colors.green;
+        dotColor = AppColors.success;
         break;
       case 'end':
-        dotColor = Colors.red;
+        dotColor = AppColors.critical;
         break;
       default:
         dotColor = AppColors.primary;
@@ -717,7 +709,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               decoration: BoxDecoration(
                 color: dotColor,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
+                border: Border.all(color: AppColors.glassBorder, width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: dotColor.withValues(alpha: 0.3),
@@ -758,9 +750,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.glassSlateSoft,
+                  color: AppColors.glassPrimary,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.glassSlateSoft),
+                  border: Border.all(color: AppColors.glassPrimary),
                 ),
                 child: Text(
                   time,
@@ -778,3 +770,4 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
+

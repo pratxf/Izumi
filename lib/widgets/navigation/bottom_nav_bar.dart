@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../core/constants/app_spacing.dart';
+import '../../core/constants/app_shadows.dart';
 
 /// Tab Item Data
 class BottomNavItem {
@@ -89,25 +91,23 @@ class BottomNavBar extends StatelessWidget {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
-      padding: EdgeInsets.only(left: 16, right: 16, bottom: bottomPadding + 8),
+      padding: EdgeInsets.only(
+        left: AppSpacing.lg,
+        right: AppSpacing.lg,
+        bottom: bottomPadding + AppSpacing.sm,
+      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
           child: Container(
-            height: 72,
+            height: AppSpacing.navBarHeight,
             decoration: BoxDecoration(
               // Glass panel background
-              color: AppColors.glassSlateSoft,
-              borderRadius: BorderRadius.circular(32),
-              border: Border.all(color: AppColors.glassSlateSoft, width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              color: AppColors.navBarBackground,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
+              border: Border.all(color: AppColors.glassBorder, width: 1),
+              boxShadow: AppShadows.navBar,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -122,14 +122,20 @@ class BottomNavBar extends StatelessWidget {
                     duration: const Duration(milliseconds: 200),
                     curve: Curves.easeInOut,
                     padding: EdgeInsets.symmetric(
-                      horizontal: isActive ? 16 : 12,
+                      horizontal: isActive ? 14 : 10,
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
                       color: isActive
-                          ? AppColors.gradientStart
+                          ? AppColors.glassHover
                           : Colors.transparent,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                      border: isActive
+                          ? Border.all(
+                              color: AppColors.glassBorder,
+                              width: 1,
+                            )
+                          : null,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -138,7 +144,7 @@ class BottomNavBar extends StatelessWidget {
                           isActive ? item.activeIcon : item.icon,
                           size: 22,
                           color: isActive
-                              ? Colors.white
+                              ? AppColors.textPrimary
                               : AppColors.textSecondary,
                         ),
                         // Only show label for active tab
@@ -147,7 +153,7 @@ class BottomNavBar extends StatelessWidget {
                           Text(
                             item.label,
                             style: AppTypography.bodyMedium.copyWith(
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                               fontWeight: FontWeight.w500, // Medium
                               fontSize: 14,
                             ),
@@ -165,3 +171,4 @@ class BottomNavBar extends StatelessWidget {
     );
   }
 }
+

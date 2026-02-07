@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_colors.dart';
 
 /// Izumi App Shadows
 /// Soft, diffused shadows for glassmorphism aesthetic
@@ -9,9 +10,9 @@ class AppShadows {
   /// Main glass panel shadow - soft and diffused
   static List<BoxShadow> glass = [
     BoxShadow(
-      color: const Color(0x1F1F2687), // ~12% dark blue
-      blurRadius: 32,
-      offset: const Offset(0, 8),
+      color: Colors.black.withValues(alpha: 0.18),
+      blurRadius: 28,
+      offset: const Offset(0, 10),
       spreadRadius: 0,
     ),
   ];
@@ -19,8 +20,8 @@ class AppShadows {
   /// Glass panel with stronger presence
   static List<BoxShadow> glassStrong = [
     BoxShadow(
-      color: const Color(0x261F2687), // ~15% dark blue
-      blurRadius: 40,
+      color: Colors.black.withValues(alpha: 0.24),
+      blurRadius: 36,
       offset: const Offset(0, 12),
       spreadRadius: 0,
     ),
@@ -51,9 +52,9 @@ class AppShadows {
   /// Floating nav bar shadow
   static List<BoxShadow> navBar = [
     BoxShadow(
-      color: Colors.black.withValues(alpha: 0.15),
-      blurRadius: 20,
-      offset: const Offset(0, 8),
+      color: Colors.black.withValues(alpha: 0.25),
+      blurRadius: 28,
+      offset: const Offset(0, 12),
       spreadRadius: 0,
     ),
   ];
@@ -61,9 +62,9 @@ class AppShadows {
   /// Nav bar with stronger shadow for light backgrounds
   static List<BoxShadow> navBarStrong = [
     BoxShadow(
-      color: Colors.black.withValues(alpha: 0.25),
-      blurRadius: 32,
-      offset: const Offset(0, 10),
+      color: Colors.black.withValues(alpha: 0.35),
+      blurRadius: 40,
+      offset: const Offset(0, 14),
       spreadRadius: 0,
     ),
   ];
@@ -72,9 +73,9 @@ class AppShadows {
   /// Primary button shadow with color glow
   static List<BoxShadow> primaryButton = [
     BoxShadow(
-      color: const Color(0xFFF97316).withValues(alpha: 0.3),
-      blurRadius: 16,
-      offset: const Offset(0, 6),
+      color: AppColors.primary.withValues(alpha: 0.35),
+      blurRadius: 18,
+      offset: const Offset(0, 8),
       spreadRadius: 0,
     ),
   ];
@@ -93,9 +94,9 @@ class AppShadows {
   /// FAB shadow
   static List<BoxShadow> fab = [
     BoxShadow(
-      color: const Color(0xFFF97316).withValues(alpha: 0.4),
-      blurRadius: 20,
-      offset: const Offset(0, 8),
+      color: AppColors.primary.withValues(alpha: 0.4),
+      blurRadius: 24,
+      offset: const Offset(0, 10),
       spreadRadius: 0,
     ),
   ];

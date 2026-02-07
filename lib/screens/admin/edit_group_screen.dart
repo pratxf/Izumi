@@ -61,18 +61,18 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
       builder: (ctx) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: AlertDialog(
-          backgroundColor: Colors.white.withValues(alpha: 0.95),
+          backgroundColor: AppColors.glassStrong,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
           title: Text(
             'Delete Group',
-            style: AppTypography.h3.copyWith(color: const Color(0xFF1F2937)),
+            style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
           ),
           content: Text(
             'Are you sure you want to delete this group? This action cannot be undone.',
             style: AppTypography.bodyMedium.copyWith(
-              color: const Color(0xFF6B7280),
+              color: AppColors.textSecondary,
             ),
           ),
           actions: [
@@ -81,7 +81,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
               child: Text(
                 'Cancel',
                 style: AppTypography.bodyMedium.copyWith(
-                  color: const Color(0xFF6B7280),
+                  color: AppColors.textSecondary,
                 ),
               ),
             ),
@@ -94,7 +94,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
               child: Text(
                 'Delete',
                 style: AppTypography.bodyMedium.copyWith(
-                  color: Colors.red,
+                  color: AppColors.critical,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -150,9 +150,9 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.65),
+            color: AppColors.glassHeader,
             border: Border(
-              bottom: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+              bottom: BorderSide(color: AppColors.glassBorder),
             ),
           ),
           child: Row(
@@ -164,11 +164,11 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   height: 40,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppColors.glassSlateSoft,
+                    color: AppColors.glassPrimary,
                   ),
                   child: const Icon(
                     Icons.arrow_back,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     size: 22,
                   ),
                 ),
@@ -177,8 +177,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                 child: Text(
                   'Edit Group',
                   style: AppTypography.bodyLarge.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -199,8 +199,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
         Text(
           'Group Name',
           style: AppTypography.bodySmall.copyWith(
-            color: const Color(0xFF181411),
-            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w500,
           ),
         ),
         const SizedBox(height: 8),
@@ -211,13 +211,13 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
             child: Container(
               height: 56,
               decoration: BoxDecoration(
-                color: AppColors.glassSlateSoft,
+                color: AppColors.glassPrimary,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: TextField(
                 controller: _nameController,
                 style: AppTypography.bodyMedium.copyWith(
-                  color: const Color(0xFF181411),
+                  color: AppColors.textPrimary,
                   fontWeight: FontWeight.w500,
                 ),
                 decoration: InputDecoration(
@@ -228,7 +228,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   ),
                   suffixIcon: Icon(
                     Iconsax.edit,
-                    color: const Color(0xFF9CA3AF),
+                    color: AppColors.textTertiary,
                     size: 20,
                   ),
                 ),
@@ -242,8 +242,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
         Text(
           'Assign Team Lead',
           style: AppTypography.bodySmall.copyWith(
-            color: const Color(0xFF181411),
-            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w500,
           ),
         ),
         const SizedBox(height: 8),
@@ -255,7 +255,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
               height: 56,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
-                color: AppColors.glassSlateSoft,
+                color: AppColors.glassPrimary,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: DropdownButtonHideUnderline(
@@ -264,12 +264,12 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   isExpanded: true,
                   icon: Icon(
                     Iconsax.arrow_down_1,
-                    color: const Color(0xFF6B7280),
+                    color: AppColors.textTertiary,
                     size: 20,
                   ),
-                  dropdownColor: Colors.white,
+                  dropdownColor: AppColors.glassStrong,
                   style: AppTypography.bodyMedium.copyWith(
-                    color: const Color(0xFF181411),
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w500,
                   ),
                   items: _teamLeads.map((lead) {
@@ -301,8 +301,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
             Text(
               'Team Members (${_members.length})',
               style: AppTypography.bodyLarge.copyWith(
-                color: const Color(0xFF181411),
-                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
               ),
             ),
             GestureDetector(
@@ -346,9 +346,9 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.65),
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
           ),
           child: Row(
             children: [
@@ -359,7 +359,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: AppColors.primary.withValues(alpha: 0.15),
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: AppColors.glassBorder, width: 2),
                 ),
                 child: Center(
                   child: Text(
@@ -381,8 +381,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                     Text(
                       member['name'],
                       style: AppTypography.bodyMedium.copyWith(
-                        color: const Color(0xFF181411),
-                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -395,10 +395,10 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: isActive
-                                ? const Color(0xFF22C55E)
+                                ? AppColors.success
                                 : isAway
-                                ? const Color(0xFFEAB308)
-                                : const Color(0xFF9CA3AF),
+                                ? AppColors.warning
+                                : AppColors.textDisabled,
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -409,7 +409,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                               ? 'Away'
                               : 'Offline',
                           style: TextStyle(
-                            color: const Color(0xFF6B7280),
+                            color: AppColors.textSecondary,
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -428,12 +428,12 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   height: 36,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFFF3F4F6),
+                    color: AppColors.glassPrimary,
                   ),
                   child: Icon(
                     Icons.close,
                     size: 18,
-                    color: const Color(0xFF6B7280),
+                    color: AppColors.textTertiary,
                   ),
                 ),
               ),
@@ -452,7 +452,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
       child: Container(
         height: 64,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.3),
+          color: AppColors.glassPrimary,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: AppColors.primary.withValues(alpha: 0.3),
@@ -495,8 +495,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
           end: Alignment.bottomCenter,
           colors: [
             Colors.transparent,
-            const Color(0xFFE0F2F1).withValues(alpha: 0.9),
-            const Color(0xFFE0F2F1),
+            AppColors.glassStrong.withValues(alpha: 0.9),
+            AppColors.glassStrong,
           ],
           stops: const [0.0, 0.3, 1.0],
         ),
@@ -529,8 +529,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   child: Text(
                     'Save Changes',
                     style: AppTypography.bodyMedium.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -544,7 +544,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
               child: Text(
                 'Delete Group',
                 style: AppTypography.bodySmall.copyWith(
-                  color: Colors.red,
+                  color: AppColors.critical,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -555,3 +555,4 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     );
   }
 }
+

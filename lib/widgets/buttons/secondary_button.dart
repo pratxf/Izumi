@@ -32,7 +32,9 @@ class SecondaryButton extends StatelessWidget {
       height: AppSpacing.buttonHeight,
       child: Container(
         decoration: BoxDecoration(
-          color: onPressed != null ? Colors.white : AppColors.glassSlateSoft,
+          color: onPressed != null
+              ? AppColors.glassPrimary
+              : AppColors.glassPrimary.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
           border: Border.all(
             color: onPressed != null
@@ -77,3 +79,4 @@ class SecondaryButton extends StatelessWidget {
     );
   }
 }
+

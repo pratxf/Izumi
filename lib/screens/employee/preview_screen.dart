@@ -5,6 +5,9 @@ import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/buttons/primary_button.dart';
 import '../../widgets/inputs/text_input_field.dart';
+import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/glass/glass_chip.dart';
+import '../../widgets/navigation/app_header.dart';
 
 /// Preview Screen
 /// Photo preview with metadata entry form
@@ -77,45 +80,22 @@ class _PreviewScreenState extends State<PreviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(
-                          AppSpacing.radiusSm,
-                        ),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: const Icon(
-                        Icons.arrow_back_ios_new,
-                        size: 18,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Text('Preview', style: AppTypography.h3),
-                ],
+      backgroundColor: Colors.transparent,
+      body: GradientBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              const AppHeader(
+                title: 'Preview',
+                type: AppHeaderType.secondary,
+                showAvatar: false,
               ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     // Photo Preview
                     Container(
                       width: double.infinity,
@@ -147,7 +127,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
                                 vertical: AppSpacing.xs,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.6),
+                                color: AppColors.gradientStart.withValues(
+                                  alpha: 0.6,
+                                ),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Row(
@@ -155,14 +137,14 @@ class _PreviewScreenState extends State<PreviewScreen> {
                                 children: [
                                   Icon(
                                     Iconsax.location,
-                                    color: Colors.white,
+                                    color: AppColors.textPrimary,
                                     size: 12,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
                                     widget.location,
                                     style: AppTypography.small.copyWith(
-                                      color: Colors.white,
+                                      color: AppColors.textPrimary,
                                     ),
                                   ),
                                 ],
@@ -213,7 +195,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                             decoration: BoxDecoration(
                               color: _createFollowUp
                                   ? AppColors.primary
-                                  : Colors.white,
+                                  : AppColors.glassPrimary,
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
                                 color: _createFollowUp
@@ -226,7 +208,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                                 ? const Icon(
                                     Icons.check,
                                     size: 16,
-                                    color: Colors.white,
+                                    color: AppColors.textPrimary,
                                   )
                                 : null,
                           ),
@@ -247,7 +229,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(AppSpacing.lg),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: AppColors.glassPrimary,
                             borderRadius: BorderRadius.circular(
                               AppSpacing.radiusMd,
                             ),
@@ -300,8 +282,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   ],
                 ),
               ),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -309,56 +292,11 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
   Widget _buildCategoryChip(String label, String value) {
     final isSelected = _category == value;
-    return GestureDetector(
+    return GlassChip(
+      label: label,
+      selected: isSelected,
       onTap: () => setState(() => _category = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.md,
-        ),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : Colors.white,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? Colors.white : AppColors.textTertiary,
-                  width: 2,
-                ),
-              ),
-              child: isSelected
-                  ? Center(
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Text(
-              label,
-              style: AppTypography.bodyMedium.copyWith(
-                color: isSelected ? Colors.white : AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
+

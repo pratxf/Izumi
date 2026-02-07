@@ -5,6 +5,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/navigation/app_header.dart';
 import 'end_of_day_screen.dart';
 
 /// Employee Home Screen - Glassmorphism Design
@@ -97,95 +98,10 @@ class _HomeScreenState extends State<HomeScreen> {
         bottom: false,
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      _buildGlassButton(
-                        child: const Icon(
-                          Icons.grid_view,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Izumi',
-                        style: AppTypography.h2.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Stack(
-                        children: [
-                          _buildGlassButton(
-                            child: const Icon(
-                              Iconsax.notification,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                          ),
-                          if (_isSessionActive)
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 1.5,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: widget.onAvatarTap,
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.3),
-                              width: 2,
-                            ),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            child: Image.network(
-                              'https://i.pravatar.cc/150?img=3',
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                color: AppColors.primary,
-                                child: const Icon(
-                                  Icons.person,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+            AppHeader(
+              title: 'Izumi',
+              showNotification: _isSessionActive,
+              onAvatarTap: widget.onAvatarTap,
             ),
 
             // Content
@@ -208,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Expanded(
                           child: _buildStatCard(
                             icon: Iconsax.location,
-                            iconColor: const Color(0xFF80CBC4),
+                            iconColor: AppColors.success,
                             label: 'Distance',
                             value: _distance.toStringAsFixed(1),
                             unit: 'km',
@@ -218,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Expanded(
                           child: _buildStatCard(
                             icon: Iconsax.timer_1,
-                            iconColor: const Color(0xFFFFCC80),
+                            iconColor: AppColors.warning,
                             label: 'Elapsed',
                             value: _isSessionActive
                                 ? _formatElapsed(_sessionDuration)
@@ -245,35 +161,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildGlassButton({required Widget child}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.glassSlateBorder),
-          ),
-          child: Center(child: child),
-        ),
-      ),
-    );
-  }
-
   Widget _buildStatusBadge() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: _isSessionActive
             ? AppColors.primary.withValues(alpha: 0.9)
-            : Colors.black.withValues(alpha: 0.2),
+            : AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withValues(alpha: _isSessionActive ? 0.2 : 0.1),
+          color: AppColors.glassBorder,
         ),
         boxShadow: _isSessionActive
             ? [
@@ -291,18 +188,20 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              color: _isSessionActive ? Colors.white : Colors.grey,
+              color: _isSessionActive
+                  ? AppColors.textPrimary
+                  : AppColors.textDisabled,
               shape: BoxShape.circle,
               boxShadow: _isSessionActive
                   ? [
                       BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.8),
+                        color: AppColors.textPrimary.withValues(alpha: 0.6),
                         blurRadius: 8,
                       ),
                     ]
                   : [
                       BoxShadow(
-                        color: Colors.grey.withValues(alpha: 0.8),
+                        color: AppColors.textDisabled.withValues(alpha: 0.6),
                         blurRadius: 8,
                       ),
                     ],
@@ -312,7 +211,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             _isSessionActive ? 'SESSION ACTIVE' : 'SESSION IDLE',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.9),
+              color: AppColors.textPrimary,
               fontSize: 10,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.5,
@@ -331,9 +230,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft,
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(40),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.1),
@@ -351,7 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: 128,
                   height: 128,
                   decoration: BoxDecoration(
-                    color: Colors.teal.withValues(alpha: 0.1),
+                    color: AppColors.primary.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -364,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     width: 128,
                     height: 128,
                     decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.1),
+                      color: AppColors.warning.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -375,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     'DURATION',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
+                      color: AppColors.textSecondary,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 2,
@@ -385,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     _formatDuration(_sessionDuration),
                     style: AppTypography.displayLarge.copyWith(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: _isSessionActive ? 52 : 44,
                       letterSpacing: -2,
@@ -415,14 +314,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             _isSessionActive
                                 ? Iconsax.stop_circle
                                 : Iconsax.play,
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                             size: 20,
                           ),
                           const SizedBox(width: 8),
                           Text(
                             _isSessionActive ? 'END SESSION' : 'START SESSION',
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 1.5,
@@ -456,9 +355,9 @@ class _HomeScreenState extends State<HomeScreen> {
           height: 128,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft,
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -468,7 +367,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: AppColors.glassSlateSoft,
+                  color: AppColors.glassPrimary,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: iconColor, size: 18),
@@ -479,7 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     label.toUpperCase(),
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
+                      color: AppColors.textSecondary,
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1,
@@ -492,7 +391,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         TextSpan(
                           text: value,
                           style: AppTypography.h3.copyWith(
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -500,7 +399,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           TextSpan(
                             text: ' $unit',
                             style: AppTypography.caption.copyWith(
-                              color: Colors.white.withValues(alpha: 0.5),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                       ],
@@ -523,9 +422,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft,
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
           ),
           child: Row(
             children: [
@@ -536,17 +435,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Colors.teal.shade600, Colors.green.shade400],
+                    colors: [AppColors.primary, AppColors.primaryLight],
                   ),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.teal.withValues(alpha: 0.4),
+                      color: AppColors.primary.withValues(alpha: 0.4),
                       blurRadius: 12,
                     ),
                   ],
                 ),
-                child: const Icon(Iconsax.map, color: Colors.white, size: 22),
+                child: const Icon(
+                  Iconsax.map,
+                  color: AppColors.textPrimary,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -556,7 +459,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text(
                       _currentLocation,
                       style: AppTypography.bodyMedium.copyWith(
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -566,13 +469,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         Icon(
                           Iconsax.gps,
                           size: 12,
-                          color: Colors.white.withValues(alpha: 0.6),
+                          color: AppColors.textSecondary,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           'Updated: Just now',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.6),
+                            color: AppColors.textSecondary,
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
                             letterSpacing: 0.5,
@@ -587,10 +490,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: AppColors.glassSlateSoft,
+                  color: AppColors.glassPrimary,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Iconsax.refresh, color: Colors.white, size: 18),
+                child: Icon(
+                  Iconsax.refresh,
+                  color: AppColors.textPrimary,
+                  size: 18,
+                ),
               ),
             ],
           ),
@@ -607,9 +514,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft,
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
           ),
           child: Column(
             children: [
@@ -623,14 +530,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         TextSpan(
                           text: 'Active Tasks ',
                           style: AppTypography.bodyMedium.copyWith(
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         TextSpan(
                           text: '(2)',
                           style: AppTypography.bodySmall.copyWith(
-                            color: Colors.white.withValues(alpha: 0.5),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ],
@@ -638,7 +545,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   Icon(
                     Icons.chevron_right,
-                    color: Colors.white.withValues(alpha: 0.6),
+                    color: AppColors.textSecondary,
                   ),
                 ],
               ),
@@ -648,14 +555,14 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildTaskItem(
                 title: 'Visit ABC Dist. (Due)',
                 subtitle: 'High Priority • 2km away',
-                priorityColor: Colors.red,
+                priorityColor: AppColors.critical,
                 isHighPriority: true,
               ),
               const SizedBox(height: 10),
               _buildTaskItem(
                 title: 'Follow up XYZ Farmer',
                 subtitle: 'Medium Priority • Call pending',
-                priorityColor: Colors.orange,
+                priorityColor: AppColors.warning,
               ),
             ],
           ),
@@ -673,9 +580,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: AppColors.glassBorder),
       ),
       child: Row(
         children: [
@@ -703,7 +610,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   title,
                   style: AppTypography.bodySmall.copyWith(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -711,7 +618,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   subtitle.toUpperCase(),
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
+                    color: AppColors.textSecondary,
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0.5,
@@ -722,7 +629,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Icon(
             Icons.chevron_right,
-            color: Colors.white.withValues(alpha: 0.4),
+            color: AppColors.textTertiary,
             size: 16,
           ),
         ],
@@ -730,3 +637,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+

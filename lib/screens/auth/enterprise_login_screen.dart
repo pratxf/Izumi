@@ -33,7 +33,7 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Please enter email and password'),
-          backgroundColor: Colors.red.shade400,
+          backgroundColor: AppColors.critical,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -99,7 +99,7 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
                             height: 40,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: AppColors.glassSlateSoft,
+                            color: AppColors.glassPrimary,
                             ),
                             child: Icon(
                               Icons.arrow_back_ios_new,
@@ -133,7 +133,7 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
                         TextInputField(
                           label: 'PASSWORD',
                           controller: _passwordController,
-                          hint: '••••••••',
+                          hint: '********',
                           obscureText: _obscurePassword,
                           prefixIcon: Iconsax.lock,
                           suffixIcon: GestureDetector(
@@ -175,58 +175,11 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        Center(
-                          child: TextButton(
-                            onPressed: () {},
-                            child: Text(
-                              'Forgot Password?',
-                              style: AppTypography.bodyMedium.copyWith(
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
 
-                  const SizedBox(height: 24),
-
-                  // Help link
-                  TextButton(
-                    onPressed: () {},
-                    child: Text(
-                      'Need help logging in?',
-                      style: AppTypography.caption.copyWith(
-                        color: const Color(0xFF94A3B8),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-
                   const Spacer(),
-
-                  // Version and home indicator
-                  Text(
-                    'VERSION 1.0.0',
-                    style: AppTypography.small.copyWith(
-                      color: const Color(0xFF94A3B8),
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Container(
-                    width: 128,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF334155).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                 ],
               ),
             ),
@@ -253,7 +206,7 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
                   height: 48,
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: const Color(0xFF334155).withValues(alpha: 0.4),
+                      color: AppColors.glassBorder,
                       width: 2,
                       strokeAlign: BorderSide.strokeAlignCenter,
                     ),
@@ -287,7 +240,7 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
                   height: 8,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Color(0xFF334155),
+                    color: AppColors.glassBorder,
                   ),
                 ),
               ),
@@ -299,7 +252,7 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
                   height: 8,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Color(0xFF334155),
+                    color: AppColors.glassBorder,
                   ),
                 ),
               ),
@@ -328,3 +281,4 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
 
   // _buildLoginCard and _buildInputField removed in favor of TextInputField
 }
+

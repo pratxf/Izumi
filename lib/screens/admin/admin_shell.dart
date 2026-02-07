@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/navigation/bottom_nav_bar.dart';
 import 'dashboard_screen.dart';
 import 'images_screen.dart';
-import 'tasks_screen.dart';
+import '../employee/monitor_screen.dart';
 import 'analytics_screen.dart';
 import 'groups_screen.dart';
 import '../employee/profile_screen.dart';
@@ -22,7 +22,7 @@ class _AdminShellState extends State<AdminShell> {
   final List<Widget> _screens = [
     const DashboardScreen(),
     const ImagesScreen(),
-    const TasksScreen(),
+    const MonitorScreen(),
     const AnalyticsScreen(),
     const GroupsScreen(),
   ];
@@ -60,3 +60,4 @@ class _AdminShellState extends State<AdminShell> {
     );
   }
 }
+

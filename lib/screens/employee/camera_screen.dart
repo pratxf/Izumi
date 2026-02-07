@@ -2,6 +2,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
+import '../../widgets/glass/glass_badge.dart';
+import '../../widgets/glass/glass_icon_button.dart';
+import '../../widgets/navigation/app_header.dart';
 
 /// Professional Geotagged Field Camera Screen
 /// Layout based on "Professional Geotagged Field Camera" HTML reference
@@ -21,7 +24,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget build(BuildContext context) {
     // Full screen setup
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.transparent,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -41,7 +44,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 gradient: RadialGradient(
                   colors: [
                     Colors.transparent,
-                    Colors.black.withValues(alpha: 0.6),
+                    AppColors.gradientStart.withValues(alpha: 0.7),
                   ],
                   radius: 1.0,
                   stops: const [0.5, 1.0],
@@ -50,87 +53,25 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
 
-          // 3. Top Control Bar (Close, Live Indicator, Flash)
+          // 3. Top Header
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
+            child: AppHeader(
+              title: 'Camera',
+              type: AppHeaderType.secondary,
+              showAvatar: false,
+              actions: [
+                GlassBadge.critical('LIVE'),
+                const SizedBox(width: 8),
+                GlassIconButton(
+                  icon: Icons.flash_on,
+                  onTap: () {
+                    // Toggle flash
+                  },
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Close Button
-                    _buildGlassCircleButton(
-                      icon: Icons.close,
-                      onTap: () => Navigator.pop(context),
-                    ),
-
-                    // Live Indicator
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.2),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: Colors.redAccent,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.redAccent.withValues(
-                                        alpha: 0.8,
-                                      ),
-                                      blurRadius: 8,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'FIELD LIVE',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Flash Button
-                    _buildGlassCircleButton(
-                      icon: Icons.flash_on,
-                      onTap: () {
-                        // Toggle flash
-                      },
-                    ),
-                  ],
-                ),
-              ),
+              ],
             ),
           ),
 
@@ -141,7 +82,7 @@ class _CameraScreenState extends State<CameraScreen> {
               height: 256,
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.3),
+                  color: AppColors.glassBorder,
                   width: 0.5,
                 ),
                 borderRadius: BorderRadius.circular(24),
@@ -159,7 +100,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       width: 4,
                       height: 4,
                       decoration: const BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -181,10 +122,10 @@ class _CameraScreenState extends State<CameraScreen> {
                   width: 280,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.85),
+                    color: AppColors.glassStrong,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.5),
+                      color: AppColors.glassBorder,
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -212,7 +153,7 @@ class _CameraScreenState extends State<CameraScreen> {
                             ),
                             child: const Icon(
                               Iconsax.location,
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                               size: 20,
                             ),
                           ),
@@ -223,7 +164,7 @@ class _CameraScreenState extends State<CameraScreen> {
                               const Text(
                                 'Rajendra Nagar',
                                 style: TextStyle(
-                                  color: Color(0xFF0F172A), // Slate 900
+                                  color: AppColors.textPrimary,
                                   fontSize: 18,
                                   fontWeight: FontWeight.w800,
                                   height: 1,
@@ -233,7 +174,7 @@ class _CameraScreenState extends State<CameraScreen> {
                               Text(
                                 'FIELD INTELLIGENCE OVERLAY',
                                 style: TextStyle(
-                                  color: const Color(0xFF64748B), // Slate 500
+                                  color: AppColors.textSecondary,
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
                                   letterSpacing: 0.5,
@@ -246,7 +187,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       const SizedBox(height: 12),
                       Container(
                         height: 1,
-                        color: const Color(0xFFCBD5E1).withValues(alpha: 0.5),
+                        color: AppColors.glassBorder,
                       ),
                       const SizedBox(height: 12),
                       // Details Grid
@@ -263,7 +204,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       const SizedBox(height: 8),
                       Container(
                         height: 1,
-                        color: const Color(0xFFF1F5F9), // Slate 100
+                        color: AppColors.glassBorder,
                       ),
                       const SizedBox(height: 8),
                       _buildWatermarkDetail(
@@ -290,8 +231,8 @@ class _CameraScreenState extends State<CameraScreen> {
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
                   colors: [
-                    Colors.black.withValues(alpha: 0.9),
-                    Colors.black.withValues(alpha: 0.4),
+                    AppColors.gradientStart.withValues(alpha: 0.9),
+                    AppColors.gradientStart.withValues(alpha: 0.4),
                     Colors.transparent,
                   ],
                 ),
@@ -320,8 +261,8 @@ class _CameraScreenState extends State<CameraScreen> {
                                   mode,
                                   style: TextStyle(
                                     color: isSelected
-                                        ? Colors.white
-                                        : Colors.white.withValues(alpha: 0.4),
+                                        ? AppColors.textPrimary
+                                        : AppColors.textTertiary,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: 2,
@@ -377,7 +318,10 @@ class _CameraScreenState extends State<CameraScreen> {
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 3),
+                              border: Border.all(
+                                color: AppColors.glassBorder,
+                                width: 3,
+                              ),
                             ),
                             child: Container(
                               decoration: BoxDecoration(
@@ -399,10 +343,8 @@ class _CameraScreenState extends State<CameraScreen> {
                                   height: 40,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.3,
-                                      ),
+                                      border: Border.all(
+                                      color: AppColors.glassBorder,
                                       width: 2,
                                     ),
                                   ),
@@ -411,7 +353,7 @@ class _CameraScreenState extends State<CameraScreen> {
                                       width: 8,
                                       height: 8,
                                       decoration: const BoxDecoration(
-                                        color: Colors.white,
+                                        color: AppColors.textPrimary,
                                         shape: BoxShape.circle,
                                       ),
                                     ),
@@ -438,31 +380,6 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Widget _buildGlassCircleButton({
-    required IconData icon,
-    VoidCallback? onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.2),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-            ),
-            child: Icon(icon, color: Colors.white, size: 22),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildSquareGlassButton({
     IconData? icon,
     bool isThumbnail = false,
@@ -476,9 +393,9 @@ class _CameraScreenState extends State<CameraScreen> {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            border: Border.all(color: AppColors.glassBorder),
           ),
           child: isThumbnail && thumbnailUrl != null
               ? Image.network(
@@ -486,7 +403,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   fit: BoxFit.cover,
                   opacity: const AlwaysStoppedAnimation(0.8),
                 )
-              : Icon(icon, color: Colors.white, size: 28),
+              : Icon(icon, color: AppColors.textPrimary, size: 28),
         ),
       ),
     );
@@ -505,16 +422,16 @@ class _CameraScreenState extends State<CameraScreen> {
         decoration: BoxDecoration(
           border: Border(
             top: isTop
-                ? const BorderSide(color: Colors.white, width: 2)
+                ? const BorderSide(color: AppColors.glassBorder, width: 2)
                 : BorderSide.none,
             bottom: !isTop
-                ? const BorderSide(color: Colors.white, width: 2)
+                ? const BorderSide(color: AppColors.glassBorder, width: 2)
                 : BorderSide.none,
             left: isLeft
-                ? const BorderSide(color: Colors.white, width: 2)
+                ? const BorderSide(color: AppColors.glassBorder, width: 2)
                 : BorderSide.none,
             right: !isLeft
-                ? const BorderSide(color: Colors.white, width: 2)
+                ? const BorderSide(color: AppColors.glassBorder, width: 2)
                 : BorderSide.none,
           ),
           borderRadius: BorderRadius.only(
@@ -545,7 +462,7 @@ class _CameraScreenState extends State<CameraScreen> {
         Text(
           label,
           style: const TextStyle(
-            color: Color(0xFF94A3B8), // Slate 400
+            color: AppColors.textTertiary,
             fontSize: 8,
             fontWeight: FontWeight.w800,
             letterSpacing: 1.5,
@@ -558,7 +475,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   Text(
                     'Lat: 17.4065° N',
                     style: TextStyle(
-                      color: const Color(0xFF1E293B), // Slate 800
+                      color: AppColors.textPrimary,
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       fontFamily: 'monospace',
@@ -569,14 +486,14 @@ class _CameraScreenState extends State<CameraScreen> {
                     child: Text(
                       '|',
                       style: TextStyle(
-                        color: const Color(0xFFCBD5E1), // Slate 300
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ),
                   Text(
                     'Long: 78.4842° E',
                     style: TextStyle(
-                      color: const Color(0xFF1E293B), // Slate 800
+                      color: AppColors.textPrimary,
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       fontFamily: 'monospace',
@@ -587,7 +504,7 @@ class _CameraScreenState extends State<CameraScreen> {
             : Text(
                 value,
                 style: const TextStyle(
-                  color: Color(0xFF1E293B), // Slate 800
+                  color: AppColors.textPrimary,
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
@@ -596,3 +513,4 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 }
+

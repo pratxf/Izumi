@@ -1,7 +1,7 @@
-import 'dart:ui';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../widgets/inputs/otp_input_field.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../admin/admin_shell.dart';
@@ -19,31 +19,22 @@ class OtpScreen extends StatefulWidget {
 }
 
 class _OtpScreenState extends State<OtpScreen> {
-  final List<TextEditingController> _controllers = List.generate(
-    4,
-    (_) => TextEditingController(),
-  );
-  final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
-
   int _resendTimer = 45;
   Timer? _timer;
   bool _canResend = false;
+  String _otpValue = '';
 
   @override
   void initState() {
     super.initState();
     _startResendTimer();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
   @override
   void dispose() {
-    for (var c in _controllers) {
-      c.dispose();
-    }
-    for (var f in _focusNodes) {
-      f.dispose();
-    }
     _timer?.cancel();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -62,22 +53,12 @@ class _OtpScreenState extends State<OtpScreen> {
     });
   }
 
-  void _onOtpChanged(int index, String value) {
-    if (value.length == 1 && index < 3) {
-      _focusNodes[index + 1].requestFocus();
-    }
-    if (value.isEmpty && index > 0) {
-      _focusNodes[index - 1].requestFocus();
-    }
-  }
-
   void _verifyOtp() {
-    final otp = _controllers.map((c) => c.text).join();
-    if (otp.length < 4) {
+    if (_otpValue.length < 4) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Please enter the complete OTP'),
-          backgroundColor: Colors.red.shade400,
+          backgroundColor: AppColors.critical,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -160,7 +141,7 @@ class _OtpScreenState extends State<OtpScreen> {
                             height: 40,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: AppColors.glassSlateSoft,
+                            color: AppColors.glassPrimary,
                             ),
                             child: Icon(
                               Icons.arrow_back_ios_new,
@@ -208,12 +189,11 @@ class _OtpScreenState extends State<OtpScreen> {
                   // OTP Inputs
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: List.generate(
-                        4,
-                        (index) => _buildOtpInput(index),
-                      ),
+                    child: OtpInputField(
+                      length: 4,
+                      onChanged: (value) => setState(() => _otpValue = value),
+                      onCompleted: (value) =>
+                          setState(() => _otpValue = value),
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -236,7 +216,7 @@ class _OtpScreenState extends State<OtpScreen> {
                           style: AppTypography.bodyMedium.copyWith(
                             color: _canResend
                                 ? AppColors.primary
-                                : AppColors.textMuted,
+                                : AppColors.textDisabled,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -246,7 +226,7 @@ class _OtpScreenState extends State<OtpScreen> {
                         Text(
                           '(00:${_resendTimer.toString().padLeft(2, '0')})',
                           style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.textMuted,
+                            color: AppColors.textDisabled,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -286,15 +266,6 @@ class _OtpScreenState extends State<OtpScreen> {
                   ),
                   const SizedBox(height: 48),
 
-                  // Home indicator
-                  Container(
-                    width: 128,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF334155).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
                   const SizedBox(height: 16),
                 ],
               ),
@@ -319,7 +290,7 @@ class _OtpScreenState extends State<OtpScreen> {
               height: 40,
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: AppColors.glassSlateBorder,
+                  color: AppColors.glassBorder,
                   width: 2,
                   strokeAlign: BorderSide.strokeAlignCenter,
                 ),
@@ -352,7 +323,7 @@ class _OtpScreenState extends State<OtpScreen> {
               height: 6,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0xFF334155),
+                color: AppColors.glassBorder,
               ),
             ),
           ),
@@ -364,7 +335,7 @@ class _OtpScreenState extends State<OtpScreen> {
               height: 6,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0xFF334155),
+                color: AppColors.glassBorder,
               ),
             ),
           ),
@@ -373,42 +344,6 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-  Widget _buildOtpInput(int index) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft, // Blended glass
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassSlateBorder),
-          ),
-          child: TextField(
-            controller: _controllers[index],
-            focusNode: _focusNodes[index],
-            textAlign: TextAlign.center,
-            maxLength: 1,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            style: AppTypography.h2.copyWith(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.bold,
-            ),
-            decoration: InputDecoration(
-              counterText: '',
-              border: InputBorder.none,
-              hintText: '-',
-              hintStyle: AppTypography.h2.copyWith(
-                color: AppColors.textMuted.withValues(alpha: 0.5),
-              ),
-            ),
-            onChanged: (value) => _onOtpChanged(index, value),
-          ),
-        ),
-      ),
-    );
-  }
+  // OtpInputField handles rendering/styling
 }
+

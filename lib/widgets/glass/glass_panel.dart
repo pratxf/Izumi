@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
+import '../../core/constants/app_spacing.dart';
 
 /// Glass Panel Widget
 /// Frosted glass container with blur effect for glassmorphism UI
@@ -23,7 +24,7 @@ class GlassPanel extends StatelessWidget {
     required this.child,
     this.padding,
     this.margin,
-    this.borderRadius = 24,
+    this.borderRadius = AppSpacing.radiusLg,
     this.blur = 16,
     this.backgroundColor,
     this.borderColor,
@@ -35,8 +36,8 @@ class GlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = backgroundColor ?? AppColors.glassSlateSoft;
-    final border = borderColor ?? AppColors.glassSlateBorder;
+    final bgColor = backgroundColor ?? AppColors.glassPrimary;
+    final border = borderColor ?? AppColors.glassBorder;
 
     Widget content = ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
@@ -94,7 +95,7 @@ class GlassCard extends StatelessWidget {
     required this.child,
     this.padding,
     this.margin,
-    this.borderRadius = 20,
+    this.borderRadius = AppSpacing.radiusLg,
     this.blur = 12,
     this.backgroundColor,
     this.boxShadow,
@@ -106,7 +107,7 @@ class GlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Frosted Slate defaults
-    final bgColor = backgroundColor ?? AppColors.glassSlateSoft;
+    final bgColor = backgroundColor ?? AppColors.glassPrimary;
 
     Widget content = ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
@@ -125,19 +126,19 @@ class GlassCard extends StatelessWidget {
                       width: borderLeftWidth,
                     ),
                     top: BorderSide(
-                      color: AppColors.glassSlateBorder,
+                      color: AppColors.glassBorder,
                       width: 1,
                     ),
                     right: BorderSide(
-                      color: AppColors.glassSlateBorder,
+                      color: AppColors.glassBorder,
                       width: 1,
                     ),
                     bottom: BorderSide(
-                      color: AppColors.glassSlateBorder,
+                      color: AppColors.glassBorder,
                       width: 1,
                     ),
                   )
-                : Border.all(color: AppColors.glassSlateBorder, width: 1),
+                : Border.all(color: AppColors.glassBorder, width: 1),
           ),
           child: child,
         ),
@@ -155,3 +156,4 @@ class GlassCard extends StatelessWidget {
     return content;
   }
 }
+

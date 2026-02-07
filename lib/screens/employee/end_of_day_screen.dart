@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/inputs/text_input_field.dart';
+import '../../widgets/navigation/app_header.dart';
 
 /// End of Day Summary Screen - Full Screen Design
 /// Shown when employee ends work session
@@ -47,19 +50,18 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF8BA9A8), Color(0xFFB5BEBE)],
-          ),
-        ),
+      backgroundColor: Colors.transparent,
+      body: GradientBackground(
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
               children: [
+                const AppHeader(
+                  title: 'End of Day',
+                  type: AppHeaderType.secondary,
+                  showAvatar: false,
+                ),
                 const SizedBox(height: 24),
                 // Modal Container
                 Expanded(
@@ -70,9 +72,9 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(32),
                         decoration: BoxDecoration(
-                          color: AppColors.glassSlateSoft,
+                          color: AppColors.glassPrimary,
                           borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: AppColors.glassSlateSoft),
+                          border: Border.all(color: AppColors.glassPrimary),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.1),
@@ -89,7 +91,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                               Text(
                                 'End Session Summary',
                                 style: AppTypography.h2.copyWith(
-                                  color: Colors.white,
+                                  color: AppColors.textPrimary,
                                   fontWeight: FontWeight.bold,
                                 ),
                                 textAlign: TextAlign.center,
@@ -102,7 +104,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                                 child: Text(
                                   'SESSION OVERVIEW',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.7),
+                                    color: AppColors.textSecondary,
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 1.5,
@@ -162,7 +164,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                                 child: Text(
                                   'NOTES',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.7),
+                                    color: AppColors.textSecondary,
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 1.5,
@@ -170,46 +172,11 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(
-                                    sigmaX:
-                                        12, // Increased blur for better readability
-                                    sigmaY: 12,
-                                  ),
-                                  child: Container(
-                                    height: 120, // Increased height
-                                    decoration: BoxDecoration(
-                                      color: AppColors
-                                          .glassSlateSoft, // Consistent glass color
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: AppColors.glassSlateBorder,
-                                      ),
-                                    ),
-                                    child: TextField(
-                                      controller: _notesController,
-                                      maxLines: 5,
-                                      style: AppTypography.bodyMedium.copyWith(
-                                        color: Colors.white,
-                                      ),
-                                      decoration: InputDecoration(
-                                        hintText: 'Add summary notes...',
-                                        hintStyle: AppTypography.bodyMedium
-                                            .copyWith(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.5,
-                                              ),
-                                            ),
-                                        border: InputBorder.none,
-                                        contentPadding: const EdgeInsets.all(
-                                          16,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                              GlassInputField(
+                                controller: _notesController,
+                                hint: 'Add summary notes...',
+                                maxLines: 5,
+                                contentPadding: const EdgeInsets.all(16),
                               ),
                               const SizedBox(height: 32),
 
@@ -217,7 +184,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                               Text(
                                 'Are you sure you want to end your work session?',
                                 style: AppTypography.bodySmall.copyWith(
-                                  color: Colors.white.withValues(alpha: 0.8),
+                                  color: AppColors.textSecondary,
                                   fontWeight: FontWeight.w500,
                                 ),
                                 textAlign: TextAlign.center,
@@ -246,7 +213,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                                     child: Text(
                                       'Confirm & End Session',
                                       style: AppTypography.bodyMedium.copyWith(
-                                        color: Colors.white,
+                                        color: AppColors.textPrimary,
                                         fontWeight: FontWeight.bold,
                                         letterSpacing: 0.5,
                                       ),
@@ -260,7 +227,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                                 child: Container(
                                   height: 56,
                                   decoration: BoxDecoration(
-                                    color: AppColors.glassSlateSoft,
+                                    color: AppColors.glassPrimary,
                                     borderRadius: BorderRadius.circular(28),
                                     border: Border.all(
                                       color: AppColors.primary,
@@ -307,9 +274,9 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft,
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,7 +286,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
               Text(
                 label.toUpperCase(),
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
+                  color: AppColors.textSecondary,
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                 ),
@@ -328,7 +295,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
               Text(
                 value,
                 style: AppTypography.bodyMedium.copyWith(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
@@ -340,3 +307,4 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
     );
   }
 }
+

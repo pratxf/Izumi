@@ -4,6 +4,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/navigation/app_header.dart';
 
 /// Export Data Screen - Configure and generate data exports
 class ExportDataScreen extends StatefulWidget {
@@ -35,43 +36,10 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
           bottom: false,
           child: Column(
             children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Icon(
-                          Icons.arrow_back,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        'Export Data',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.headline.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 40), // Balance
-                  ],
-                ),
+              const AppHeader(
+                title: 'Export Data',
+                type: AppHeaderType.secondary,
+                showAvatar: false,
               ),
 
               // Content
@@ -96,7 +64,7 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
                             ),
                             Container(
                               height: 1,
-                              color: AppColors.glassSlateSoft,
+                              color: AppColors.glassPrimary,
                             ),
                             _buildCheckboxRow(
                               'Farmer Data',
@@ -177,7 +145,7 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
                             Container(
                               height: 48,
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.5),
+                                color: AppColors.textPrimary.withValues(alpha: 0.5),
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: TextField(
@@ -236,8 +204,8 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
               colors: [
-                const Color(0xFFB5BEBE),
-                const Color(0xFFB5BEBE).withValues(alpha: 0),
+                AppColors.glassStrong,
+                AppColors.glassStrong.withValues(alpha: 0),
               ],
             ),
           ),
@@ -261,14 +229,14 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
                 children: [
                   const Icon(
                     Iconsax.arrow_down_2,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     size: 24,
                   ),
                   const SizedBox(width: 12),
                   Text(
                     'Generate Export',
                     style: AppTypography.headline.copyWith(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -302,9 +270,9 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft,
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
           ),
           child: child,
         ),
@@ -335,7 +303,7 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
               width: 24,
               height: 24,
               decoration: BoxDecoration(
-                color: value ? AppColors.primary : Colors.white,
+                color: value ? AppColors.primary : AppColors.textPrimary,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: value ? AppColors.primary : AppColors.border,
@@ -343,7 +311,7 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
                 ),
               ),
               child: value
-                  ? const Icon(Icons.check, color: Colors.white, size: 16)
+                  ? const Icon(Icons.check, color: AppColors.textPrimary, size: 16)
                   : null,
             ),
           ],
@@ -363,12 +331,12 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
           child: Container(
             height: 96,
             decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: isSelected
                     ? AppColors.primary
-                    : Colors.white.withValues(alpha: 0.4),
+                    : AppColors.textPrimary.withValues(alpha: 0.4),
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -405,7 +373,7 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Please confirm your password'),
-          backgroundColor: Colors.red,
+        backgroundColor: AppColors.critical,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -419,7 +387,7 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Please select at least one data type'),
-          backgroundColor: Colors.red,
+        backgroundColor: AppColors.critical,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -440,3 +408,5 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
     );
   }
 }
+
+

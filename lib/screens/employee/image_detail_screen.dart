@@ -33,7 +33,7 @@ class ImageDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF221710),
+      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
           // Background Image (blurred)
@@ -44,13 +44,15 @@ class ImageDetailScreen extends StatelessWidget {
                 imageUrl,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) =>
-                    Container(color: const Color(0xFF181411)),
+                    Container(color: AppColors.gradientStart),
               ),
             ),
           ),
           // Dark Overlay
           Positioned.fill(
-            child: Container(color: Colors.black.withValues(alpha: 0.6)),
+            child: Container(
+              color: AppColors.gradientStart.withValues(alpha: 0.6),
+            ),
           ),
 
           // Content
@@ -99,9 +101,9 @@ class ImageDetailScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF181411).withValues(alpha: 0.5),
+        color: AppColors.glassHeader,
         border: Border(
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+          bottom: BorderSide(color: AppColors.glassBorder),
         ),
       ),
       child: ClipRRect(
@@ -117,11 +119,11 @@ class ImageDetailScreen extends StatelessWidget {
                   height: 40,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: AppColors.glassPrimary,
                   ),
                   child: const Icon(
                     Icons.arrow_back,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     size: 22,
                   ),
                 ),
@@ -129,8 +131,8 @@ class ImageDetailScreen extends StatelessWidget {
               Text(
                 'Image Details',
                 style: AppTypography.bodyLarge.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(width: 40), // Spacer
@@ -163,7 +165,7 @@ class ImageDetailScreen extends StatelessWidget {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.black.withValues(alpha: 0.8),
+                  AppColors.gradientStart.withValues(alpha: 0.8),
                 ],
                 stops: const [0.4, 1.0],
               ),
@@ -181,13 +183,13 @@ class ImageDetailScreen extends StatelessWidget {
                     Icon(
                       Iconsax.location,
                       size: 14,
-                      color: Colors.white.withValues(alpha: 0.9),
+                      color: AppColors.textPrimary,
                     ),
                     const SizedBox(width: 6),
                     Text(
                       location.toUpperCase(),
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
+                        color: AppColors.textPrimary,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.5,
@@ -201,13 +203,13 @@ class ImageDetailScreen extends StatelessWidget {
                     Icon(
                       Iconsax.clock,
                       size: 14,
-                      color: Colors.white.withValues(alpha: 0.9),
+                      color: AppColors.textPrimary,
                     ),
                     const SizedBox(width: 6),
                     Text(
                       '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')} PM',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
+                        color: AppColors.textPrimary,
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
                         fontFamily: 'monospace',
@@ -230,8 +232,8 @@ class ImageDetailScreen extends StatelessWidget {
         Text(
           'Photo Information',
           style: AppTypography.h3.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 16),
@@ -241,7 +243,7 @@ class ImageDetailScreen extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+              bottom: BorderSide(color: AppColors.glassBorder),
             ),
           ),
           child: Row(
@@ -253,7 +255,7 @@ class ImageDetailScreen extends StatelessWidget {
                   Text(
                     'CAPTURED BY',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
+                      color: AppColors.textSecondary,
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 1,
@@ -284,7 +286,7 @@ class ImageDetailScreen extends StatelessWidget {
                       Text(
                         capturedBy,
                         style: AppTypography.bodySmall.copyWith(
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -298,7 +300,7 @@ class ImageDetailScreen extends StatelessWidget {
                   Text(
                     'EMPLOYEE ID',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
+                      color: AppColors.textSecondary,
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 1,
@@ -311,16 +313,16 @@ class ImageDetailScreen extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
+                      color: AppColors.glassPrimary,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.05),
+                        color: AppColors.glassBorder,
                       ),
                     ),
                     child: Text(
                       employeeId,
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                         fontSize: 12,
                         fontFamily: 'monospace',
                       ),
@@ -344,8 +346,8 @@ class ImageDetailScreen extends StatelessWidget {
         const SizedBox(height: 12),
         _buildInfoCard(
           icon: Iconsax.calendar,
-          iconColor: const Color(0xFF60A5FA),
-          iconBgColor: const Color(0xFF60A5FA).withValues(alpha: 0.1),
+          iconColor: AppColors.primary,
+          iconBgColor: AppColors.primary.withValues(alpha: 0.1),
           label: 'Timestamp',
           value:
               '${timestamp.day.toString().padLeft(2, '0')} Feb ${timestamp.year}, ${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')} PM',
@@ -364,9 +366,9 @@ class ImageDetailScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: AppColors.glassBorder),
       ),
       child: Row(
         children: [
@@ -386,7 +388,7 @@ class ImageDetailScreen extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.5),
+                  color: AppColors.textSecondary,
                   fontSize: 11,
                 ),
               ),
@@ -394,8 +396,8 @@ class ImageDetailScreen extends StatelessWidget {
               Text(
                 value,
                 style: AppTypography.bodySmall.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -417,23 +419,23 @@ class ImageDetailScreen extends StatelessWidget {
             Text(
               'Metadata',
               style: AppTypography.h3.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
               ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                color: AppColors.success.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                  color: AppColors.success.withValues(alpha: 0.2),
                 ),
               ),
               child: Text(
                 'VERIFIED',
                 style: TextStyle(
-                  color: const Color(0xFF34D399),
+                  color: AppColors.success,
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 0.5,
@@ -446,9 +448,9 @@ class ImageDetailScreen extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF181411),
+            color: AppColors.glassStrong,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+            border: Border.all(color: AppColors.glassBorder),
           ),
           child: Column(
             children: [
@@ -461,7 +463,7 @@ class ImageDetailScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              Divider(height: 1, color: Colors.white.withValues(alpha: 0.05)),
+              Divider(height: 1, color: AppColors.glassBorder),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -473,7 +475,7 @@ class ImageDetailScreen extends StatelessWidget {
                         Text(
                           'Follow-up',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.4),
+                            color: AppColors.textSecondary,
                             fontSize: 11,
                           ),
                         ),
@@ -484,13 +486,13 @@ class ImageDetailScreen extends StatelessWidget {
                               Icon(
                                 Icons.check_circle,
                                 size: 14,
-                                color: const Color(0xFF10B981),
+                                color: AppColors.success,
                               ),
                             const SizedBox(width: 4),
                             Text(
                               hasFollowUp ? 'Created' : 'None',
                               style: AppTypography.bodySmall.copyWith(
-                                color: Colors.white,
+                                color: AppColors.textPrimary,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -515,7 +517,7 @@ class ImageDetailScreen extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.4),
+            color: AppColors.textSecondary,
             fontSize: 11,
           ),
         ),
@@ -523,7 +525,7 @@ class ImageDetailScreen extends StatelessWidget {
         Text(
           value,
           style: AppTypography.bodySmall.copyWith(
-            color: Colors.white,
+            color: AppColors.textPrimary,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -535,9 +537,9 @@ class ImageDetailScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF181411).withValues(alpha: 0.8),
+        color: AppColors.glassStrong,
         border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+          top: BorderSide(color: AppColors.glassBorder),
         ),
       ),
       child: ClipRRect(
@@ -579,18 +581,18 @@ class ImageDetailScreen extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+          border: Border.all(color: AppColors.glassBorder),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: Colors.white, size: 18),
+            Icon(icon, color: AppColors.textPrimary, size: 18),
             const SizedBox(width: 8),
             Text(
               label,
               style: AppTypography.bodySmall.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -599,3 +601,4 @@ class ImageDetailScreen extends StatelessWidget {
     );
   }
 }
+

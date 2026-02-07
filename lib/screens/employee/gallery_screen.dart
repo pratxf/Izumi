@@ -5,7 +5,10 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/navigation/app_header.dart';
+import '../../widgets/inputs/text_input_field.dart';
 import 'camera_screen.dart';
+import 'image_detail_screen.dart';
 
 /// Employee Gallery Screen - Photo gallery with glassmorphism design
 class GalleryScreen extends StatefulWidget {
@@ -56,26 +59,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
         bottom: false,
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _buildGlassButton(
-                    icon: Icons.arrow_back,
-                    onTap: () => Navigator.maybePop(context),
-                  ),
-                  Text(
-                    'Gallery',
-                    style: AppTypography.h2.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  _buildGlassButton(icon: Icons.more_vert),
-                ],
-              ),
+            const AppHeader(
+              title: 'Gallery',
+              type: AppHeaderType.secondary,
+              showAvatar: false,
             ),
 
             // Content
@@ -131,7 +118,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           color: AppColors.primary,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.2),
+                            color: AppColors.glassBorder,
                             width: 2,
                           ),
                           boxShadow: [
@@ -144,7 +131,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                         ),
                         child: const Icon(
                           Iconsax.camera,
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                           size: 24,
                         ),
                       ),
@@ -154,28 +141,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlassButton({required IconData icon, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.glassSlateBorder),
-            ),
-            child: Icon(icon, color: AppColors.textPrimary, size: 22),
-          ),
         ),
       ),
     );
@@ -192,7 +157,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           decoration: BoxDecoration(
             gradient: AppColors.glassPanelGradient,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
             boxShadow: AppShadows.glass,
           ),
           child: Column(
@@ -214,9 +179,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.glassSlateStrong,
+                      color: AppColors.glassStrong,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.glassSlateBorder),
+                      border: Border.all(color: AppColors.glassBorder),
                     ),
                     child: Text(
                       '${group['count']} PHOTOS',
@@ -244,7 +209,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 itemCount: photos.length,
                 itemBuilder: (context, index) {
                   final photo = photos[index];
-                  return _buildPhotoTile(photo);
+                  return _buildPhotoTile(photo, group['title']);
                 },
               ),
             ],
@@ -254,16 +219,27 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
   }
 
-  Widget _buildPhotoTile(Map<String, dynamic> photo) {
+  Widget _buildPhotoTile(Map<String, dynamic> photo, String groupTitle) {
     return GestureDetector(
       onTap: () {
-        // View full photo
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ImageDetailScreen(
+              imageUrl: photo['url'],
+              location: groupTitle,
+              capturedBy: 'You',
+              employeeId: 'EMP-01',
+              timestamp: DateTime.now(),
+            ),
+          ),
+        );
       },
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          color: AppColors.glassSlateStrong,
-          border: Border.all(color: AppColors.glassSlateBorder),
+          color: AppColors.glassStrong,
+          border: Border.all(color: AppColors.glassBorder),
           boxShadow: AppShadows.glass,
         ),
         child: ClipRRect(
@@ -275,10 +251,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 photo['url'],
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(
-                  color: Colors.grey.shade300,
-                  child: Icon(
+                  color: AppColors.glassPrimary,
+                  child: const Icon(
                     Iconsax.image,
-                    color: Colors.grey.shade500,
+                    color: AppColors.textTertiary,
                     size: 24,
                   ),
                 ),
@@ -296,14 +272,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       end: Alignment.bottomCenter,
                       colors: [
                         Colors.transparent,
-                        Colors.black.withValues(alpha: 0.6),
+                        AppColors.gradientStart.withValues(alpha: 0.6),
                       ],
                     ),
                   ),
                   child: Text(
                     photo['time'],
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontSize: 10,
                       fontWeight: FontWeight.w500,
                     ),
@@ -340,40 +316,24 @@ class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppColors.glassSlateBorder),
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          decoration: BoxDecoration(
+            color: AppColors.glassHeader,
+            border: Border(
+              bottom: BorderSide(color: AppColors.glassBorder),
             ),
-            child: TextField(
-              controller: controller,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.textPrimary,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search photos, tags...',
-                hintStyle: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textTertiary,
-                ),
-                prefixIcon: Icon(
-                  Iconsax.search_normal,
-                  color: AppColors.textSecondary,
-                  size: 20,
-                ),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
+          ),
+          child: GlassInputField(
+            controller: controller,
+            hint: 'Search photos, tags...',
+            prefixIcon: Iconsax.search_normal,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
             ),
           ),
         ),
@@ -381,3 +341,4 @@ class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
     );
   }
 }
+

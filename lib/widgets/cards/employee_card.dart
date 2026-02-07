@@ -48,9 +48,9 @@ class EmployeeCard extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-              border: Border.all(color: AppColors.glassSlateBorder),
+              border: Border.all(color: AppColors.glassBorder),
             ),
             child: Row(
               children: [
@@ -98,8 +98,8 @@ class EmployeeCard extends StatelessWidget {
                                 height: 8,
                                 decoration: BoxDecoration(
                                   color: isActive
-                                      ? AppColors.activeGreen
-                                      : AppColors.inactiveGrey,
+                                  ? AppColors.success
+                                  : AppColors.inactiveGrey,
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -108,8 +108,8 @@ class EmployeeCard extends StatelessWidget {
                                 isActive ? 'Active' : 'Inactive',
                                 style: AppTypography.caption.copyWith(
                                   color: isActive
-                                      ? AppColors.activeGreen
-                                      : AppColors.textTertiary,
+                                  ? AppColors.success
+                                  : AppColors.textTertiary,
                                 ),
                               ),
                             ],
@@ -197,3 +197,4 @@ class EmployeeCard extends StatelessWidget {
     );
   }
 }
+

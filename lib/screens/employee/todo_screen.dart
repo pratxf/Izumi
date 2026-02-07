@@ -4,6 +4,9 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/glass/glass_chip.dart';
+import '../../widgets/navigation/app_header.dart';
+import '../admin/create_task_screen.dart';
 
 /// Todo Screen - Redesigned per reference
 /// Shows tasks and follow-ups with filter pills
@@ -17,7 +20,7 @@ class TodoScreen extends StatefulWidget {
 }
 
 class _TodoScreenState extends State<TodoScreen> {
-  String _selectedTab = 'all';
+  String _selectedTab = 'task';
 
   // Mock data - Active tasks
   final List<Map<String, dynamic>> _activeTasks = [
@@ -49,12 +52,16 @@ class _TodoScreenState extends State<TodoScreen> {
       'title': 'Visit Region A',
       'emoji': '✅',
       'completedAt': '10:30 AM',
+      'type': 'task',
     },
   ];
 
   List<Map<String, dynamic>> get _filteredTasks {
-    if (_selectedTab == 'all') return _activeTasks;
     return _activeTasks.where((t) => t['type'] == _selectedTab).toList();
+  }
+
+  List<Map<String, dynamic>> get _filteredCompletedTasks {
+    return _completedTasks.where((t) => t['type'] == _selectedTab).toList();
   }
 
   @override
@@ -66,34 +73,44 @@ class _TodoScreenState extends State<TodoScreen> {
           children: [
             Column(
               children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Tasks',
-                            style: AppTypography.h1.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: -0.5,
+                AppHeader(
+                  title: 'Tasks',
+                  type: AppHeaderType.primary,
+                  showAvatar: false,
+                  actions: widget.isTeamLead
+                      ? [
+                          GestureDetector(
+                            onTap: _openCreateTaskScreen,
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.4,
+                                    ),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                                border: Border.all(
+                                  color: AppColors.textPrimary.withValues(
+                                    alpha: 0.2,
+                                  ),
+                                ),
+                              ),
+                              child: const Icon(
+                                Iconsax.add,
+                                color: AppColors.textPrimary,
+                                size: 22,
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Check your daily objectives',
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.glassSlateSoft,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ]
+                      : null,
                 ),
 
                 // Filter Pills
@@ -105,8 +122,6 @@ class _TodoScreenState extends State<TodoScreen> {
                   ),
                   child: Row(
                     children: [
-                      _buildFilterPill('All', 'all'),
-                      const SizedBox(width: 12),
                       _buildFilterPill('Task', 'task'),
                       const SizedBox(width: 12),
                       _buildFilterPill('Follow Up', 'followup'),
@@ -137,7 +152,7 @@ class _TodoScreenState extends State<TodoScreen> {
                                     Text(
                                       'Active',
                                       style: AppTypography.headline.copyWith(
-                                        color: Colors.white,
+                                        color: AppColors.textPrimary,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
@@ -148,15 +163,13 @@ class _TodoScreenState extends State<TodoScreen> {
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.2,
-                                        ),
+                                        color: AppColors.glassPrimary,
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Text(
                                         '${_filteredTasks.length}',
                                         style: AppTypography.caption.copyWith(
-                                          color: Colors.white,
+                                          color: AppColors.textPrimary,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
@@ -168,9 +181,7 @@ class _TodoScreenState extends State<TodoScreen> {
                                   child: Text(
                                     'Sort by Due Date',
                                     style: AppTypography.caption.copyWith(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.7,
-                                      ),
+                                      color: AppColors.textSecondary,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
@@ -188,7 +199,7 @@ class _TodoScreenState extends State<TodoScreen> {
                         ],
 
                         // Completed Section
-                        if (_completedTasks.isNotEmpty) ...[
+                        if (_filteredCompletedTasks.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -197,7 +208,7 @@ class _TodoScreenState extends State<TodoScreen> {
                                 Text(
                                   'Completed',
                                   style: AppTypography.headline.copyWith(
-                                    color: Colors.white.withValues(alpha: 0.9),
+                                    color: AppColors.textPrimary,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -208,15 +219,13 @@ class _TodoScreenState extends State<TodoScreen> {
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.1),
+                                    color: AppColors.glassPrimary,
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
-                                    '${_completedTasks.length}',
+                                    '${_filteredCompletedTasks.length}',
                                     style: AppTypography.caption.copyWith(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.8,
-                                      ),
+                                      color: AppColors.textSecondary,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -225,7 +234,7 @@ class _TodoScreenState extends State<TodoScreen> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          ..._completedTasks.map(
+                          ..._filteredCompletedTasks.map(
                             (task) => Padding(
                               padding: const EdgeInsets.only(bottom: 12),
                               child: _buildCompletedTaskCard(task),
@@ -239,35 +248,7 @@ class _TodoScreenState extends State<TodoScreen> {
               ],
             ),
 
-            // Create Task FAB - Only for Team Leads
-            if (widget.isTeamLead)
-              Positioned(
-                right: 20,
-                bottom: 100,
-                child: GestureDetector(
-                  onTap: _showCreateTaskSheet,
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primary.withValues(alpha: 0.4),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Iconsax.add,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                ),
-              ),
+            // Create task action is in header for team lead
           ],
         ),
       ),
@@ -276,38 +257,10 @@ class _TodoScreenState extends State<TodoScreen> {
 
   Widget _buildFilterPill(String label, String value) {
     final isSelected = _selectedTab == value;
-    return GestureDetector(
+    return GlassChip(
+      label: label,
+      selected: isSelected,
       onTap: () => setState(() => _selectedTab = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.primary
-              : Colors.white.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isSelected
-                ? AppColors.primary
-                : Colors.white.withValues(alpha: 0.1),
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: AppTypography.bodySmall.copyWith(
-            color: Colors.white,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-          ),
-        ),
-      ),
     );
   }
 
@@ -323,21 +276,21 @@ class _TodoScreenState extends State<TodoScreen> {
 
     switch (priority) {
       case 'high':
-        borderColor = Colors.red;
-        badgeColor = Colors.red.shade600;
-        badgeBgColor = Colors.red.shade100;
+        borderColor = AppColors.critical;
+        badgeColor = AppColors.critical;
+        badgeBgColor = AppColors.critical.withValues(alpha: 0.2);
         badgeText = 'HIGH';
         break;
       case 'medium':
-        borderColor = Colors.amber;
-        badgeColor = Colors.amber.shade700;
-        badgeBgColor = Colors.amber.shade100;
+        borderColor = AppColors.warning;
+        badgeColor = AppColors.warning;
+        badgeBgColor = AppColors.warning.withValues(alpha: 0.2);
         badgeText = 'MEDIUM';
         break;
       default:
-        borderColor = Colors.blue;
-        badgeColor = Colors.blue.shade600;
-        badgeBgColor = Colors.blue.shade100;
+        borderColor = AppColors.success;
+        badgeColor = AppColors.success;
+        badgeBgColor = AppColors.success.withValues(alpha: 0.2);
         badgeText = 'LOW';
     }
 
@@ -347,13 +300,13 @@ class _TodoScreenState extends State<TodoScreen> {
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft,
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(20),
             border: Border(
               left: BorderSide(color: borderColor, width: 6),
-              top: BorderSide(color: AppColors.glassSlateBorder),
-              right: BorderSide(color: AppColors.glassSlateBorder),
-              bottom: BorderSide(color: AppColors.glassSlateBorder),
+              top: BorderSide(color: AppColors.glassBorder),
+              right: BorderSide(color: AppColors.glassBorder),
+              bottom: BorderSide(color: AppColors.glassBorder),
             ),
           ),
           child: Padding(
@@ -452,13 +405,13 @@ class _TodoScreenState extends State<TodoScreen> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.amber.shade100,
+                      color: AppColors.warning.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       'Type: ${task['contactType']}',
                       style: TextStyle(
-                        color: Colors.amber.shade700,
+                        color: AppColors.warning,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -491,7 +444,7 @@ class _TodoScreenState extends State<TodoScreen> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.5),
+                            color: AppColors.glassPrimary,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -567,13 +520,13 @@ class _TodoScreenState extends State<TodoScreen> {
           opacity: 0.6,
           child: Container(
             decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(20),
               border: Border(
-                left: BorderSide(color: Colors.grey.shade400, width: 6),
-                top: BorderSide(color: AppColors.glassSlateBorder),
-                right: BorderSide(color: Colors.white.withValues(alpha: 0.4)),
-                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.4)),
+                left: BorderSide(color: AppColors.textTertiary, width: 6),
+                top: BorderSide(color: AppColors.glassBorder),
+                right: BorderSide(color: AppColors.glassBorder),
+                bottom: BorderSide(color: AppColors.glassBorder),
               ),
             ),
             child: Padding(
@@ -619,105 +572,11 @@ class _TodoScreenState extends State<TodoScreen> {
     );
   }
 
-  void _showCreateTaskSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Create Task',
-                style: AppTypography.h3.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                decoration: InputDecoration(
-                  hintText: 'Task title',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: AppColors.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: AppColors.primary, width: 2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                maxLines: 3,
-                decoration: InputDecoration(
-                  hintText: 'Description',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: AppColors.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: AppColors.primary, width: 2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('Task created!'),
-                        backgroundColor: AppColors.success,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text(
-                    'Create Task',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
-      ),
+  void _openCreateTaskScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CreateTaskScreen()),
     );
   }
 }
+

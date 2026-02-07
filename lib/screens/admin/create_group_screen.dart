@@ -4,6 +4,8 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/inputs/text_input_field.dart';
+import '../../widgets/navigation/app_header.dart';
 
 /// Create Group Screen - Form to create a new team group
 class CreateGroupScreen extends StatefulWidget {
@@ -43,49 +45,16 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           bottom: false,
           child: Column(
             children: [
-              // Header with back button
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Icon(
-                          Icons.chevron_left,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        'New Group',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.headline.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 48), // Balance the back button
-                  ],
-                ),
+              const AppHeader(
+                title: 'New Group',
+                type: AppHeaderType.secondary,
+                showAvatar: false,
               ),
 
               // Form Content
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -102,9 +71,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            _buildTextInput(
+                            GlassInputField(
                               controller: _groupNameController,
-                              placeholder: 'e.g., West Region - Team Alpha',
+                              hint: 'e.g., West Region - Team Alpha',
                             ),
                           ],
                         ),
@@ -205,19 +174,22 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            _buildTextInput(
+                            GlassInputField(
                               controller: _taskController,
-                              placeholder: 'e.g., Equipment Inspection',
-                              suffixIcon: Iconsax.task_square,
+                              hint: 'e.g., Equipment Inspection',
+                              suffixIcon: Icon(
+                                Iconsax.task_square,
+                                color: AppColors.primary,
+                              ),
                             ),
                             const SizedBox(height: 16),
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.3),
+                                color: AppColors.glassPrimary,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.4),
+                                  color: AppColors.glassBorder,
                                 ),
                               ),
                               child: Row(
@@ -264,8 +236,8 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
               colors: [
-                const Color(0xFFB5BEBE),
-                const Color(0xFFB5BEBE).withValues(alpha: 0),
+                AppColors.glassStrong,
+                AppColors.glassStrong.withValues(alpha: 0),
               ],
             ),
           ),
@@ -288,7 +260,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 child: Text(
                   'Create Group',
                   style: AppTypography.headline.copyWith(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -310,44 +282,12 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.7),
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+              border: Border.all(color: AppColors.glassBorder),
             ),
             child: child,
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextInput({
-    required TextEditingController controller,
-    required String placeholder,
-    IconData? suffixIcon,
-  }) {
-    return Container(
-      height: 56,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: TextField(
-        controller: controller,
-        style: AppTypography.bodyMedium.copyWith(color: AppColors.textPrimary),
-        decoration: InputDecoration(
-          hintText: placeholder,
-          hintStyle: AppTypography.bodyMedium.copyWith(
-            color: AppColors.textTertiary,
-          ),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 16,
-          ),
-          suffixIcon: suffixIcon != null
-              ? Icon(suffixIcon, color: AppColors.primary, size: 22)
-              : null,
         ),
       ),
     );
@@ -358,13 +298,16 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.3),
+        color: AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.glassBorder),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _selectedTeamLead,
           isExpanded: true,
+          isDense: true,
+          alignment: Alignment.centerLeft,
           hint: Text(
             'Select an employee',
             style: AppTypography.bodyMedium.copyWith(
@@ -375,12 +318,17 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           style: AppTypography.bodyMedium.copyWith(
             color: AppColors.textPrimary,
           ),
-          dropdownColor: Colors.white,
+          dropdownColor: AppColors.glassNav,
           borderRadius: BorderRadius.circular(16),
           items: _employees.map((emp) {
             return DropdownMenuItem(
               value: emp['id'],
-              child: Text(emp['name']!),
+              child: Text(
+                emp['name']!,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+              ),
             );
           }).toList(),
           onChanged: (value) {
@@ -400,7 +348,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         builder: (context, setModalState) => Container(
           height: MediaQuery.of(context).size.height * 0.6,
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: AppColors.glassStrong,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -454,7 +402,12 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                           ),
                         ),
                       ),
-                      title: Text(emp['name']!),
+                      title: Text(
+                        emp['name']!,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
                       trailing: Checkbox(
                         value: isSelected,
                         activeColor: AppColors.primary,
@@ -498,7 +451,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Please enter a group name'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.critical,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -519,3 +472,4 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     );
   }
 }
+

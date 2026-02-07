@@ -1,8 +1,12 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/glass/glass_chip.dart';
+import '../../widgets/navigation/app_header.dart';
+import '../admin/create_task_screen.dart';
 
 /// Monitor Screen - Team Lead task monitoring view
 /// Standard Dark Glass Design
@@ -57,57 +61,75 @@ class _MonitorScreenState extends State<MonitorScreen> {
   @override
   Widget build(BuildContext context) {
     return GradientBackground(
-      isDark: true,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(
           bottom: false,
-          child: Stack(
+          child: Column(
             children: [
-              Column(
-                children: [
-                  // Header
-                  _buildHeader(),
-
-                  // Filter Tabs
-                  _buildFilterTabs(),
-                  const SizedBox(height: 24),
-
-                  // Content
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.only(bottom: 100),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Text(
-                              'My Group Tasks',
-                              style: AppTypography.h3,
-                            ),
+              AppHeader(
+                title: 'Tasks',
+                type: AppHeaderType.primary,
+                showAvatar: false,
+                actions: [
+                  GestureDetector(
+                    onTap: _openCreateTaskScreen,
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.4),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
                           ),
-                          const SizedBox(height: 16),
-
-                          // Main Task Card
-                          _buildTaskCard(),
-                          const SizedBox(height: 24),
-
-                          // New Region Assignment Card
-                          _buildNewAssignmentCard(),
                         ],
+                        border: Border.all(
+                          color: AppColors.textPrimary.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.add,
+                        color: AppColors.textPrimary,
+                        size: 22,
                       ),
                     ),
                   ),
                 ],
               ),
 
-              // Bottom Navigation
-              Positioned(
-                bottom: 24,
-                left: 24,
-                right: 24,
-                child: _buildFloatingNavBar(),
+              // Filter Tabs
+              _buildFilterTabs(),
+              const SizedBox(height: 20),
+
+              // Content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 120),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Text(
+                          'My Group Tasks',
+                          style: AppTypography.h3,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Main Task Card
+                      _buildTaskCard(),
+                      const SizedBox(height: 24),
+
+                      // New Region Assignment Card
+                      _buildNewAssignmentCard(),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -116,52 +138,10 @@ class _MonitorScreenState extends State<MonitorScreen> {
     );
   }
 
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'Tasks',
-            style: AppTypography.displayLarge.copyWith(fontSize: 32),
-          ),
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 8, 16, 8),
-            decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
-              borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: AppColors.glassSlateBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.add, color: AppColors.primary, size: 20),
-                const SizedBox(width: 4),
-                Text(
-                  'Create',
-                  style: AppTypography.buttonMedium.copyWith(
-                    color: AppColors.primary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildFilterTabs() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
       child: Row(
         children: [
           _buildFilterPill('All', 'all'),
@@ -176,34 +156,10 @@ class _MonitorScreenState extends State<MonitorScreen> {
 
   Widget _buildFilterPill(String label, String value) {
     final isSelected = _selectedFilter == value;
-    return GestureDetector(
+    return GlassChip(
+      label: label,
+      selected: isSelected,
       onTap: () => setState(() => _selectedFilter = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : AppColors.glassSlateSoft,
-          borderRadius: BorderRadius.circular(20),
-          border: isSelected
-              ? null
-              : Border.all(color: AppColors.glassSlateBorder),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: AppTypography.bodySmall.copyWith(
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-            color: isSelected ? Colors.white : AppColors.textSecondary,
-          ),
-        ),
-      ),
     );
   }
 
@@ -211,16 +167,10 @@ class _MonitorScreenState extends State<MonitorScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: AppColors.glassSlateSoft,
+        color: AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassSlateBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        border: Border.all(color: AppColors.glassBorder),
+        boxShadow: AppShadows.glass,
       ),
       child: Column(
         children: [
@@ -246,7 +196,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Colors.black.withOpacity(0.8),
+                          AppColors.gradientStart.withValues(alpha: 0.8),
                         ],
                       ),
                     ),
@@ -268,7 +218,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                               children: [
                                 const Icon(
                                   Icons.group,
-                                  color: Colors.white70,
+                                  color: AppColors.textSecondary,
                                   size: 16,
                                 ),
                                 const SizedBox(width: 4),
@@ -284,17 +234,17 @@ class _MonitorScreenState extends State<MonitorScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: AppColors.glassSlateSoft,
+                            color: AppColors.glassPrimary,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: AppColors.glassSlateBorder,
+                              color: AppColors.glassBorder,
                             ),
                           ),
                           child: BackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                             child: const Icon(
                               Icons.more_horiz,
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                             ),
                           ),
                         ),
@@ -316,28 +266,22 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
-                          Icons.check_circle,
-                          color: AppColors.success,
-                          size: 20,
-                        ),
+                        const Icon(Icons.check_circle,
+                            color: AppColors.success, size: 20),
                         const SizedBox(width: 6),
                         Text(
                           'Completed: 3/5',
                           style: AppTypography.bodySmall.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                       ],
                     ),
                     Row(
                       children: [
-                        const Icon(
-                          Icons.hourglass_top,
-                          color: AppColors.primary,
-                          size: 16,
-                        ),
+                        const Icon(Icons.hourglass_top,
+                            color: AppColors.primary, size: 16),
                         const SizedBox(width: 4),
                         Text(
                           'Pending: 2',
@@ -356,7 +300,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   child: LinearProgressIndicator(
                     minHeight: 10,
                     value: 0.6,
-                    backgroundColor: Colors.white.withOpacity(0.1),
+                    backgroundColor: AppColors.glassBorder,
                     valueColor: const AlwaysStoppedAnimation<Color>(
                       AppColors.primary,
                     ),
@@ -366,7 +310,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
             ),
           ),
 
-          const Divider(height: 1, color: AppColors.glassSlateBorder),
+          const Divider(height: 1, color: AppColors.glassBorder),
 
           // Assignees List
           Padding(
@@ -385,9 +329,12 @@ class _MonitorScreenState extends State<MonitorScreen> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 16),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
+                color: AppColors.glassPrimary,
                 borderRadius: const BorderRadius.vertical(
                   bottom: Radius.circular(24),
+                ),
+                border: Border(
+                  top: BorderSide(color: AppColors.glassBorder),
                 ),
               ),
               child: Row(
@@ -451,7 +398,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(2),
                         decoration: const BoxDecoration(
-                          color: AppColors.background,
+                          color: AppColors.glassPrimary,
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -471,7 +418,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                     assignee['name'],
                     style: AppTypography.bodySmall.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   Text(
@@ -501,16 +448,10 @@ class _MonitorScreenState extends State<MonitorScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 24),
       height: 96,
       decoration: BoxDecoration(
-        color: AppColors.glassSlateSoft,
+        color: AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassSlateBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: AppColors.glassBorder),
+        boxShadow: AppShadows.glass,
       ),
       child: Center(
         child: Row(
@@ -530,60 +471,12 @@ class _MonitorScreenState extends State<MonitorScreen> {
     );
   }
 
-  Widget _buildFloatingNavBar() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(32),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.glassSlateStrong,
-            borderRadius: BorderRadius.circular(32),
-            border: Border.all(color: AppColors.glassSlateBorder),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildNavItem(Icons.home_outlined, false),
-              _buildNavItem(Icons.task_alt, true),
-              _buildNavItem(Icons.chat_bubble_outline, false),
-              _buildNavItem(Icons.person_outline, false),
-            ],
-          ),
-        ),
-      ),
+  void _openCreateTaskScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CreateTaskScreen()),
     );
   }
 
-  Widget _buildNavItem(IconData icon, bool isActive) {
-    if (isActive) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.primary,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withOpacity(0.4),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Icon(icon, color: Colors.white, size: 24),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Icon(icon, color: AppColors.textSecondary, size: 24),
-    );
-  }
 }
+

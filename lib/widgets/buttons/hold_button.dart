@@ -85,7 +85,7 @@ class _HoldButtonState extends State<HoldButton>
             width: double.infinity,
             height: AppSpacing.buttonHeight,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
               border: Border.all(
                 color: widget.isEnabled ? AppColors.primary : AppColors.border,
@@ -146,3 +146,4 @@ class _HoldButtonState extends State<HoldButton>
     );
   }
 }
+

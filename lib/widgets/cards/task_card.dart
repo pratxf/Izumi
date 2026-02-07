@@ -67,9 +67,14 @@ class TaskCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.glassPrimary,
           borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-          border: Border(left: BorderSide(color: _priorityColor, width: 4)),
+          border: Border(
+            left: BorderSide(color: _priorityColor, width: 4),
+            top: const BorderSide(color: AppColors.glassBorder),
+            right: const BorderSide(color: AppColors.glassBorder),
+            bottom: const BorderSide(color: AppColors.glassBorder),
+          ),
           boxShadow: AppShadows.card,
         ),
         child: Column(
@@ -169,3 +174,4 @@ class TaskCard extends StatelessWidget {
     );
   }
 }
+

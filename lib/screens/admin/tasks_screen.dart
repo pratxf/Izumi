@@ -5,7 +5,8 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
-import '../../widgets/buttons/primary_button.dart';
+import '../../widgets/navigation/app_header.dart';
+import 'create_task_screen.dart';
 
 /// Tasks Screen (Admin) - Enterprise Dark Glass Design
 /// Task overview and creation
@@ -41,324 +42,55 @@ class _TasksScreenState extends State<TasksScreen> {
     },
   ];
 
-  void _showCreateTaskSheet() {
-    final titleController = TextEditingController();
-    String selectedAssignee = 'Rahul Kumar';
-    String selectedPriority = 'Medium';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => Container(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          decoration: BoxDecoration(
-            color: AppColors.glassSlateStrong,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-            border: Border.all(color: AppColors.glassSlateBorder),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.5),
-                blurRadius: 40,
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Handle
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppColors.glassSlateBorder,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Create New Task',
-                          style: AppTypography.h3.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: AppColors.glassSlateSoft,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.close,
-                              color: AppColors.textSecondary,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    // Task Title
-                    Text(
-                      'Task Title',
-                      style: AppTypography.label.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: titleController,
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Enter task description',
-                        hintStyle: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textTertiary,
-                        ),
-                        filled: true,
-                        fillColor: AppColors.glassSlateSoft,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.all(16),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // Assignee Dropdown
-                    Text(
-                      'Assign To',
-                      style: AppTypography.label.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: AppColors.glassSlateSoft,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.glassSlateBorder),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: selectedAssignee,
-                          isExpanded: true,
-                          dropdownColor: AppColors.surface,
-                          icon: Icon(
-                            Icons.keyboard_arrow_down,
-                            color: AppColors.textSecondary,
-                          ),
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.textPrimary,
-                          ),
-                          items:
-                              [
-                                    'Rahul Kumar',
-                                    'Priya Singh',
-                                    'Amit Sharma',
-                                    'Neha Verma',
-                                  ]
-                                  .map(
-                                    (e) => DropdownMenuItem(
-                                      value: e,
-                                      child: Text(e),
-                                    ),
-                                  )
-                                  .toList(),
-                          onChanged: (v) =>
-                              setSheetState(() => selectedAssignee = v!),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // Priority Selection
-                    Text(
-                      'Priority',
-                      style: AppTypography.label.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: ['Low', 'Medium', 'High'].map((p) {
-                        final isSelected = selectedPriority == p;
-                        Color color;
-                        switch (p) {
-                          case 'High':
-                            color = AppColors.error;
-                            break;
-                          case 'Medium':
-                            color = AppColors.warning;
-                            break;
-                          default:
-                            color = AppColors.success;
-                        }
-                        return Expanded(
-                          child: GestureDetector(
-                            onTap: () =>
-                                setSheetState(() => selectedPriority = p),
-                            child: Container(
-                              margin: EdgeInsets.only(
-                                right: p != 'High' ? 8 : 0,
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? color.withOpacity(0.15)
-                                    : AppColors.glassSlateSoft,
-                                border: Border.all(
-                                  color: isSelected
-                                      ? color
-                                      : AppColors.glassSlateBorder,
-                                  width: isSelected ? 1.5 : 1,
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  p,
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: isSelected
-                                        ? color
-                                        : AppColors.textSecondary,
-                                    fontWeight: isSelected
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 32),
-                    // Create Button
-                    PrimaryButton(
-                      label: 'Create Task',
-                      onPressed: () {
-                        if (titleController.text.isNotEmpty) {
-                          setState(() {
-                            _tasks.insert(0, {
-                              'title': titleController.text,
-                              'assignee': selectedAssignee,
-                              'priority': selectedPriority,
-                              'completed': false,
-                              'dueDate': 'Today',
-                            });
-                          });
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('Task created successfully!'),
-                              backgroundColor: AppColors.success,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final pending = _tasks.where((t) => !t['completed']).length;
     final completed = _tasks.where((t) => t['completed']).length;
 
     return GradientBackground(
-      isDark: true, // Strict dark mode
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Tasks',
-                        style: AppTypography.h1.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
+            AppHeader(
+              title: 'Tasks',
+              type: AppHeaderType.primary,
+              showAvatar: false,
+              actions: [
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const CreateTaskScreen(),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Manage team assignments',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.textSecondary,
+                    );
+                  },
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withOpacity(0.4),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
-                      ),
-                    ],
-                  ),
-                  GestureDetector(
-                    onTap: _showCreateTaskSheet,
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primary.withOpacity(0.4),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.2),
-                        ),
-                      ),
-                      child: const Icon(
-                        Iconsax.add,
-                        color: Colors.white,
-                        size: 22,
+                      ],
+                      border: Border.all(
+                        color: AppColors.textPrimary.withOpacity(0.2),
                       ),
                     ),
+                    child: const Icon(
+                      Iconsax.add,
+                      color: AppColors.textPrimary,
+                      size: 22,
+                    ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
 
@@ -396,14 +128,14 @@ class _TasksScreenState extends State<TasksScreen> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppColors.glassSlateSoft,
+                  color: AppColors.glassPrimary,
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(32),
                   ),
                   border: Border(
-                    top: BorderSide(color: AppColors.glassSlateBorder),
-                    left: BorderSide(color: AppColors.glassSlateBorder),
-                    right: BorderSide(color: AppColors.glassSlateBorder),
+                    top: BorderSide(color: AppColors.glassBorder),
+                    left: BorderSide(color: AppColors.glassBorder),
+                    right: BorderSide(color: AppColors.glassBorder),
                   ),
                   boxShadow: AppShadows.glass,
                 ),
@@ -438,10 +170,10 @@ class _TasksScreenState extends State<TasksScreen> {
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: AppColors.glassSlateStrong,
+                                color: AppColors.glassStrong,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: AppColors.glassSlateBorder,
+                                  color: AppColors.glassBorder,
                                 ),
                               ),
                               child: Row(
@@ -502,9 +234,9 @@ class _TasksScreenState extends State<TasksScreen> {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.glassSlateBorder),
+              border: Border.all(color: AppColors.glassBorder),
             ),
             child: Column(
               children: [
@@ -563,16 +295,16 @@ class _TasksScreenState extends State<TasksScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.glassSlateSoft,
+        color: AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(20),
         border: Border(
           left: BorderSide(
-            color: completed ? AppColors.textMuted : priorityColor,
+            color: completed ? AppColors.textDisabled : priorityColor,
             width: 6,
           ),
-          top: BorderSide(color: AppColors.glassSlateBorder, width: 1),
-          right: BorderSide(color: AppColors.glassSlateBorder, width: 1),
-          bottom: BorderSide(color: AppColors.glassSlateBorder, width: 1),
+          top: BorderSide(color: AppColors.glassBorder, width: 1),
+          right: BorderSide(color: AppColors.glassBorder, width: 1),
+          bottom: BorderSide(color: AppColors.glassBorder, width: 1),
         ),
         boxShadow: [
           BoxShadow(
@@ -592,12 +324,12 @@ class _TasksScreenState extends State<TasksScreen> {
               color: completed ? AppColors.success : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: completed ? AppColors.success : AppColors.textMuted,
+                color: completed ? AppColors.success : AppColors.textDisabled,
                 width: 2,
               ),
             ),
             child: completed
-                ? const Icon(Icons.check, color: Colors.white, size: 16)
+                ? const Icon(Icons.check, color: AppColors.textPrimary, size: 16)
                 : null,
           ),
           const SizedBox(width: 16),
@@ -655,18 +387,18 @@ class _TasksScreenState extends State<TasksScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: (completed ? AppColors.textMuted : priorityColor)
+              color: (completed ? AppColors.textDisabled : priorityColor)
                   .withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: (completed ? AppColors.textMuted : priorityColor)
+                color: (completed ? AppColors.textDisabled : priorityColor)
                     .withOpacity(0.3),
               ),
             ),
             child: Text(
               completed ? 'Done' : priority,
               style: AppTypography.overline.copyWith(
-                color: completed ? AppColors.textMuted : priorityColor,
+                color: completed ? AppColors.textDisabled : priorityColor,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -676,3 +408,5 @@ class _TasksScreenState extends State<TasksScreen> {
     );
   }
 }
+
+

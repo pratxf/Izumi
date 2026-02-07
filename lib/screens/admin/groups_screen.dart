@@ -4,6 +4,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/navigation/app_header.dart';
 import 'create_group_screen.dart';
 import 'edit_group_screen.dart';
 
@@ -50,25 +51,14 @@ class GroupsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GradientBackground(
-      isDark: true, // Enforce Dark Mode
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Groups',
-                    style: AppTypography.h2.copyWith(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
+            const AppHeader(
+              title: 'Groups',
+              type: AppHeaderType.primary,
+              showAvatar: false,
             ),
 
             // Content
@@ -155,7 +145,7 @@ class GroupsScreen extends StatelessWidget {
             Text(
               'Create New Group',
               style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.primary,
+                color: AppColors.textPrimary,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -187,9 +177,9 @@ class GroupsScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.glassSlateSoft,
+          color: AppColors.glassPrimary,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.glassSlateBorder),
+          border: Border.all(color: AppColors.glassBorder),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.1),
@@ -241,7 +231,7 @@ class GroupsScreen extends StatelessWidget {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
+                color: AppColors.glassPrimary,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -256,3 +246,4 @@ class GroupsScreen extends StatelessWidget {
     );
   }
 }
+

@@ -5,6 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/navigation/app_header.dart';
 
 /// Analytics Screen - Glassmorphism Design
 /// Enterprise activity overview
@@ -17,8 +18,86 @@ class AnalyticsScreen extends StatefulWidget {
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
   String _selectedPeriod = 'This Week';
+  final Set<int> _expandedEmployees = {};
 
   final List<String> _periods = ['Today', 'This Week', 'This Month', 'Custom'];
+  final List<Map<String, dynamic>> _employees = [
+    {
+      'name': 'Rahul Kumar',
+      'hours': 32,
+      'distance': 45.2,
+      'photos': 28,
+      'isTop': true,
+      'logs': [
+        {
+          'title': 'Location Update',
+          'time': '2 min ago',
+          'detail': 'Checked in at Sector 45, Gurgaon',
+        },
+        {
+          'title': 'Task Started',
+          'time': '15 min ago',
+          'detail': 'Inventory Check - Warehouse A',
+        },
+      ],
+    },
+    {
+      'name': 'Priya Singh',
+      'hours': 38,
+      'distance': 52.1,
+      'photos': 34,
+      'isTop': false,
+      'logs': [
+        {
+          'title': 'Photo Captured',
+          'time': '45 min ago',
+          'detail': 'Site Frontage - Evidence uploaded',
+        },
+      ],
+    },
+    {
+      'name': 'Amit Sharma',
+      'hours': 35,
+      'distance': 48.5,
+      'photos': 31,
+      'isTop': false,
+      'logs': [
+        {
+          'title': 'Commute Started',
+          'time': '1h ago',
+          'detail': 'Traveling to Sector 45',
+        },
+      ],
+    },
+    {
+      'name': 'Neha Verma',
+      'hours': 28,
+      'distance': 41.3,
+      'photos': 25,
+      'isTop': false,
+      'logs': [
+        {
+          'title': 'Task Completed',
+          'time': '2h ago',
+          'detail': 'Store Audit - West Region',
+        },
+      ],
+    },
+    {
+      'name': 'Suresh Patel',
+      'hours': 23,
+      'distance': 38.0,
+      'photos': 18,
+      'isTop': false,
+      'logs': [
+        {
+          'title': 'Break',
+          'time': '3h ago',
+          'detail': 'Paused for lunch',
+        },
+      ],
+    },
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -27,34 +106,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         bottom: false,
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Analytics',
-                        style: AppTypography.h1.copyWith(
-                          color: AppColors.textOnGradient,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Enterprise performance',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.textOnGradientMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                  _buildPeriodSelector(),
-                ],
-              ),
+            AppHeader(
+              title: 'Analytics',
+              type: AppHeaderType.primary,
+              showAvatar: false,
+              actions: [_buildPeriodSelector()],
             ),
             const SizedBox(height: 16),
 
@@ -73,17 +129,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      AppColors.glassSlateStrong,
-                      AppColors.glassSlateSoft,
+                      AppColors.glassStrong,
+                      AppColors.glassPrimary,
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(32),
                   ),
                   border: Border(
-                    top: BorderSide(color: AppColors.glassSlateBorder),
-                    left: BorderSide(color: AppColors.glassSlateBorder),
-                    right: BorderSide(color: AppColors.glassSlateBorder),
+                    top: BorderSide(color: AppColors.glassBorder),
+                    left: BorderSide(color: AppColors.glassBorder),
+                    right: BorderSide(color: AppColors.glassBorder),
                   ),
                   boxShadow: AppShadows.glass, // Soft glass shadow
                 ),
@@ -121,7 +177,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 color: AppColors.surfaceMuted,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: AppColors.glassSlateBorder,
+                                  color: AppColors.glassBorder,
                                   width: 1,
                                 ),
                               ),
@@ -147,18 +203,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Employee Performance Cards
-                        _buildEmployeeCard(
-                          'Rahul Kumar',
-                          32,
-                          45.2,
-                          28,
-                          isTop: true,
-                        ),
-                        _buildEmployeeCard('Priya Singh', 38, 52.1, 34),
-                        _buildEmployeeCard('Amit Sharma', 35, 48.5, 31),
-                        _buildEmployeeCard('Neha Verma', 28, 41.3, 25),
-                        _buildEmployeeCard('Suresh Patel', 23, 38.0, 18),
+                        // Employee Performance Cards (expandable logs)
+                        ..._employees.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final emp = entry.value;
+                          final isExpanded = _expandedEmployees.contains(index);
+                          return _buildEmployeeCard(
+                            name: emp['name'],
+                            hours: emp['hours'],
+                            distance: emp['distance'],
+                            photos: emp['photos'],
+                            isTop: emp['isTop'] == true,
+                            logs: List<Map<String, String>>.from(emp['logs']),
+                            isExpanded: isExpanded,
+                            onToggle: () {
+                              setState(() {
+                                if (isExpanded) {
+                                  _expandedEmployees.remove(index);
+                                } else {
+                                  _expandedEmployees.add(index);
+                                }
+                              });
+                            },
+                          );
+                        }),
 
                         const SizedBox(height: 24),
 
@@ -225,14 +293,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: AppColors.glassSlateSoft,
+          color: AppColors.glassPrimary,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.glassSlateBorder),
+          border: Border.all(color: AppColors.glassBorder),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Iconsax.calendar_1, size: 18, color: Colors.white),
+            Icon(Iconsax.calendar_1, size: 18, color: AppColors.textPrimary),
             const SizedBox(width: 8),
             Text(
               _selectedPeriod,
@@ -241,7 +309,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Icon(Icons.keyboard_arrow_down, size: 18, color: Colors.white),
+            Icon(
+              Icons.keyboard_arrow_down,
+              size: 18,
+              color: AppColors.textPrimary,
+            ),
           ],
         ),
       ),
@@ -255,9 +327,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       builder: (context) => Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: AppColors.surface, // glassSlateStrong
+          color: AppColors.surface, // glassStrong
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: AppColors.glassSlateBorder),
+          border: Border.all(color: AppColors.glassBorder),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -383,122 +455,204 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildEmployeeCard(
-    String name,
-    int hours,
-    double distance,
-    int photos, {
+  Widget _buildEmployeeCard({
+    required String name,
+    required int hours,
+    required double distance,
+    required int photos,
+    required List<Map<String, String>> logs,
+    required bool isExpanded,
+    required VoidCallback onToggle,
     bool isTop = false,
   }) {
     final initials = name.split(' ').take(2).map((e) => e[0]).join('');
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.glassSlateSoft,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isTop
-              ? AppColors.primary.withValues(alpha: 0.5)
-              : AppColors.glassSlateBorder,
-        ),
-        boxShadow: AppShadows.glass,
-      ),
-      child: Row(
-        children: [
-          // Avatar
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: isTop
-                  ? AppColors.primary.withValues(alpha: 0.1)
-                  : AppColors.surfaceMuted,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Center(
-              child: Text(
-                initials,
-                style: AppTypography.bodyMedium.copyWith(
-                  color: isTop ? AppColors.primary : AppColors.textSecondary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+    return GestureDetector(
+      onTap: onToggle,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isTop
+                ? AppColors.primary.withValues(alpha: 0.5)
+                : AppColors.glassBorder,
           ),
-          const SizedBox(width: 16),
-
-          // Name
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          boxShadow: AppShadows.glass,
+        ),
+        child: Column(
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Text(
-                      name,
+                // Avatar
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: isTop
+                        ? AppColors.primary.withValues(alpha: 0.1)
+                        : AppColors.surfaceMuted,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: Text(
+                      initials,
                       style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.textPrimary,
+                        color: isTop
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    if (isTop) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'Top',
-                          style: AppTypography.overline.copyWith(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                // Name
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            name,
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
+                          if (isTop) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Top',
+                                style: AppTypography.overline.copyWith(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
+                  ),
+                ),
+
+                // Stats
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildMiniStat(
+                          Iconsax.timer_1,
+                          '${hours}h',
+                          AppColors.iconOrange,
+                        ),
+                        const SizedBox(width: 12),
+                        _buildMiniStat(
+                          Iconsax.routing_2,
+                          '${distance.toStringAsFixed(0)}km',
+                          AppColors.iconTeal,
+                        ),
+                        const SizedBox(width: 12),
+                        _buildMiniStat(
+                          Iconsax.gallery,
+                          '$photos',
+                          AppColors.iconAmber,
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ],
             ),
-          ),
-
-          // Stats
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildMiniStat(
-                    Iconsax.timer_1,
-                    '${hours}h',
-                    AppColors.iconOrange,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildMiniStat(
-                    Iconsax.routing_2,
-                    '${distance.toStringAsFixed(0)}km',
-                    AppColors.iconTeal,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildMiniStat(
-                    Iconsax.gallery,
-                    '$photos',
-                    AppColors.iconAmber,
-                  ),
-                ],
+            if (isExpanded) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.glassStrong,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.glassBorder),
+                ),
+                child: Column(
+                  children: logs
+                      .map(
+                        (log) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                margin: const EdgeInsets.only(top: 6),
+                                decoration: const BoxDecoration(
+                                  color: AppColors.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          log['title'] ?? '',
+                                          style: AppTypography.bodySmall
+                                              .copyWith(
+                                            color: AppColors.textPrimary,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        Text(
+                                          log['time'] ?? '',
+                                          style: AppTypography.caption.copyWith(
+                                            color: AppColors.textTertiary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      log['detail'] ?? '',
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
               ),
             ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -520,3 +674,4 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 }
+

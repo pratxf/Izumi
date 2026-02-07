@@ -4,6 +4,9 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/inputs/text_input_field.dart';
+import '../../widgets/navigation/app_header.dart';
+import '../employee/image_detail_screen.dart';
 
 /// Admin Images Screen - Cloud images gallery with employee filter
 class ImagesScreen extends StatefulWidget {
@@ -99,26 +102,10 @@ class _ImagesScreenState extends State<ImagesScreen> {
         bottom: false,
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _buildGlassButton(
-                    icon: Icons.arrow_back,
-                    onTap: () => Navigator.maybePop(context),
-                  ),
-                  Text(
-                    'Gallery',
-                    style: AppTypography.h2.copyWith(
-                      color: const Color(0xFF1F2937),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  _buildGlassButton(icon: Icons.more_vert),
-                ],
-              ),
+            const AppHeader(
+              title: 'Gallery',
+              type: AppHeaderType.secondary,
+              showAvatar: false,
             ),
 
             // Content
@@ -171,19 +158,19 @@ class _ImagesScreenState extends State<ImagesScreen> {
           child: Container(
             width: 40,
             height: 40,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.glassSlateSoft,
-                  Colors.white.withValues(alpha: 0.25),
-                ],
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.glassPrimary,
+                    AppColors.glassPrimary.withValues(alpha: 0.6),
+                  ],
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.glassBorder),
               ),
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.glassSlateBorder),
-            ),
-            child: Icon(icon, color: const Color(0xFF1F2937), size: 22),
+            child: Icon(icon, color: AppColors.textPrimary, size: 22),
           ),
         ),
       ),
@@ -198,9 +185,9 @@ class _ImagesScreenState extends State<ImagesScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft,
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+            border: Border.all(color: AppColors.glassBorder),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
@@ -208,12 +195,12 @@ class _ImagesScreenState extends State<ImagesScreen> {
               isExpanded: true,
               icon: Icon(
                 Iconsax.arrow_down_1,
-                color: const Color(0xFF6B7280),
+                color: AppColors.textSecondary,
                 size: 20,
               ),
-              dropdownColor: Colors.white,
+              dropdownColor: AppColors.glassStrong,
               style: AppTypography.bodyMedium.copyWith(
-                color: const Color(0xFF1F2937),
+                color: AppColors.textPrimary,
               ),
               items: _employees.map((e) {
                 return DropdownMenuItem(
@@ -223,7 +210,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
                       Icon(
                         e == 'All Employees' ? Iconsax.people : Iconsax.user,
                         size: 18,
-                        color: const Color(0xFF6B7280),
+                        color: AppColors.textSecondary,
                       ),
                       const SizedBox(width: 12),
                       Text(e),
@@ -250,16 +237,9 @@ class _ImagesScreenState extends State<ImagesScreen> {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.white.withValues(alpha: 0.45),
-                Colors.white.withValues(alpha: 0.2),
-              ],
-            ),
+            gradient: AppColors.glassPanelGradient,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+            border: Border.all(color: AppColors.glassBorder),
           ),
           child: Column(
             children: [
@@ -270,7 +250,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
                   Text(
                     group['title'],
                     style: AppTypography.bodyLarge.copyWith(
-                      color: const Color(0xFF1F2937),
+                      color: AppColors.textPrimary,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -280,16 +260,16 @@ class _ImagesScreenState extends State<ImagesScreen> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.3),
+                      color: AppColors.glassPrimary,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.3),
+                        color: AppColors.glassBorder,
                       ),
                     ),
                     child: Text(
                       '${group['count']} PHOTOS',
                       style: TextStyle(
-                        color: const Color(0xFF6B7280),
+                        color: AppColors.textSecondary,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.5,
@@ -325,12 +305,23 @@ class _ImagesScreenState extends State<ImagesScreen> {
   Widget _buildPhotoTile(Map<String, dynamic> photo) {
     return GestureDetector(
       onTap: () {
-        // View full photo
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ImageDetailScreen(
+              imageUrl: photo['url'],
+              location: 'Field Capture',
+              capturedBy: photo['employee'] ?? 'Employee',
+              employeeId: photo['employee'] ?? 'EMP',
+              timestamp: DateTime.now(),
+            ),
+          ),
+        );
       },
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          color: Colors.grey.shade200,
+          color: AppColors.glassPrimary,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.05),
@@ -347,10 +338,10 @@ class _ImagesScreenState extends State<ImagesScreen> {
                 photo['url'],
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(
-                  color: Colors.grey.shade300,
-                  child: Icon(
+                  color: AppColors.glassPrimary,
+                  child: const Icon(
                     Iconsax.image,
-                    color: Colors.grey.shade500,
+                    color: AppColors.textTertiary,
                     size: 24,
                   ),
                 ),
@@ -365,13 +356,13 @@ class _ImagesScreenState extends State<ImagesScreen> {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
+                    color: AppColors.gradientStart.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     photo['employee'],
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontSize: 9,
                       fontWeight: FontWeight.w600,
                     ),
@@ -391,14 +382,14 @@ class _ImagesScreenState extends State<ImagesScreen> {
                       end: Alignment.bottomCenter,
                       colors: [
                         Colors.transparent,
-                        Colors.black.withValues(alpha: 0.6),
+                        AppColors.gradientStart.withValues(alpha: 0.6),
                       ],
                     ),
                   ),
                   child: Text(
                     photo['time'],
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontSize: 10,
                       fontWeight: FontWeight.w500,
                     ),
@@ -435,40 +426,24 @@ class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          decoration: BoxDecoration(
+            color: AppColors.glassHeader,
+            border: Border(
+              bottom: BorderSide(color: AppColors.glassBorder),
             ),
-            child: TextField(
-              controller: controller,
-              style: AppTypography.bodyMedium.copyWith(
-                color: const Color(0xFF1F2937),
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search photos, employees...',
-                hintStyle: AppTypography.bodyMedium.copyWith(
-                  color: const Color(0xFF6B7280),
-                ),
-                prefixIcon: Icon(
-                  Iconsax.search_normal,
-                  color: const Color(0xFF6B7280),
-                  size: 20,
-                ),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
+          ),
+          child: GlassInputField(
+            controller: controller,
+            hint: 'Search photos, employees...',
+            prefixIcon: Iconsax.search_normal,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
             ),
           ),
         ),
@@ -476,3 +451,4 @@ class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
     );
   }
 }
+

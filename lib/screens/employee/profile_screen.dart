@@ -5,6 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/navigation/app_header.dart';
 import '../auth/welcome_screen.dart';
 
 /// Profile Screen - Glassmorphism Design
@@ -19,7 +20,7 @@ class ProfileScreen extends StatelessWidget {
       builder: (ctx) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: AlertDialog(
-          backgroundColor: AppColors.glassSlateStrong,
+          backgroundColor: AppColors.glassStrong,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
@@ -55,7 +56,7 @@ class ProfileScreen extends StatelessWidget {
               child: Text(
                 'Logout',
                 style: AppTypography.bodyMedium.copyWith(
-                  color: Colors.red,
+                  color: AppColors.critical,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -73,26 +74,10 @@ class ProfileScreen extends StatelessWidget {
         bottom: false,
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _buildGlassButton(
-                    icon: Icons.arrow_back,
-                    onTap: () => Navigator.maybePop(context),
-                  ),
-                  Text(
-                    'Profile',
-                    style: AppTypography.h2.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  _buildGlassButton(icon: Iconsax.edit),
-                ],
-              ),
+            const AppHeader(
+              title: 'Profile',
+              type: AppHeaderType.secondary,
+              showAvatar: false,
             ),
 
             Expanded(
@@ -111,42 +96,11 @@ class ProfileScreen extends StatelessWidget {
                     // Logout Card
                     _buildLogoutCard(context),
                     const SizedBox(height: 32),
-
-                    // Version
-                    Text(
-                      'Version 1.0.0',
-                      style: TextStyle(
-                        color: AppColors.textTertiary,
-                        fontSize: 12,
-                      ),
-                    ),
                   ],
                 ),
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlassButton({required IconData icon, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.glassSlateBorder),
-            ),
-            child: Icon(icon, color: AppColors.textPrimary, size: 20),
-          ),
         ),
       ),
     );
@@ -162,7 +116,7 @@ class ProfileScreen extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: AppColors.glassPanelGradient,
             borderRadius: BorderRadius.circular(32),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
             boxShadow: AppShadows.glass,
           ),
           child: Column(
@@ -254,7 +208,7 @@ class ProfileScreen extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: AppColors.glassPanelGradient,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
             boxShadow: AppShadows.glass,
           ),
           child: Column(
@@ -298,7 +252,7 @@ class ProfileScreen extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: AppColors.glassPanelGradient,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
             boxShadow: AppShadows.glass,
           ),
           child: _buildMenuItem(
@@ -330,14 +284,16 @@ class ProfileScreen extends StatelessWidget {
               height: 36,
               decoration: BoxDecoration(
                 color: isDestructive
-                    ? Colors.red.withValues(alpha: 0.1)
-                    : AppColors.glassSlateSoft,
+                    ? AppColors.critical.withValues(alpha: 0.1)
+                    : AppColors.glassPrimary,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 icon,
                 size: 20,
-                color: isDestructive ? Colors.red : const Color(0xFF6B7280),
+                color: isDestructive
+                    ? AppColors.critical
+                    : AppColors.textSecondary,
               ),
             ),
             const SizedBox(width: 16),
@@ -345,7 +301,8 @@ class ProfileScreen extends StatelessWidget {
               child: Text(
                 label,
                 style: AppTypography.bodyMedium.copyWith(
-                  color: isDestructive ? Colors.red : AppColors.textPrimary,
+                  color:
+                      isDestructive ? AppColors.critical : AppColors.textPrimary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -362,7 +319,8 @@ class ProfileScreen extends StatelessWidget {
       height: 1,
       indent: 72,
       endIndent: 20,
-      color: AppColors.glassSlateBorder,
+      color: AppColors.glassBorder,
     );
   }
 }
+

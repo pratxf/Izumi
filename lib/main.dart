@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/theme/app_theme.dart';
+import 'widgets/glass/gradient_background.dart';
 import 'screens/auth/welcome_screen.dart';
 
 void main() {
@@ -36,6 +37,10 @@ class IzumiApp extends StatelessWidget {
       title: 'Izumi',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
+      builder: (context, child) {
+        if (child == null) return const SizedBox.shrink();
+        return GradientBackground(child: child);
+      },
       home: const WelcomeScreen(),
     );
   }

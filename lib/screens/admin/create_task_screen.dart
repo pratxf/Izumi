@@ -1,9 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/inputs/text_input_field.dart';
+import '../../widgets/navigation/app_header.dart';
 
 /// Create Task Screen - Standard Dark Glass Design
 /// Admin screen for creating and assigning tasks
@@ -20,7 +21,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   );
   final _descriptionController = TextEditingController();
 
-  String _assignType = 'team_lead'; // 'individual', 'team_lead', 'group'
+  String _assignType = 'individual'; // 'individual', 'group'
   String _priority = 'high'; // 'high', 'medium', 'low'
   bool _sendNotification = true;
 
@@ -45,14 +46,17 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   @override
   Widget build(BuildContext context) {
     return GradientBackground(
-      isDark: true,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(
           child: Column(
             children: [
               // Header
-              _buildHeader(),
+              const AppHeader(
+                title: 'Create Task',
+                type: AppHeaderType.secondary,
+                showAvatar: false,
+              ),
 
               // Content
               Expanded(
@@ -62,52 +66,18 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                     children: [
                       // Task Title
                       _buildInputLabel('Task Title'),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.glassSlateSoft,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: AppColors.glassSlateBorder),
-                        ),
-                        child: TextField(
-                          controller: _taskTitleController,
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: Colors.white,
-                          ),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 16,
-                            ),
-                          ),
-                        ),
+                      GlassInputField(
+                        controller: _taskTitleController,
                       ),
                       const SizedBox(height: 24),
 
                       // Description
                       _buildInputLabel('Description'),
-                      Container(
-                        height: 120,
-                        decoration: BoxDecoration(
-                          color: AppColors.glassSlateSoft,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: AppColors.glassSlateBorder),
-                        ),
-                        child: TextField(
-                          controller: _descriptionController,
-                          maxLines: null,
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: Colors.white,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Enter task details...',
-                            hintStyle: AppTypography.bodyMedium.copyWith(
-                              color: Colors.white.withOpacity(0.5),
-                            ),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.all(20),
-                          ),
-                        ),
+                      GlassInputField(
+                        controller: _descriptionController,
+                        hint: 'Enter task details...',
+                        maxLines: 4,
+                        contentPadding: const EdgeInsets.all(20),
                       ),
                       const SizedBox(height: 24),
 
@@ -122,25 +92,12 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                           ),
                           const SizedBox(height: 12),
                           _buildRadioCard(
-                            title: 'Team Lead',
-                            icon: Icons.supervisor_account_outlined,
-                            value: 'team_lead',
-                            isPrimary: true,
-                            showVerified: true,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildRadioCard(
                             title: 'Entire Group',
                             icon: Icons.groups_outlined,
                             value: 'group',
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
-
-                      // Select Team Lead Dropdown
-                      _buildInputLabel('Select Team Lead'),
-                      _buildTeamLeadSelector(),
                       const SizedBox(height: 24),
 
                       // Due Date & Priority Grid
@@ -190,7 +147,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.add_task, color: Colors.white, size: 24),
+                  const Icon(
+                    Icons.add_task,
+                    color: AppColors.textPrimary,
+                    size: 24,
+                  ),
                   const SizedBox(width: 12),
                   Text('Create Task', style: AppTypography.buttonLarge),
                 ],
@@ -198,36 +159,6 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.glassSlateSoft,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.glassSlateBorder),
-              ),
-              child: const Icon(
-                Icons.arrow_back_ios_new,
-                size: 20,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          Text('Create Task', style: AppTypography.h3),
-          const SizedBox(width: 40),
-        ],
       ),
     );
   }
@@ -265,10 +196,10 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         decoration: BoxDecoration(
           color: isSelected
               ? AppColors.primary.withOpacity(0.2)
-              : AppColors.glassSlateSoft,
+              : AppColors.glassPrimary,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.glassSlateBorder,
+            color: isSelected ? AppColors.primary : AppColors.glassBorder,
             width: 1,
           ),
         ),
@@ -284,7 +215,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 border: Border.all(
                   color: isSelected
                       ? AppColors.primary
-                      : Colors.white.withOpacity(0.5),
+                      : AppColors.glassBorder,
                   width: 2,
                 ),
               ),
@@ -294,7 +225,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                         width: 10,
                         height: 10,
                         decoration: const BoxDecoration(
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -304,14 +235,14 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             const SizedBox(width: 16),
             Icon(
               icon,
-              color: isSelected ? Colors.white : AppColors.textSecondary,
+              color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
             ),
             const SizedBox(width: 12),
             Text(
               title,
               style: AppTypography.bodyMedium.copyWith(
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                color: isSelected ? Colors.white : AppColors.textSecondary,
+                color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
               ),
             ),
             if (showVerified) ...[
@@ -324,56 +255,13 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     );
   }
 
-  Widget _buildTeamLeadSelector() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.glassSlateSoft,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassSlateBorder),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                'RK',
-                style: GoogleFonts.inter(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            'Rajesh Kumar',
-            style: AppTypography.bodyMedium.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const Spacer(),
-          Icon(Icons.expand_more, color: AppColors.textSecondary),
-        ],
-      ),
-    );
-  }
-
   Widget _buildDueDateCard() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: AppColors.glassSlateSoft,
+        color: AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassSlateBorder),
+        border: Border.all(color: AppColors.glassBorder),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -382,7 +270,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             '15 Feb 2026',
             style: AppTypography.bodyMedium.copyWith(
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: AppColors.textPrimary,
             ),
           ),
           const Icon(Icons.calendar_today, color: AppColors.primary, size: 20),
@@ -410,11 +298,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
       child: Container(
         height: 48,
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : AppColors.glassSlateSoft,
+          color: isSelected ? AppColors.primary : AppColors.glassPrimary,
           borderRadius: BorderRadius.circular(24),
           border: isSelected
               ? null
-              : Border.all(color: AppColors.glassSlateBorder),
+              : Border.all(color: AppColors.glassBorder),
           boxShadow: isSelected
               ? [
                   BoxShadow(
@@ -432,7 +320,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               Icon(
                 icon,
                 size: 18,
-                color: isSelected ? Colors.white : AppColors.textSecondary,
+                color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
               ),
               const SizedBox(width: 8),
             ],
@@ -440,7 +328,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               label,
               style: AppTypography.bodySmall.copyWith(
                 fontWeight: FontWeight.bold,
-                color: isSelected ? Colors.white : AppColors.textSecondary,
+                color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
               ),
             ),
           ],
@@ -453,9 +341,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.glassSlateSoft,
+        color: AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassSlateBorder),
+        border: Border.all(color: AppColors.glassBorder),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -479,7 +367,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 'Send Notification',
                 style: AppTypography.bodySmall.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                 ),
               ),
             ],
@@ -495,3 +383,4 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     );
   }
 }
+

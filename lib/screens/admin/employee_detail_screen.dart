@@ -5,6 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/navigation/app_header.dart';
 import '../employee/gallery_screen.dart';
 
 /// Employee Detail Screen
@@ -29,13 +30,16 @@ class EmployeeDetailScreen extends StatelessWidget {
           bottom: false,
           child: Column(
             children: [
-              // Header
-              _buildHeader(context),
+              const AppHeader(
+                title: 'Employee',
+                type: AppHeaderType.secondary,
+                showAvatar: false,
+              ),
 
               // Scrollable Content
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 120),
                   child: Column(
                     children: [
                       // Stats Row
@@ -52,14 +56,8 @@ class EmployeeDetailScreen extends StatelessWidget {
                         child: Text(
                           'Live Activity Feed',
                           style: AppTypography.h3.copyWith(
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                             fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 4,
-                              ),
-                            ],
                           ),
                         ),
                       ),
@@ -75,9 +73,7 @@ class EmployeeDetailScreen extends StatelessWidget {
           ),
         ),
       ),
-      // Floating Bottom Nav (Fixed position in HTML, recreated here)
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: _buildFloatingNav(),
+      // Unified navigation handled by shell
     );
   }
 
@@ -98,15 +94,15 @@ class EmployeeDetailScreen extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: AppColors.textPrimary.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      color: AppColors.textPrimary.withValues(alpha: 0.2),
                     ),
                   ),
                   child: const Icon(
                     Icons.arrow_back_ios_new,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     size: 18,
                   ),
                 ),
@@ -123,7 +119,7 @@ class EmployeeDetailScreen extends StatelessWidget {
                 Text(
                   name,
                   style: AppTypography.h2.copyWith(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.bold,
                     shadows: [
                       Shadow(
@@ -138,7 +134,7 @@ class EmployeeDetailScreen extends StatelessWidget {
                     Text(
                       'Field Executive',
                       style: AppTypography.caption.copyWith(
-                        color: Colors.white.withValues(alpha: 0.8),
+                        color: AppColors.textPrimary.withValues(alpha: 0.8),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -147,7 +143,7 @@ class EmployeeDetailScreen extends StatelessWidget {
                       width: 4,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.6),
+                        color: AppColors.textPrimary.withValues(alpha: 0.6),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -155,7 +151,7 @@ class EmployeeDetailScreen extends StatelessWidget {
                     Text(
                       isActive ? 'Online' : 'Offline',
                       style: AppTypography.caption.copyWith(
-                        color: isActive ? Colors.greenAccent : Colors.white60,
+                        color: isActive ? AppColors.success : AppColors.textSecondary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -171,7 +167,7 @@ class EmployeeDetailScreen extends StatelessWidget {
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: AppColors.textPrimary, width: 2),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.1),
@@ -191,10 +187,10 @@ class EmployeeDetailScreen extends StatelessWidget {
                   width: 14,
                   height: 14,
                   decoration: BoxDecoration(
-                    color: isActive ? Colors.green : Colors.grey,
+                    color: isActive ? AppColors.success : AppColors.textDisabled,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: const Color(0xFF9FB3B2),
+                    color: AppColors.textTertiary,
                       width: 2,
                     ),
                   ),
@@ -215,16 +211,10 @@ class EmployeeDetailScreen extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1), // Adjusted for glass
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            border: Border.all(color: AppColors.glassBorder),
+            boxShadow: AppShadows.glass,
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -254,7 +244,7 @@ class EmployeeDetailScreen extends StatelessWidget {
                   ],
                 ),
                 // Divider
-                Container(width: 1, color: Colors.white.withValues(alpha: 0.4)),
+                Container(width: 1, color: AppColors.glassBorder),
                 // Total Distance
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -324,15 +314,10 @@ class EmployeeDetailScreen extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1), // Base glass
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 8,
-                ),
-              ],
+              border: Border.all(color: AppColors.glassBorder),
+              boxShadow: AppShadows.glass,
             ),
             child: Row(
               children: [
@@ -415,7 +400,7 @@ class EmployeeDetailScreen extends StatelessWidget {
                       bottom: 0,
                       child: Container(
                         width: 2,
-                        color: Colors.white.withValues(alpha: 0.3),
+                        color: AppColors.glassBorder,
                       ),
                     ),
                 ],
@@ -432,9 +417,9 @@ class EmployeeDetailScreen extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: AppColors.glassSlateSoft,
+                        color: AppColors.glassPrimary,
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: AppColors.glassSlateBorder),
+                        border: Border.all(color: AppColors.glassBorder),
                         boxShadow: AppShadows.glass,
                       ),
                       child: Row(
@@ -512,9 +497,9 @@ class EmployeeDetailScreen extends StatelessWidget {
           child: Container(
             height: 72,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1), // Adjusted for nav
+              color: AppColors.textPrimary.withValues(alpha: 0.1), // Adjusted for nav
               borderRadius: BorderRadius.circular(40),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+              border: Border.all(color: AppColors.textPrimary.withValues(alpha: 0.3)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.1),
@@ -565,3 +550,6 @@ class EmployeeDetailScreen extends StatelessWidget {
     );
   }
 }
+
+
+

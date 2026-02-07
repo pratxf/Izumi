@@ -75,10 +75,16 @@ class PrimaryButton extends StatelessWidget {
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        AppColors.textPrimary,
+                      ),
                     ),
                   )
-                : Icon(icon, size: AppSpacing.iconSize, color: Colors.white),
+                : Icon(
+                    icon,
+                    size: AppSpacing.iconSize,
+                    color: AppColors.textPrimary,
+                  ),
           ),
         ),
       ),
@@ -109,7 +115,9 @@ class PrimaryButton extends StatelessWidget {
                       height: 24,
                       child: CircularProgressIndicator(
                         strokeWidth: 2.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.textPrimary,
+                        ),
                       ),
                     )
                   : Row(
@@ -119,7 +127,7 @@ class PrimaryButton extends StatelessWidget {
                           Icon(
                             icon,
                             size: AppSpacing.iconSize,
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                           ),
                           const SizedBox(width: AppSpacing.sm),
                         ],
@@ -133,3 +141,4 @@ class PrimaryButton extends StatelessWidget {
     );
   }
 }
+

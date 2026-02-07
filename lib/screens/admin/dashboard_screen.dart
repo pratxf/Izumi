@@ -4,6 +4,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/navigation/app_header.dart';
 import 'employee_detail_screen.dart';
 
 /// Dashboard Screen - Enterprise Admin
@@ -82,91 +83,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return GradientBackground(
-      isDark: true, // Strictly enforce dark mode
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'IZUMI PLATFORM',
-                        style: AppTypography.overline.copyWith(
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Dashboard',
-                        style: AppTypography.h1.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  GestureDetector(
-                    onTap: widget.onAvatarTap,
-                    child: Stack(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 8,
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: Image.network(
-                              'https://i.pravatar.cc/150?img=3',
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                color: AppColors.primary,
-                                child: const Icon(
-                                  Icons.person,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            width: 14,
-                            height: 14,
-                            decoration: BoxDecoration(
-                              color: AppColors.success,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppColors.glassSlateStrong,
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            AppHeader(
+              title: 'Dashboard',
+              type: AppHeaderType.primary,
+              showNotification: true,
+              onAvatarTap: widget.onAvatarTap,
             ),
 
             // Search Bar (on gradient)
@@ -178,9 +103,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: AppColors.glassSlateSoft,
+                      color: AppColors.glassPrimary,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppColors.glassSlateBorder),
+                      border: Border.all(color: AppColors.glassBorder),
                     ),
                     child: TextField(
                       controller: _searchController,
@@ -337,9 +262,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           height: 144,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppColors.glassSlateSoft,
+            color: AppColors.glassPrimary,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassSlateBorder),
+            border: Border.all(color: AppColors.glassBorder),
             boxShadow: [
               BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
             ],
@@ -427,7 +352,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? AppColors.success
         : isBreak
         ? AppColors.warning
-        : AppColors.textMuted;
+        : AppColors.textDisabled;
 
     Color statusBgColor = isActive
         ? AppColors.badgeActiveBackground
@@ -460,9 +385,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.glassSlateSoft,
+              color: AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppColors.glassSlateBorder),
+              border: Border.all(color: AppColors.glassBorder),
             ),
             child: Column(
               children: [
@@ -478,7 +403,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           height: 48,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
+                            border: Border.all(color: AppColors.glassBorder, width: 2),
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withOpacity(0.05),
@@ -521,7 +446,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               color: statusColor,
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: AppColors.glassSlateStrong,
+                                color: AppColors.glassStrong,
                                 width: 2,
                               ),
                             ),
@@ -595,7 +520,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Container(
                     height: 1,
-                    color: AppColors.glassSlateBorder,
+                    color: AppColors.glassBorder,
                   ),
                 ),
 
@@ -655,3 +580,5 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
+

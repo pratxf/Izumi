@@ -223,3 +223,4 @@ class CompactStatCard extends StatelessWidget {
     );
   }
 }
+

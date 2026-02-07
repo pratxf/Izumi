@@ -1,13 +1,13 @@
-import 'dart:ui'; // For ImageFilter
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_shadows.dart'; // Added for glass shadow
+import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
 
-/// Text Input Field Widget
-/// Standard text input with focus states and optional prefix/suffix icons
-class TextInputField extends StatefulWidget {
+/// Universal Glass Input Field
+/// Single frosted glass surface with unified states
+class GlassInputField extends StatefulWidget {
   final String? label;
   final String? hint;
   final String? errorText;
@@ -15,13 +15,16 @@ class TextInputField extends StatefulWidget {
   final TextInputType keyboardType;
   final bool obscureText;
   final IconData? prefixIcon;
+  final Widget? prefixWidget;
   final Widget? suffixIcon;
   final ValueChanged<String>? onChanged;
   final int maxLines;
   final bool enabled;
   final FocusNode? focusNode;
+  final Widget? prefix;
+  final EdgeInsetsGeometry? contentPadding;
 
-  const TextInputField({
+  const GlassInputField({
     super.key,
     this.label,
     this.hint,
@@ -30,18 +33,21 @@ class TextInputField extends StatefulWidget {
     this.keyboardType = TextInputType.text,
     this.obscureText = false,
     this.prefixIcon,
+    this.prefixWidget,
     this.suffixIcon,
     this.onChanged,
     this.maxLines = 1,
     this.enabled = true,
     this.focusNode,
+    this.prefix,
+    this.contentPadding,
   });
 
   @override
-  State<TextInputField> createState() => _TextInputFieldState();
+  State<GlassInputField> createState() => _GlassInputFieldState();
 }
 
-class _TextInputFieldState extends State<TextInputField> {
+class _GlassInputFieldState extends State<GlassInputField> {
   late FocusNode _focusNode;
   bool _isFocused = false;
 
@@ -67,6 +73,9 @@ class _TextInputFieldState extends State<TextInputField> {
   @override
   Widget build(BuildContext context) {
     final hasError = widget.errorText != null;
+    final isDisabled = !widget.enabled;
+    final hintColor =
+        isDisabled ? AppColors.textDisabled : AppColors.textSecondary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -77,26 +86,29 @@ class _TextInputFieldState extends State<TextInputField> {
           const SizedBox(height: AppSpacing.sm),
         ],
         ClipRRect(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
               decoration: BoxDecoration(
-                color: AppColors.glassSlateSoft,
-                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                color: isDisabled
+                    ? AppColors.glassPrimary.withValues(alpha: 0.5)
+                    : AppColors.glassPrimary,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
                 border: Border.all(
                   color: hasError
                       ? AppColors.error
                       : _isFocused
-                      ? AppColors.primary.withValues(alpha: 0.5)
-                      : AppColors.glassSlateBorder,
+                      ? AppColors.primary.withValues(alpha: 0.7)
+                      : AppColors.glassBorder,
                   width: 1,
                 ),
                 boxShadow: _isFocused
                     ? [
                         BoxShadow(
                           color: AppColors.primary.withValues(alpha: 0.25),
-                          blurRadius: 12,
+                          blurRadius: 18,
                           spreadRadius: 0,
                         ),
                       ]
@@ -110,25 +122,38 @@ class _TextInputFieldState extends State<TextInputField> {
                 onChanged: widget.onChanged,
                 maxLines: widget.maxLines,
                 enabled: widget.enabled,
-                style: AppTypography.input,
+                textAlignVertical: TextAlignVertical.center,
+                style: AppTypography.input.copyWith(
+                  color: isDisabled
+                      ? AppColors.textDisabled
+                      : AppColors.textPrimary,
+                ),
                 decoration: InputDecoration(
                   hintText: widget.hint,
                   hintStyle: AppTypography.inputHint.copyWith(
-                    color: AppColors.textMuted.withValues(alpha: 0.5),
+                    color: hintColor,
                   ),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: AppSpacing.lg,
-                    vertical: widget.maxLines > 1 ? AppSpacing.md : 0,
-                  ),
-                  prefixIcon: widget.prefixIcon != null
-                      ? Icon(
-                          widget.prefixIcon,
-                          size: AppSpacing.iconSize,
-                          color: _isFocused
-                              ? AppColors.primary
-                              : AppColors.textSecondary,
-                        )
-                      : null,
+                  isDense: true,
+                  contentPadding: widget.contentPadding ??
+                      EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                        vertical: widget.maxLines > 1
+                            ? AppSpacing.md
+                            : AppSpacing.md,
+                      ),
+                  prefixIcon: widget.prefixWidget ??
+                      (widget.prefixIcon != null
+                          ? Icon(
+                              widget.prefixIcon,
+                              size: AppSpacing.iconSize,
+                              color: _isFocused
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
+                            )
+                          : null),
+                  prefixIconConstraints:
+                      const BoxConstraints(minWidth: 44, minHeight: 44),
+                  prefix: widget.prefix,
                   suffixIcon: widget.suffixIcon,
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
@@ -150,3 +175,23 @@ class _TextInputFieldState extends State<TextInputField> {
     );
   }
 }
+
+/// Backwards-compatible wrapper
+class TextInputField extends GlassInputField {
+  const TextInputField({
+    super.key,
+    super.label,
+    super.hint,
+    super.errorText,
+    super.controller,
+    super.keyboardType,
+    super.obscureText,
+    super.prefixIcon,
+    super.suffixIcon,
+    super.onChanged,
+    super.maxLines,
+    super.enabled,
+    super.focusNode,
+  });
+}
+
