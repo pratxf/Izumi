@@ -17,7 +17,7 @@ class CreateGroupScreen extends StatefulWidget {
 
 class _CreateGroupScreenState extends State<CreateGroupScreen> {
   final _groupNameController = TextEditingController();
-  final _taskController = TextEditingController();
+  final _teamLeadSearchController = TextEditingController();
   String? _selectedTeamLead;
   final List<String> _selectedMembers = [];
 
@@ -29,10 +29,16 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     {'id': '5', 'name': 'Priya Sharma'},
   ];
 
+  List<Map<String, String>> get _sortedEmployees {
+    final list = List<Map<String, String>>.from(_employees);
+    list.sort((a, b) => a['name']!.compareTo(b['name']!));
+    return list;
+  }
+
   @override
   void dispose() {
     _groupNameController.dispose();
-    _taskController.dispose();
+    _teamLeadSearchController.dispose();
     super.dispose();
   }
 
@@ -80,7 +86,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Team Lead Dropdown
+                      // Team Lead Picker
                       _buildGlassCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -93,7 +99,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            _buildDropdown(),
+                            _buildTeamLeadPicker(),
                           ],
                         ),
                       ),
@@ -148,73 +154,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 24),
-
-                      // Initial Tasks Section
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Text(
-                          'Initial Tasks (Optional)',
-                          style: AppTypography.headline.copyWith(
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildGlassCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Assign First Task',
-                              style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.textPrimary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            GlassInputField(
-                              controller: _taskController,
-                              hint: 'e.g., Equipment Inspection',
-                              suffixIcon: Icon(
-                                Iconsax.task_square,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.glassPrimary,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: AppColors.glassBorder,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Iconsax.info_circle,
-                                    size: 18,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      'This task will be automatically assigned to all group members upon creation.',
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      const SizedBox(height: 8),
                     ],
                   ),
                 ),
@@ -320,7 +260,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           ),
           dropdownColor: AppColors.glassNav,
           borderRadius: BorderRadius.circular(16),
-          items: _employees.map((emp) {
+          items: _sortedEmployees.map((emp) {
             return DropdownMenuItem(
               value: emp['id'],
               child: Text(
@@ -339,16 +279,54 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     );
   }
 
+  Widget _buildTeamLeadPicker() {
+    final selectedName = _selectedTeamLead == null
+        ? null
+        : _sortedEmployees
+            .firstWhere(
+              (emp) => emp['id'] == _selectedTeamLead,
+              orElse: () => _sortedEmployees.first,
+            )['name'];
+    return GestureDetector(
+      onTap: _openTeamLeadPicker,
+      child: Container(
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                selectedName ?? 'Select an employee',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: selectedName == null
+                      ? AppColors.textTertiary
+                      : AppColors.textPrimary,
+                ),
+              ),
+            ),
+            const Icon(Icons.search, color: AppColors.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showMemberSelector() {
     showModalBottomSheet(
       context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Container(
           height: MediaQuery.of(context).size.height * 0.6,
-          decoration: const BoxDecoration(
-            color: AppColors.glassStrong,
+          decoration: BoxDecoration(
+            color: AppColors.glassStrong.withValues(alpha: 0.94),
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -383,13 +361,13 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               ),
               Expanded(
                 child: ListView.builder(
-                  itemCount: _employees.length,
+                  itemCount: _sortedEmployees.length,
                   itemBuilder: (context, index) {
-                    final emp = _employees[index];
+                    final emp = _sortedEmployees[index];
                     final isSelected = _selectedMembers.contains(emp['id']);
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: AppColors.surfaceMuted,
+                        backgroundColor: AppColors.glassPrimary,
                         child: Text(
                           emp['name']!
                               .split(' ')
@@ -416,11 +394,11 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                         ),
                         onChanged: (value) {
                           setModalState(() {
-                            if (value == true) {
-                              _selectedMembers.add(emp['id']!);
-                            } else {
-                              _selectedMembers.remove(emp['id']);
-                            }
+                          if (value == true) {
+                            _selectedMembers.add(emp['id']!);
+                          } else {
+                            _selectedMembers.remove(emp['id']);
+                          }
                           });
                           setState(() {}); // Update parent
                         },
@@ -441,6 +419,132 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _openTeamLeadPicker() {
+    showModalBottomSheet(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildSearchSheet(
+        title: 'Assign Team Lead',
+        controller: _teamLeadSearchController,
+        items: _sortedEmployees.map((emp) => emp['name']!).toList(),
+        onSelected: (value) {
+          final match = _sortedEmployees.firstWhere(
+            (emp) => emp['name'] == value,
+            orElse: () => _sortedEmployees.first,
+          );
+          setState(() => _selectedTeamLead = match['id']);
+        },
+      ),
+    );
+  }
+
+  Widget _buildSearchSheet({
+    required String title,
+    required TextEditingController controller,
+    required List<String> items,
+    required ValueChanged<String> onSelected,
+  }) {
+    return StatefulBuilder(
+      builder: (context, setModalState) => Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        decoration: BoxDecoration(
+          color: AppColors.glassNav,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(title, style: AppTypography.h3),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(
+                      'Done',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: controller,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+                decoration: InputDecoration(
+                  prefixIcon: Icon(Icons.search, color: AppColors.textSecondary),
+                  hintText: 'Search...',
+                  hintStyle: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                  filled: true,
+                  fillColor: AppColors.glassPrimary,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: AppColors.glassBorder),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: AppColors.glassBorder),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: AppColors.primary),
+                  ),
+                ),
+                onChanged: (_) => setModalState(() {}),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: items
+                    .where((item) => item
+                        .toLowerCase()
+                        .contains(controller.text.toLowerCase()))
+                    .map(
+                      (item) => ListTile(
+                        title: Text(
+                          item,
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          onSelected(item);
+                        },
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -199,7 +199,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
                 color: AppColors.textSecondary,
                 size: 20,
               ),
-              dropdownColor: AppColors.glassStrong,
+              dropdownColor: AppColors.glassNav,
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.textPrimary,
               ),

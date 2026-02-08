@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/glass/glass_chip.dart';
 import '../../widgets/inputs/text_input_field.dart';
 import '../../widgets/navigation/app_header.dart';
 
@@ -28,6 +29,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   );
   final _descriptionController = TextEditingController();
   final _assignedEmployeeController = TextEditingController();
+  final GlobalKey _employeeSelectorKey = GlobalKey();
+  final GlobalKey _teamLeadSelectorKey = GlobalKey();
+  final GlobalKey _groupSelectorKey = GlobalKey();
 
   String _assignType = 'individual'; // 'individual', 'team_lead', 'group'
   String _priority = 'high'; // 'high', 'medium', 'low'
@@ -48,6 +52,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
 
   String _selectedEmployee = 'Rajesh Kumar';
   String _selectedGroup = 'North Zone';
+  DateTime _dueDate = DateTime(2026, 2, 15);
 
   @override
   void initState() {
@@ -88,8 +93,8 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           child: Column(
             children: [
               // Header
-              const AppHeader(
-                title: 'Create Task',
+              AppHeader(
+                title: widget.isTeamLead ? 'Assign New Task' : 'Assign Task',
                 type: AppHeaderType.secondary,
                 showAvatar: false,
               ),
@@ -100,6 +105,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
                   child: Column(
                     children: [
+                      if (widget.isTeamLead) ...[
+                        _buildTeamLeadForm(),
+                      ] else ...[
                       // Task Title
                       _buildInputLabel('Task Title'),
                       GlassInputField(
@@ -200,6 +208,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
 
                       // Notification Toggle
                       _buildNotificationToggle(),
+                      ],
                     ],
                   ),
                 ),
@@ -242,13 +251,184 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                     size: 24,
                   ),
                   const SizedBox(width: 12),
-                  Text('Create Task', style: AppTypography.buttonLarge),
+                  Text(
+                    widget.isTeamLead ? 'Assign Task' : 'Assign Task',
+                    style: AppTypography.buttonLarge,
+                  ),
                 ],
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _pickDueDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dueDate,
+      firstDate: DateTime(2024, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: AppColors.primary,
+              onPrimary: AppColors.textPrimary,
+              surface: AppColors.glassNav,
+              onSurface: AppColors.textPrimary,
+            ),
+            dialogBackgroundColor: AppColors.glassStrong,
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() => _dueDate = picked);
+    }
+  }
+
+  Widget _buildTeamLeadForm() {
+    return Column(
+      children: [
+        _buildTeamLeadCard(
+          title: 'Task Details',
+          icon: Icons.edit_document,
+          child: Column(
+            children: [
+              _buildTeamLeadField(
+                label: 'Task Name',
+                child: GlassInputField(
+                  controller: _taskTitleController,
+                  hint: 'e.g. Monthly Inventory Audit',
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildTeamLeadField(
+                label: 'Description',
+                child: GlassInputField(
+                  controller: _descriptionController,
+                  hint: 'Enter task details, requirements, and instructions...',
+                  maxLines: 4,
+                  contentPadding: const EdgeInsets.all(20),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildTeamLeadCard(
+          title: 'Assignee',
+          icon: Icons.person_add,
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: GlassChip(
+                      label: 'Individual',
+                      selected: _assignType == 'individual',
+                      onTap: () => setState(() => _assignType = 'individual'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: GlassChip(
+                      label: 'Entire Group',
+                      selected: _assignType == 'group',
+                      onTap: () => setState(() => _assignType = 'group'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (_assignType == 'group')
+                _buildGroupSelector()
+              else
+                _buildEmployeeSelector(),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildTeamLeadCard(
+          title: 'Scheduling',
+          icon: Icons.calendar_month,
+          child: Column(
+            children: [
+              _buildTeamLeadField(
+                label: 'Due Date',
+                child: _buildDueDateCard(),
+              ),
+              const SizedBox(height: 16),
+              _buildTeamLeadField(
+                label: 'Priority Level',
+                child: _buildPrioritySelector(),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildNotificationToggle(),
+      ],
+    );
+  }
+
+  Widget _buildTeamLeadCard({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.glassPrimary,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: AppColors.textSecondary, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                title.toUpperCase(),
+                style: AppTypography.caption.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTeamLeadField({
+    required String label,
+    required Widget child,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        child,
+      ],
     );
   }
 
@@ -345,191 +525,211 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   }
 
   Widget _buildDueDateCard() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppColors.glassPrimary,
+    final formattedDate =
+        '${_dueDate.day.toString().padLeft(2, '0')} '
+        '${_monthLabel(_dueDate.month)} '
+        '${_dueDate.year}';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _pickDueDate,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassBorder),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            '15 Feb 2026',
-            style: AppTypography.bodyMedium.copyWith(
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+            color: AppColors.glassPrimary,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppColors.glassBorder),
           ),
-          const Icon(Icons.calendar_today, color: AppColors.primary, size: 20),
-        ],
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                formattedDate,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Icon(
+                Icons.calendar_today,
+                color: AppColors.primary,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
+  String _monthLabel(int month) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[month - 1];
+  }
+
   Widget _buildTeamLeadSelector() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.glassPrimary,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassBorder),
+    return GestureDetector(
+      onTap: () => _showFullWidthMenu(
+        key: _teamLeadSelectorKey,
+        items: _employees,
+        onSelected: (value) => setState(() => _selectedEmployee = value),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                'RK',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
+      child: Container(
+        key: _teamLeadSelectorKey,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  'RK',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            'Rajesh Kumar',
-            style: AppTypography.bodyMedium.copyWith(
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _selectedEmployee,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
             ),
-          ),
-          const Spacer(),
-          Icon(Icons.expand_more, color: AppColors.textSecondary),
-        ],
+            Icon(Icons.expand_more, color: AppColors.textSecondary),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildEmployeeSelector() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.glassPrimary,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassBorder),
+    return GestureDetector(
+      onTap: () => _showFullWidthMenu(
+        key: _employeeSelectorKey,
+        items: _employees,
+        onSelected: (value) => setState(() => _selectedEmployee = value),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                _selectedEmployee
-                    .split(' ')
-                    .map((e) => e[0])
-                    .take(2)
-                    .join(),
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
+      child: Container(
+        key: _employeeSelectorKey,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  _selectedEmployee
+                      .split(' ')
+                      .map((e) => e[0])
+                      .take(2)
+                      .join(),
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _selectedEmployee,
-              style: AppTypography.bodyMedium.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _selectedEmployee,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
               ),
             ),
-          ),
-          PopupMenuButton<String>(
-            color: AppColors.glassStrong,
-            icon: Icon(Icons.expand_more, color: AppColors.textSecondary),
-            onSelected: (value) => setState(() => _selectedEmployee = value),
-            itemBuilder: (context) {
-              return _employees
-                  .map(
-                    (employee) => PopupMenuItem(
-                      value: employee,
-                      child: Text(
-                        employee,
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList();
-            },
-          ),
-        ],
+            Icon(Icons.expand_more, color: AppColors.textSecondary),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildGroupSelector() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.glassPrimary,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassBorder),
+    return GestureDetector(
+      onTap: () => _showFullWidthMenu(
+        key: _groupSelectorKey,
+        items: _groups,
+        onSelected: (value) => setState(() => _selectedGroup = value),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.groups_outlined,
-              size: 18,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _selectedGroup,
-              style: AppTypography.bodyMedium.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+      child: Container(
+        key: _groupSelectorKey,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.groups_outlined,
+                size: 18,
+                color: AppColors.primary,
               ),
             ),
-          ),
-          PopupMenuButton<String>(
-            color: AppColors.glassStrong,
-            icon: Icon(Icons.expand_more, color: AppColors.textSecondary),
-            onSelected: (value) => setState(() => _selectedGroup = value),
-            itemBuilder: (context) {
-              return _groups
-                  .map(
-                    (group) => PopupMenuItem(
-                      value: group,
-                      child: Text(
-                        group,
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList();
-            },
-          ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _selectedGroup,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            Icon(Icons.expand_more, color: AppColors.textSecondary),
+          ],
+        ),
       ),
     );
   }
@@ -636,6 +836,55 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _showFullWidthMenu({
+    required GlobalKey key,
+    required List<String> items,
+    required ValueChanged<String> onSelected,
+  }) async {
+    final RenderBox renderBox =
+        key.currentContext?.findRenderObject() as RenderBox;
+    final Offset offset = renderBox.localToGlobal(Offset.zero);
+    final Size size = renderBox.size;
+
+    final sortedItems = List<String>.from(items)
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final selected = await showMenu<String>(
+      context: context,
+      color: AppColors.glassNav,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppColors.glassBorder),
+      ),
+      constraints: BoxConstraints.tightFor(width: size.width),
+      position: RelativeRect.fromLTRB(
+        offset.dx,
+        offset.dy + size.height,
+        offset.dx + size.width,
+        0,
+      ),
+      items: sortedItems
+          .map(
+            (item) => PopupMenuItem<String>(
+              value: item,
+              child: SizedBox(
+                width: size.width,
+                child: Text(
+                  item,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+          )
+          .toList(),
+    );
+
+    if (selected != null) {
+      onSelected(selected);
+    }
   }
 }
 

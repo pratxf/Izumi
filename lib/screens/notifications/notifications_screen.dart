@@ -7,12 +7,21 @@ import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/navigation/app_header.dart';
 
 /// Notifications Screen - Unified Glass Design
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final today = [
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  late List<_NotificationItem> _today;
+  late List<_NotificationItem> _earlier;
+
+  @override
+  void initState() {
+    super.initState();
+    _today = [
       _NotificationItem(
         title: 'Urgent: Equipment Check',
         time: '2m ago',
@@ -36,7 +45,7 @@ class NotificationsScreen extends StatelessWidget {
       ),
     ];
 
-    final earlier = [
+    _earlier = [
       _NotificationItem(
         title: 'Location Verified',
         time: 'Yesterday',
@@ -53,6 +62,11 @@ class NotificationsScreen extends StatelessWidget {
         isMuted: true,
       ),
     ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasNotifications = _today.isNotEmpty || _earlier.isNotEmpty;
 
     return GradientBackground(
       child: Scaffold(
@@ -61,25 +75,33 @@ class NotificationsScreen extends StatelessWidget {
           bottom: false,
           child: Column(
             children: [
-              const AppHeader(
+              AppHeader(
                 title: 'Notifications',
                 type: AppHeaderType.secondary,
                 showAvatar: false,
-                actions: [],
+                actions: [
+                  _buildClearAllButton(context),
+                ],
               ),
               Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-                  children: [
-                    _buildSectionHeader('Today'),
-                    const SizedBox(height: 12),
-                    ...today.map(_buildNotificationCard),
-                    const SizedBox(height: 24),
-                    _buildSectionHeader('Earlier'),
-                    const SizedBox(height: 12),
-                    ...earlier.map(_buildNotificationCard),
-                  ],
-                ),
+                child: hasNotifications
+                    ? ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+                        children: [
+                          if (_today.isNotEmpty) ...[
+                            _buildSectionHeader('Today'),
+                            const SizedBox(height: 12),
+                            ..._today.map(_buildNotificationCard),
+                          ],
+                          if (_earlier.isNotEmpty) ...[
+                            const SizedBox(height: 24),
+                            _buildSectionHeader('Earlier'),
+                            const SizedBox(height: 12),
+                            ..._earlier.map(_buildNotificationCard),
+                          ],
+                        ],
+                      )
+                    : _buildEmptyState(),
               ),
             ],
           ),
@@ -97,6 +119,77 @@ class NotificationsScreen extends StatelessWidget {
           color: AppColors.textSecondary,
           fontWeight: FontWeight.bold,
           letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClearAllButton(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _today = [];
+          _earlier = [];
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('All notifications cleared'),
+            backgroundColor: AppColors.glassStrong,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: Text(
+          'Clear all',
+          style: AppTypography.caption.copyWith(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: GlassCard(
+          borderRadius: 24,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Iconsax.notification_bing,
+                size: 36,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'You’re all caught up',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'No new notifications right now.',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );

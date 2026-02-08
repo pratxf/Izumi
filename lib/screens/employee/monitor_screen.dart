@@ -257,7 +257,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            'Create Task',
+                            'Assign Task',
                             style: AppTypography.bodySmall.copyWith(
                               color: AppColors.textPrimary,
                               fontWeight: FontWeight.w600,
@@ -555,7 +555,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   ],
                 ),
               ),
-              _buildCardMenu(),
+              _buildDeleteIconButton(),
             ],
           ),
           const SizedBox(height: 12),
@@ -867,7 +867,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
               ),
               _buildPriorityChip(task['priority'] as String),
               const SizedBox(width: 8),
-              _buildCardMenu(),
+              _buildDeleteIconButton(),
             ],
           ),
           const SizedBox(height: 12),
@@ -1039,6 +1039,76 @@ class _MonitorScreenState extends State<MonitorScreen> {
           Icons.more_horiz,
           color: AppColors.textPrimary,
           size: 18,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeleteIconButton() {
+    return GestureDetector(
+      onTap: _confirmDeleteTask,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: AppColors.glassPrimary,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: const Icon(
+          Icons.delete_outline,
+          color: AppColors.critical,
+          size: 18,
+        ),
+      ),
+    );
+  }
+
+  void _confirmDeleteTask() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: AlertDialog(
+          backgroundColor: AppColors.glassStrong,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            'Delete Task',
+            style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
+          ),
+          content: Text(
+            'Are you sure you want to delete this task? This action cannot be undone.',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Cancel',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _showDeleteSnack();
+              },
+              child: Text(
+                'Delete',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.critical,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

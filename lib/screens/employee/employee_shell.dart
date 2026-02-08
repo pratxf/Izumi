@@ -39,7 +39,7 @@ class _EmployeeShellState extends State<EmployeeShell> {
         ? [
             HomeScreen(isTeamLead: true, onAvatarTap: _openProfile),
             const GalleryScreen(),
-            const MonitorScreen(showFilter: true, isAdmin: false),
+            TodoScreen(isTeamLead: true),
             const HistoryScreen(),
           ]
         : [

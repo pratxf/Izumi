@@ -60,14 +60,6 @@ class _ManagementScreenState extends State<ManagementScreen> {
                     onTap: () => setState(() => _activeTab = 1),
                   ),
                   const Spacer(),
-                  if (_activeTab == 1)
-                    Text(
-                      'Users',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textTertiary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                 ],
               ),
             ),

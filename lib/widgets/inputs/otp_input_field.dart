@@ -34,6 +34,9 @@ class _OtpInputFieldState extends State<OtpInputField> {
     super.initState();
     _controller = TextEditingController();
     _focusNode = FocusNode();
+    _focusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -57,7 +60,11 @@ class _OtpInputFieldState extends State<OtpInputField> {
   }
 
   void _requestFocus() {
-    FocusScope.of(context).requestFocus(_focusNode);
+    FocusScope.of(context).unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focusNode.requestFocus();
+    });
   }
 
   @override
@@ -119,13 +126,14 @@ class _OtpInputFieldState extends State<OtpInputField> {
         ),
         // Hidden input for OTP entry
         SizedBox(
-          height: 0,
-          width: 0,
+          height: 1,
+          width: 1,
           child: TextField(
             controller: _controller,
             focusNode: _focusNode,
             keyboardType: TextInputType.number,
             textInputAction: TextInputAction.done,
+            autofocus: false,
             maxLength: widget.length,
             onChanged: _onChanged,
             onTap: _requestFocus,

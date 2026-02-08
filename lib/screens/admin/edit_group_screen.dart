@@ -27,6 +27,7 @@ class EditGroupScreen extends StatefulWidget {
 
 class _EditGroupScreenState extends State<EditGroupScreen> {
   late TextEditingController _nameController;
+  late TextEditingController _teamLeadSearchController;
   late String _selectedTeamLead;
   late List<Map<String, dynamic>> _members;
 
@@ -36,10 +37,17 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     {'id': 'mike', 'name': 'Mike Ross'},
   ];
 
+  List<Map<String, String>> get _sortedTeamLeads {
+    final list = List<Map<String, String>>.from(_teamLeads);
+    list.sort((a, b) => a['name']!.compareTo(b['name']!));
+    return list;
+  }
+
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.groupName);
+    _teamLeadSearchController = TextEditingController();
     _selectedTeamLead = widget.teamLeadId;
     _members = List.from(widget.members);
   }
@@ -47,7 +55,16 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _teamLeadSearchController.dispose();
     super.dispose();
+  }
+
+  String get _selectedLeadName {
+    return _teamLeads
+        .firstWhere(
+          (lead) => lead['id'] == _selectedTeamLead,
+          orElse: () => _teamLeads.first,
+        )['name']!;
   }
 
   void _removeMember(int index) {
@@ -287,40 +304,36 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: AppColors.glassPrimary,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _selectedTeamLead,
-                  isExpanded: true,
-                  icon: Icon(
-                    Iconsax.arrow_down_1,
-                    color: AppColors.textTertiary,
-                    size: 20,
-                  ),
-                  dropdownColor: AppColors.glassStrong,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  items: _teamLeads.map((lead) {
-                    return DropdownMenuItem(
-                      value: lead['id'],
-                      child: Text(lead['name']!),
-                    );
-                  }).toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _selectedTeamLead = v);
-                  },
+        GestureDetector(
+          onTap: _openTeamLeadPicker,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                height: 56,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.glassPrimary,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _selectedLeadName,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Iconsax.search_normal,
+                      color: AppColors.textTertiary,
+                      size: 20,
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -474,9 +487,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
 
   Widget _buildAddMemberButton() {
     return GestureDetector(
-      onTap: () {
-        // Add member logic
-      },
+      onTap: _openAddMemberSheet,
       child: Container(
         height: 64,
         decoration: BoxDecoration(
@@ -511,6 +522,178 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  void _openTeamLeadPicker() {
+    showModalBottomSheet(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        final leads = _sortedTeamLeads;
+        return _buildSearchSheet(
+          title: 'Assign Team Lead',
+          controller: _teamLeadSearchController,
+          items: leads.map((lead) => lead['name']!).toList(),
+          onSelected: (value) {
+            final match = leads.firstWhere(
+              (lead) => lead['name'] == value,
+              orElse: () => leads.first,
+            );
+            setState(() => _selectedTeamLead = match['id']!);
+          },
+        );
+      },
+    );
+  }
+
+  void _openAddMemberSheet() {
+    showModalBottomSheet(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        final available = [
+          {'name': 'Amit Patel', 'status': 'active'},
+          {'name': 'Priya Sharma', 'status': 'active'},
+          {'name': 'David Kim', 'status': 'away'},
+          {'name': 'Neha Verma', 'status': 'offline'},
+        ];
+        available.sort((a, b) => a['name']!.compareTo(b['name']!));
+        return _buildSearchSheet(
+          title: 'Add Member',
+          controller: TextEditingController(),
+          items: available.map((member) => member['name']!).toList(),
+          onSelected: (value) {
+            final match = available.firstWhere(
+              (member) => member['name'] == value,
+              orElse: () => available.first,
+            );
+            setState(() {
+              _members.add({
+                'name': match['name']!,
+                'initials': match['name']!
+                    .split(' ')
+                    .map((part) => part[0])
+                    .take(2)
+                    .join()
+                    .toUpperCase(),
+                'status': match['status'] ?? 'active',
+              });
+            });
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSearchSheet({
+    required String title,
+    required TextEditingController controller,
+    required List<String> items,
+    required ValueChanged<String> onSelected,
+  }) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) {
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              color: AppColors.glassNav,
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 12, bottom: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.glassBorder,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      title,
+                      style: AppTypography.h3.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: TextField(
+                      controller: controller,
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Iconsax.search_normal,
+                            color: AppColors.textSecondary),
+                        hintText: 'Search...',
+                        hintStyle: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
+                        filled: true,
+                        fillColor: AppColors.glassPrimary,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide:
+                              BorderSide(color: AppColors.glassBorder),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide:
+                              BorderSide(color: AppColors.glassBorder),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide(color: AppColors.primary),
+                        ),
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: items
+                          .where((item) => item
+                              .toLowerCase()
+                              .contains(controller.text.toLowerCase()))
+                          .map(
+                            (item) => ListTile(
+                              title: Text(
+                                item,
+                                style: AppTypography.bodyMedium.copyWith(
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              onTap: () {
+                                Navigator.pop(context);
+                                onSelected(item);
+                              },
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

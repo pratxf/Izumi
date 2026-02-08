@@ -86,7 +86,7 @@ class _TasksScreenState extends State<TasksScreen> {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          'Create Task',
+                          'Assign Task',
                           style: AppTypography.bodySmall.copyWith(
                             color: AppColors.textPrimary,
                             fontWeight: FontWeight.w600,

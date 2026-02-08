@@ -17,17 +17,14 @@ class AddUserScreen extends StatefulWidget {
 
 class _AddUserScreenState extends State<AddUserScreen> {
   final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
 
   String? _role;
   String _countryCode = '+91';
-  bool _sendInvite = true;
 
   @override
   void dispose() {
     _nameController.dispose();
-    _emailController.dispose();
     _phoneController.dispose();
     super.dispose();
   }
@@ -61,13 +58,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                             label: 'Full Name',
                             hint: 'e.g. Sarah Johnson',
                             controller: _nameController,
-                          ),
-                          const SizedBox(height: AppSpacing.md),
-                          GlassInputField(
-                            label: 'Email Address',
-                            hint: 'name@company.com',
-                            keyboardType: TextInputType.emailAddress,
-                            controller: _emailController,
                           ),
                         ],
                       ),
@@ -108,61 +98,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.xl),
-                    GlassPanel(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.15),
-                              borderRadius:
-                                  BorderRadius.circular(AppSpacing.radiusMd),
-                              border:
-                                  Border.all(color: AppColors.glassBorder),
-                            ),
-                            child: const Icon(
-                              Icons.mail_outline,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Send invitation email',
-                                  style: AppTypography.bodyMedium.copyWith(
-                                    color: AppColors.textPrimary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'User will receive login instructions',
-                                  style: AppTypography.caption.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Switch(
-                            value: _sendInvite,
-                            activeColor: AppColors.primary,
-                            inactiveThumbColor: AppColors.textSecondary,
-                            inactiveTrackColor:
-                                AppColors.glassPrimary.withValues(alpha: 0.7),
-                            onChanged: (value) {
-                              setState(() => _sendInvite = value);
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -199,7 +134,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
         child: DropdownButton<String>(
           value: _role,
           isExpanded: true,
-          dropdownColor: AppColors.glassStrong,
+          dropdownColor: AppColors.glassNav,
           icon: const Icon(
             Icons.expand_more,
             color: AppColors.textSecondary,
@@ -213,7 +148,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
           items: const [
             DropdownMenuItem(value: 'employee', child: Text('Employee')),
             DropdownMenuItem(value: 'team_lead', child: Text('Team Lead')),
-            DropdownMenuItem(value: 'admin', child: Text('Admin')),
           ],
           onChanged: (value) => setState(() => _role = value),
           style: AppTypography.bodyMedium.copyWith(
@@ -233,7 +167,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
           child: DropdownButton<String>(
             value: _countryCode,
             isExpanded: true,
-            dropdownColor: AppColors.glassStrong,
+          dropdownColor: AppColors.glassNav,
             icon: const Icon(
               Icons.expand_more,
               color: AppColors.textSecondary,
@@ -255,4 +189,3 @@ class _AddUserScreenState extends State<AddUserScreen> {
     );
   }
 }
-

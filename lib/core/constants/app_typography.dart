@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
@@ -7,192 +8,188 @@ import 'app_colors.dart';
 class AppTypography {
   AppTypography._();
 
-  // Font Family
-  static String get fontFamily => GoogleFonts.inter().fontFamily!;
+  // Platform font family + fallbacks
+  static String get fontFamily =>
+      Platform.isIOS ? '.SF Pro Text' : GoogleFonts.inter().fontFamily!;
+
+  static List<String> get fontFallbacks => Platform.isIOS
+      ? const ['Helvetica Neue', 'Arial']
+      : const ['Arial'];
 
   // Screen Titles (SemiBold)
-  static TextStyle get displayLarge => GoogleFonts.inter(
-    fontSize: 34,
-    fontWeight: FontWeight.w600, // SemiBold
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.4,
+  static TextStyle get displayLarge => _base(
+    size: 40,
+    weight: FontWeight.w700,
+    letterSpacing: 0.8,
     height: 1.2,
   );
 
   // Section Title (SemiBold)
-  static TextStyle get h1 => GoogleFonts.inter(
-    fontSize: 28,
-    fontWeight: FontWeight.w600, // SemiBold
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.4,
+  static TextStyle get h1 => _base(
+    size: 32,
+    weight: FontWeight.w700,
+    letterSpacing: 0.6,
     height: 1.2,
   );
 
   // Section Header (SemiBold)
-  static TextStyle get h2 => GoogleFonts.inter(
-    fontSize: 22,
-    fontWeight: FontWeight.w600, // SemiBold
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.4,
-    height: 1.3,
+  static TextStyle get h2 => _base(
+    size: 22,
+    weight: FontWeight.w600,
+    letterSpacing: 0.4,
+    height: 1.4,
   );
 
   // Section Header (Medium)
-  static TextStyle get h3 => GoogleFonts.inter(
-    fontSize: 20,
-    fontWeight: FontWeight.w500, // Medium
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.4,
-    height: 1.3,
+  static TextStyle get h3 => _base(
+    size: 20,
+    weight: FontWeight.w600,
+    letterSpacing: 0.3,
+    height: 1.4,
   );
 
   // Headline (Medium)
-  static TextStyle get headline => GoogleFonts.inter(
-    fontSize: 17,
-    fontWeight: FontWeight.w500, // Medium
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.4,
-    height: 1.3,
+  static TextStyle get headline => _base(
+    size: 18,
+    weight: FontWeight.w500,
+    letterSpacing: 0.3,
+    height: 1.4,
   );
 
   // Body (Regular)
-  static TextStyle get bodyLarge => GoogleFonts.inter(
-    fontSize: 17,
-    fontWeight: FontWeight.w400, // Regular
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.4,
-    height: 1.5,
+  static TextStyle get bodyLarge => _base(
+    size: 18,
+    weight: FontWeight.w400,
+    letterSpacing: 0.5,
+    height: 1.6,
   );
 
   // Body (Regular)
-  static TextStyle get body => GoogleFonts.inter(
-    fontSize: 16,
-    fontWeight: FontWeight.w400, // Regular
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.3,
-    height: 1.5,
+  static TextStyle get body => _base(
+    size: 16,
+    weight: FontWeight.w400,
+    letterSpacing: 0.5,
+    height: 1.6,
   );
 
   // Body (Regular)
-  static TextStyle get bodyMedium => GoogleFonts.inter(
-    fontSize: 15,
-    fontWeight: FontWeight.w400, // Regular
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.2,
-    height: 1.5,
+  static TextStyle get bodyMedium => _base(
+    size: 16,
+    weight: FontWeight.w400,
+    letterSpacing: 0.5,
+    height: 1.6,
   );
 
   // Labels / Meta (Regular)
-  static TextStyle get caption => GoogleFonts.inter(
-    fontSize: 13,
-    fontWeight: FontWeight.w400, // Regular
-    color: AppColors.textSecondary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.1,
+  static TextStyle get caption => _base(
+    size: 13,
+    weight: FontWeight.w300,
+    letterSpacing: 0.3,
     height: 1.4,
+    color: AppColors.textSecondary,
   );
 
   // Meta Small (Regular)
-  static TextStyle get small => GoogleFonts.inter(
-    fontSize: 11,
-    fontWeight: FontWeight.w400, // Regular
-    color: AppColors.textTertiary,
-    decoration: TextDecoration.none,
-    letterSpacing: 0,
+  static TextStyle get small => _base(
+    size: 12,
+    weight: FontWeight.w300,
+    letterSpacing: 0.3,
     height: 1.4,
+    color: AppColors.textTertiary,
   );
 
   // Button Text
-  static TextStyle get buttonLarge => GoogleFonts.inter(
-    fontSize: 17,
-    fontWeight: FontWeight.w500, // Medium
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.4,
+  static TextStyle get buttonLarge => _base(
+    size: 16,
+    weight: FontWeight.w500,
+    letterSpacing: 0.4,
     height: 1.2,
   );
 
-  static TextStyle get buttonMedium => GoogleFonts.inter(
-    fontSize: 15,
-    fontWeight: FontWeight.w500, // Medium
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.2,
+  static TextStyle get buttonMedium => _base(
+    size: 16,
+    weight: FontWeight.w500,
+    letterSpacing: 0.4,
     height: 1.2,
   );
 
   // Input Text
-  static TextStyle get input => GoogleFonts.inter(
-    fontSize: 17,
-    fontWeight: FontWeight.w400, // Regular
-    color: AppColors.textPrimary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.4,
-    height: 1.3,
+  static TextStyle get input => _base(
+    size: 16,
+    weight: FontWeight.w400,
+    letterSpacing: 0.5,
+    height: 1.4,
   );
 
-  static TextStyle get inputHint => GoogleFonts.inter(
-    fontSize: 17,
-    fontWeight: FontWeight.w400, // Regular
+  static TextStyle get inputHint => _base(
+    size: 16,
+    weight: FontWeight.w400,
+    letterSpacing: 0.5,
+    height: 1.4,
     color: AppColors.textTertiary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.4,
-    height: 1.3,
   );
 
   // Label
-  static TextStyle get label => GoogleFonts.inter(
-    fontSize: 13,
-    fontWeight: FontWeight.w400, // Regular
-    color: AppColors.textSecondary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.1,
+  static TextStyle get label => _base(
+    size: 13,
+    weight: FontWeight.w400,
+    letterSpacing: 0.3,
     height: 1.4,
+    color: AppColors.textSecondary,
   );
   // Tab Bar (10pt)
-  static TextStyle get tabActive => GoogleFonts.inter(
-    fontSize: 10,
-    fontWeight: FontWeight.w600,
-    color: AppColors.primary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.1,
+  static TextStyle get tabActive => _base(
+    size: 12,
+    weight: FontWeight.w600,
+    letterSpacing: 0.3,
     height: 1.2,
+    color: AppColors.primary,
   );
 
-  static TextStyle get tabInactive => GoogleFonts.inter(
-    fontSize: 10,
-    fontWeight: FontWeight.w500,
-    color: AppColors.textTertiary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.1,
+  static TextStyle get tabInactive => _base(
+    size: 12,
+    weight: FontWeight.w500,
+    letterSpacing: 0.3,
     height: 1.2,
+    color: AppColors.textTertiary,
   );
 
   // Body Small (13pt) - Smaller body text
-  static TextStyle get bodySmall => GoogleFonts.inter(
-    fontSize: 13,
-    fontWeight: FontWeight.w400,
+  static TextStyle get bodySmall => _base(
+    size: 14,
+    weight: FontWeight.w400,
+    letterSpacing: 0.4,
+    height: 1.6,
     color: AppColors.textSecondary,
-    decoration: TextDecoration.none,
-    letterSpacing: -0.1,
-    height: 1.4,
   );
 
   // Overline (10pt) - Smallest text, all caps style
-  static TextStyle get overline => GoogleFonts.inter(
-    fontSize: 10,
-    fontWeight: FontWeight.w500,
-    color: AppColors.textTertiary,
-    decoration: TextDecoration.none,
-    letterSpacing: 0.5,
+  static TextStyle get overline => _base(
+    size: 12,
+    weight: FontWeight.w500,
+    letterSpacing: 0.6,
     height: 1.3,
+    color: AppColors.textTertiary,
   );
+
+  static TextStyle _base({
+    required double size,
+    required FontWeight weight,
+    double letterSpacing = 0.0,
+    double height = 1.4,
+    Color color = AppColors.textPrimary,
+  }) {
+    final baseStyle = Platform.isIOS
+        ? TextStyle(fontFamily: fontFamily)
+        : GoogleFonts.inter();
+    return baseStyle.copyWith(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+      decoration: TextDecoration.none,
+      letterSpacing: letterSpacing,
+      height: height,
+      fontFamilyFallback: fontFallbacks,
+    );
+  }
 }
