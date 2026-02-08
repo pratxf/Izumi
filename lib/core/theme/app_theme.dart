@@ -155,6 +155,16 @@ class AppTheme {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
       ),
+
+      // SnackBar Theme (ensure visibility on dark glass)
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: AppColors.glassNav,
+        contentTextStyle: AppTypography.bodySmall.copyWith(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w600,
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 }

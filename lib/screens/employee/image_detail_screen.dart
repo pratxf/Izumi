@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 
@@ -122,7 +123,7 @@ class ImageDetailScreen extends StatelessWidget {
                     color: AppColors.glassPrimary,
                   ),
                   child: const Icon(
-                    Icons.arrow_back,
+                    Iconsax.arrow_left_2,
                     color: AppColors.textPrimary,
                     size: 22,
                   ),
@@ -484,7 +485,7 @@ class ImageDetailScreen extends StatelessWidget {
                           children: [
                             if (hasFollowUp)
                               Icon(
-                                Icons.check_circle,
+                                Iconsax.check,
                                 size: 14,
                                 color: AppColors.success,
                               ),

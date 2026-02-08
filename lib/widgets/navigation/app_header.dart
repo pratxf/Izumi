@@ -67,7 +67,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                 const SizedBox.shrink()
               else if (type == AppHeaderType.secondary || showBackButton)
                 _GlassIconButton(
-                  icon: Icons.arrow_back_ios_new_rounded,
+                  icon: Iconsax.arrow_left_2,
                   onTap: onBackTap ?? () => Navigator.of(context).pop(),
                 )
               else
@@ -159,7 +159,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
         shape: BoxShape.circle,
       ),
       child: const Center(
-        child: Icon(Icons.person, size: 22, color: AppColors.textPrimary),
+        child: Icon(Iconsax.user, size: 22, color: AppColors.textPrimary),
       ),
     );
   }

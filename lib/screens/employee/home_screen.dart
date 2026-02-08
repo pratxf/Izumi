@@ -529,7 +529,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   Icon(
-                    Icons.chevron_right,
+                    Iconsax.arrow_right_2,
                     color: AppColors.textSecondary,
                   ),
                 ],
@@ -613,7 +613,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Icon(
-            Icons.chevron_right,
+            Iconsax.arrow_right_2,
             color: AppColors.textTertiary,
             size: 16,
           ),

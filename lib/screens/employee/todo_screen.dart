@@ -509,7 +509,7 @@ class _TodoScreenState extends State<TodoScreen> {
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
-                      Icons.check,
+                      Iconsax.check,
                       size: 14,
                       color: AppColors.textPrimary,
                     ),
@@ -855,7 +855,7 @@ class _TodoScreenState extends State<TodoScreen> {
                 border: Border.all(color: AppColors.glassBorder),
               ),
               child: const Icon(
-                Icons.chevron_right,
+                Iconsax.arrow_right_2,
                 size: 18,
                 color: AppColors.textPrimary,
               ),
@@ -1128,7 +1128,7 @@ Widget _buildCompletedTaskCard(Map<String, dynamic> task) {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: AppColors.textTertiary),
+            Icon(Iconsax.arrow_right_2, color: AppColors.textTertiary),
           ],
         ),
       ),
@@ -1144,5 +1144,6 @@ Widget _buildCompletedTaskCard(Map<String, dynamic> task) {
     );
   }
 }
+
 
 

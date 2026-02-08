@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
@@ -106,7 +107,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
               child: PrimaryButton.rectangular(
                 label: 'Add User',
-                icon: Icons.arrow_forward,
+                icon: Iconsax.arrow_right_2,
                 onPressed: () {},
               ),
             ),
@@ -136,7 +137,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
           isExpanded: true,
           dropdownColor: AppColors.glassNav,
           icon: const Icon(
-            Icons.expand_more,
+            Iconsax.arrow_down_1,
             color: AppColors.textSecondary,
           ),
           hint: Text(
@@ -169,7 +170,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
             isExpanded: true,
           dropdownColor: AppColors.glassNav,
             icon: const Icon(
-              Icons.expand_more,
+              Iconsax.arrow_down_1,
               color: AppColors.textSecondary,
               size: 18,
             ),

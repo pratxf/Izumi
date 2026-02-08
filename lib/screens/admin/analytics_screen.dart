@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
@@ -311,7 +312,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               ),
             ),
             Icon(
-              Icons.keyboard_arrow_down,
+              Iconsax.arrow_down_1,
               size: 18,
               color: AppColors.textPrimary,
             ),
@@ -341,7 +342,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               (period) => ListTile(
                 title: Text(period),
                 trailing: _selectedPeriod == period
-                    ? Icon(Icons.check, color: AppColors.primary)
+                    ? Icon(Iconsax.check, color: AppColors.primary)
                     : null,
                 onTap: () {
                   setState(() => _selectedPeriod = period);

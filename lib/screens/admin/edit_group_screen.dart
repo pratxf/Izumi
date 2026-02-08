@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
@@ -183,7 +184,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                     color: AppColors.glassPrimary,
                   ),
                   child: const Icon(
-                    Icons.arrow_back,
+                    Iconsax.arrow_left_2,
                     color: AppColors.textPrimary,
                     size: 22,
                   ),
@@ -472,7 +473,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                     color: AppColors.glassPrimary,
                   ),
                   child: Icon(
-                    Icons.close,
+                    Iconsax.close_circle,
                     size: 18,
                     color: AppColors.textTertiary,
                   ),
@@ -509,7 +510,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                 shape: BoxShape.circle,
                 color: AppColors.primary.withValues(alpha: 0.1),
               ),
-              child: Icon(Icons.add, size: 18, color: AppColors.primary),
+              child: Icon(Iconsax.add, size: 18, color: AppColors.primary),
             ),
             const SizedBox(width: 10),
             Text(

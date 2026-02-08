@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+ï»¿import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
@@ -182,7 +183,7 @@ class TeamLeadEmployeeDetailScreen extends StatelessWidget {
                       border: Border.all(color: accent.withValues(alpha: 0.3)),
                     ),
                     child: const Icon(
-                      Icons.assignment_turned_in,
+                      Iconsax.task_square,
                       color: AppColors.textPrimary,
                       size: 18,
                     ),
@@ -265,14 +266,14 @@ class TeamLeadEmployeeDetailScreen extends StatelessWidget {
         const SizedBox(height: 10),
         _buildStatusItem(
           title: 'Inventory Check',
-          subtitle: 'Assigned • Due 2:00 PM',
+          subtitle: 'Assigned â€¢ Due 2:00 PM',
           status: 'Pending',
           completed: false,
         ),
         const SizedBox(height: 10),
         _buildStatusItem(
           title: 'Shift Report',
-          subtitle: 'Assigned • Due 5:00 PM',
+          subtitle: 'Assigned â€¢ Due 5:00 PM',
           status: 'Pending',
           completed: false,
         ),
@@ -285,28 +286,28 @@ class TeamLeadEmployeeDetailScreen extends StatelessWidget {
       children: [
         _buildStatusItem(
           title: 'Fresh Mart',
-          subtitle: 'Ticket #209 • Closed',
+          subtitle: 'Ticket #209 â€¢ Closed',
           status: 'Completed',
           completed: true,
         ),
         const SizedBox(height: 10),
         _buildStatusItem(
           title: 'Urban Clothiers',
-          subtitle: 'Ticket #211 • Closed',
+          subtitle: 'Ticket #211 â€¢ Closed',
           status: 'Completed',
           completed: true,
         ),
         const SizedBox(height: 10),
         _buildStatusItem(
           title: 'Daily Dairy',
-          subtitle: 'Ticket #215 • Awaiting Reply',
+          subtitle: 'Ticket #215 â€¢ Awaiting Reply',
           status: 'Pending',
           completed: false,
         ),
         const SizedBox(height: 10),
         _buildStatusItem(
           title: 'Tech Hub Zone',
-          subtitle: 'Ticket #220 • Scheduled',
+          subtitle: 'Ticket #220 â€¢ Scheduled',
           status: 'Pending',
           completed: false,
         ),
@@ -342,7 +343,7 @@ class TeamLeadEmployeeDetailScreen extends StatelessWidget {
                   border: Border.all(color: accent.withValues(alpha: 0.3)),
                 ),
                 child: Icon(
-                  completed ? Icons.check : Icons.radio_button_unchecked,
+                  completed ? Iconsax.check : Iconsax.radio,
                   size: 16,
                   color: accent,
                 ),
@@ -389,3 +390,5 @@ class TeamLeadEmployeeDetailScreen extends StatelessWidget {
     );
   }
 }
+
+

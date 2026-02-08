@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../widgets/inputs/otp_input_field.dart';
@@ -145,7 +146,7 @@ class _OtpScreenState extends State<OtpScreen> {
                             color: AppColors.glassPrimary,
                             ),
                             child: Icon(
-                              Icons.arrow_back_ios_new,
+                              Iconsax.arrow_left_2,
                               size: 18,
                               color: AppColors.textPrimary,
                             ),

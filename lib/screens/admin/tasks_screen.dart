@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
@@ -335,7 +336,8 @@ class _TasksScreenState extends State<TasksScreen> {
               ),
             ),
             child: completed
-                ? const Icon(Icons.check, color: AppColors.textPrimary, size: 16)
+                ? const Icon(Iconsax.check,
+                    color: AppColors.textPrimary, size: 16)
                 : null,
           ),
           const SizedBox(width: 16),

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
@@ -148,7 +149,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                               ),
                             ),
                             Icon(
-                              Icons.chevron_right,
+                              Iconsax.arrow_right_2,
                               color: AppColors.textSecondary,
                             ),
                           ],
@@ -254,7 +255,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               color: AppColors.textTertiary,
             ),
           ),
-          icon: const Icon(Icons.unfold_more, color: AppColors.textSecondary),
+          icon: const Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
           style: AppTypography.bodyMedium.copyWith(
             color: AppColors.textPrimary,
           ),
@@ -309,7 +310,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 ),
               ),
             ),
-            const Icon(Icons.search, color: AppColors.textSecondary),
+            const Icon(Iconsax.search_normal, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -496,7 +497,8 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                   color: AppColors.textPrimary,
                 ),
                 decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.search, color: AppColors.textSecondary),
+                  prefixIcon:
+                      Icon(Iconsax.search_normal, color: AppColors.textSecondary),
                   hintText: 'Search...',
                   hintStyle: AppTypography.bodyMedium.copyWith(
                     color: AppColors.textTertiary,

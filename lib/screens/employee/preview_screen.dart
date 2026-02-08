@@ -49,6 +49,51 @@ class _PreviewScreenState extends State<PreviewScreen> {
       initialDate: DateTime.now().add(const Duration(days: 7)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: AppColors.primary,
+              onPrimary: AppColors.textPrimary,
+              surface: AppColors.glassNav,
+              onSurface: AppColors.textPrimary,
+            ),
+            dialogBackgroundColor: AppColors.glassNav,
+            visualDensity: VisualDensity.compact,
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                textStyle: AppTypography.bodySmall.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            datePickerTheme: DatePickerThemeData(
+              backgroundColor: AppColors.glassNav,
+              headerBackgroundColor: AppColors.glassStrong,
+              headerForegroundColor: AppColors.textPrimary,
+              dayForegroundColor:
+                  WidgetStateProperty.all(AppColors.textPrimary),
+              weekdayStyle: AppTypography.caption.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+              dayStyle: AppTypography.bodySmall.copyWith(
+                color: AppColors.textPrimary,
+              ),
+              todayForegroundColor:
+                  WidgetStateProperty.all(AppColors.textPrimary),
+              todayBackgroundColor:
+                  WidgetStateProperty.all(AppColors.primary.withOpacity(0.2)),
+              actionsPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (date != null) {
       setState(() => _dueDate = date);
@@ -350,7 +395,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     ),
                     const Spacer(),
                     Icon(
-                      Icons.chevron_right,
+                      Iconsax.arrow_right_2,
                       color: AppColors.textTertiary,
                       size: 18,
                     ),

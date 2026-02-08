@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
@@ -131,14 +132,14 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                         children: [
                           _buildRadioCard(
                             title: 'Individual Employee',
-                            icon: Icons.person_outline,
+                            icon: Iconsax.user,
                             value: 'individual',
                           ),
                           if (!widget.isTeamLead) ...[
                             const SizedBox(height: 12),
                             _buildRadioCard(
                               title: 'Team Lead',
-                              icon: Icons.supervisor_account_outlined,
+                              icon: Iconsax.people,
                               value: 'team_lead',
                               isPrimary: true,
                               showVerified: true,
@@ -148,7 +149,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                             const SizedBox(height: 12),
                           _buildRadioCard(
                             title: 'Entire Group',
-                            icon: Icons.groups_outlined,
+                            icon: Iconsax.people,
                             value: 'group',
                           ),
                         ],
@@ -167,7 +168,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                             : GlassInputField(
                                 controller: _assignedEmployeeController,
                                 enabled: false,
-                                prefixIcon: Icons.person_outline,
+                                prefixIcon: Iconsax.user,
                               ),
                         const SizedBox(height: 24),
                       ],
@@ -246,7 +247,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(
-                    Icons.add_task,
+                    Iconsax.task_square,
                     color: AppColors.textPrimary,
                     size: 24,
                   ),
@@ -279,7 +280,39 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               surface: AppColors.glassNav,
               onSurface: AppColors.textPrimary,
             ),
-            dialogBackgroundColor: AppColors.glassStrong,
+            dialogBackgroundColor: AppColors.glassNav,
+            visualDensity: VisualDensity.compact,
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                textStyle: AppTypography.bodySmall.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            datePickerTheme: DatePickerThemeData(
+              backgroundColor: AppColors.glassNav,
+              headerBackgroundColor: AppColors.glassStrong,
+              headerForegroundColor: AppColors.textPrimary,
+              dayForegroundColor:
+                  WidgetStateProperty.all(AppColors.textPrimary),
+              weekdayStyle: AppTypography.caption.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+              dayStyle: AppTypography.bodySmall.copyWith(
+                color: AppColors.textPrimary,
+              ),
+              todayForegroundColor:
+                  WidgetStateProperty.all(AppColors.textPrimary),
+              todayBackgroundColor:
+                  WidgetStateProperty.all(AppColors.primary.withOpacity(0.2)),
+              actionsPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              actionBarHeight: 48,
+            ),
           ),
           child: child!,
         );
@@ -296,7 +329,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
       children: [
         _buildTeamLeadCard(
           title: 'Task Details',
-          icon: Icons.edit_document,
+          icon: Iconsax.document,
           child: Column(
             children: [
               _buildTeamLeadField(
@@ -322,7 +355,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         const SizedBox(height: 16),
         _buildTeamLeadCard(
           title: 'Assignee',
-          icon: Icons.person_add,
+          icon: Iconsax.user_add,
           child: Column(
             children: [
               Row(
@@ -355,7 +388,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         const SizedBox(height: 16),
         _buildTeamLeadCard(
           title: 'Scheduling',
-          icon: Icons.calendar_month,
+          icon: Iconsax.calendar_1,
           child: Column(
             children: [
               _buildTeamLeadField(
@@ -516,7 +549,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             ),
             if (isSelected) ...[
               const Spacer(),
-              const Icon(Icons.check_circle, color: AppColors.primary, size: 20),
+              const Icon(Iconsax.check, color: AppColors.primary, size: 20),
             ],
           ],
         ),
@@ -552,7 +585,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 ),
               ),
               const Icon(
-                Icons.calendar_today,
+                Iconsax.calendar,
                 color: AppColors.primary,
                 size: 20,
               ),
@@ -625,7 +658,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 ),
               ),
             ),
-            Icon(Icons.expand_more, color: AppColors.textSecondary),
+            Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -680,7 +713,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 ),
               ),
             ),
-            Icon(Icons.expand_more, color: AppColors.textSecondary),
+            Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -712,7 +745,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.groups_outlined,
+                Iconsax.people,
                 size: 18,
                 color: AppColors.primary,
               ),
@@ -727,7 +760,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 ),
               ),
             ),
-            Icon(Icons.expand_more, color: AppColors.textSecondary),
+            Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -737,7 +770,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   Widget _buildPrioritySelector() {
     return Row(
       children: [
-        Expanded(child: _buildPriorityPill('High', 'high', Icons.flag)),
+        Expanded(child: _buildPriorityPill('High', 'high', Iconsax.flag)),
         const SizedBox(width: 8),
         Expanded(child: _buildPriorityPill('Medium', 'medium', null)),
         const SizedBox(width: 8),
@@ -812,7 +845,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
-                  Icons.notifications_active,
+                  Iconsax.notification,
                   color: AppColors.primary,
                   size: 20,
                 ),

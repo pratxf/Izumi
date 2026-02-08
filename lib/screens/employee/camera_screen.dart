@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:camera/camera.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -112,7 +113,9 @@ class _CameraScreenState extends State<CameraScreen> {
               actions: [
                 GlassIconButton(
                   icon:
-                      _flashMode == FlashMode.off ? Icons.flash_off : Icons.flash_on,
+                      _flashMode == FlashMode.off
+                          ? Iconsax.flash_slash
+                          : Iconsax.flash,
                   onTap: _toggleFlash,
                 ),
               ],
@@ -208,7 +211,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
                     // Switch camera
                     _buildSquareGlassButton(
-                      icon: Icons.cameraswitch_outlined,
+                      icon: Iconsax.camera,
                       onTap: _switchCamera,
                     ),
                   ],
@@ -359,7 +362,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         border: Border.all(color: AppColors.glassBorder),
                       ),
                       child: const Icon(
-                        Icons.map_outlined,
+                        Iconsax.map,
                         color: AppColors.textSecondary,
                         size: 16,
                       ),

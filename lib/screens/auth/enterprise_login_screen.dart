@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/inputs/text_input_field.dart'; // Import TextInputField
@@ -102,7 +103,7 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
                             color: AppColors.glassPrimary,
                             ),
                             child: Icon(
-                              Icons.arrow_back_ios_new,
+                              Iconsax.arrow_left_2,
                               size: 18,
                               color: AppColors.textPrimary,
                             ),

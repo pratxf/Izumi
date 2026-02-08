@@ -1,5 +1,6 @@
 ﻿import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
@@ -251,7 +252,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            Icons.add,
+                            Iconsax.add,
                             size: 18,
                             color: AppColors.primary,
                           ),
@@ -628,7 +629,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                 child: Row(
                   children: [
                     Icon(
-                      isCompleted ? Icons.check_circle : Icons.schedule,
+                      isCompleted ? Iconsax.check : Iconsax.timer,
                       size: 14,
                       color:
                           isCompleted ? AppColors.success : AppColors.textSecondary,
@@ -744,7 +745,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                       Row(
                         children: [
                           const Icon(
-                            Icons.groups_2,
+                            Iconsax.people,
                             size: 16,
                             color: AppColors.textSecondary,
                           ),
@@ -774,7 +775,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.check_circle,
+                        const Icon(Iconsax.check,
                             color: AppColors.success, size: 18),
                         const SizedBox(width: 6),
                         Text(
@@ -788,7 +789,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                     ),
                     Row(
                       children: [
-                        const Icon(Icons.hourglass_top,
+                        const Icon(Iconsax.timer,
                             color: AppColors.primary, size: 16),
                         const SizedBox(width: 4),
                         Text(
@@ -853,7 +854,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Icon(Icons.person_outline,
+                        const Icon(Iconsax.user,
                             size: 16, color: AppColors.textSecondary),
                         const SizedBox(width: 6),
                         Text(
@@ -873,7 +874,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              const Icon(Icons.event,
+              const Icon(Iconsax.calendar,
                   size: 16, color: AppColors.textSecondary),
               const SizedBox(width: 6),
               Text(
@@ -945,7 +946,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
-                          Icons.hourglass_top,
+                          Iconsax.timer,
                           color: AppColors.primary,
                           size: 12,
                         ),
@@ -1036,7 +1037,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
           border: Border.all(color: AppColors.glassBorder),
         ),
         child: const Icon(
-          Icons.more_horiz,
+          Iconsax.more,
           color: AppColors.textPrimary,
           size: 18,
         ),
@@ -1056,7 +1057,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
           border: Border.all(color: AppColors.glassBorder),
         ),
         child: const Icon(
-          Icons.delete_outline,
+          Iconsax.trash,
           color: AppColors.critical,
           size: 18,
         ),

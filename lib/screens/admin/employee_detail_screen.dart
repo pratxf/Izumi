@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
@@ -103,7 +104,7 @@ class EmployeeDetailScreen extends StatelessWidget {
                     ),
                   ),
                   child: const Icon(
-                    Icons.arrow_back_ios_new,
+                    Iconsax.arrow_left_2,
                     color: AppColors.textPrimary,
                     size: 18,
                   ),

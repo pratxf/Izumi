@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
@@ -313,7 +314,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(Icons.chevron_right, size: 20, color: AppColors.textTertiary),
+            Icon(Iconsax.arrow_right_2, size: 20, color: AppColors.textTertiary),
           ],
         ),
       ),

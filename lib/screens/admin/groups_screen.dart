@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
@@ -159,7 +160,7 @@ class GroupsContent extends StatelessWidget {
                 shape: BoxShape.circle,
                 color: AppColors.primary.withOpacity(0.2),
               ),
-              child: const Icon(Icons.add, color: AppColors.primary, size: 20),
+              child: const Icon(Iconsax.add, color: AppColors.primary, size: 20),
             ),
             const SizedBox(width: 12),
             Text(
@@ -255,7 +256,7 @@ class GroupsContent extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
-                Icons.chevron_right,
+                Iconsax.arrow_right_2,
                 color: AppColors.textTertiary,
                 size: 20,
               ),

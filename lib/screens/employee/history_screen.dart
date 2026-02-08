@@ -259,7 +259,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 const SizedBox(width: 6),
                 Icon(
-                  Icons.keyboard_arrow_down,
+                  Iconsax.arrow_down_1,
                   size: 20,
                   color: AppColors.textSecondary,
                 ),
@@ -274,11 +274,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   void _showMonthPicker() {
     showModalBottomSheet(
       context: context,
+      barrierColor: AppColors.gradientStart.withValues(alpha: 0.7),
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         padding: const EdgeInsets.all(24),
         decoration: const BoxDecoration(
-          color: AppColors.glassStrong,
+          color: AppColors.glassNav,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
@@ -307,7 +308,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                 ),
                 trailing: _selectedMonth == month
-                    ? Icon(Icons.check, color: AppColors.primary)
+                    ? Icon(Iconsax.check, color: AppColors.primary)
                     : null,
                 onTap: () {
                   setState(() => _selectedMonth = month);
@@ -593,7 +594,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             duration: const Duration(milliseconds: 200),
                             turns: isExpanded ? 0.5 : 0,
                             child: Icon(
-                              Icons.keyboard_arrow_down,
+                              Iconsax.arrow_down_1,
                               color: AppColors.textSecondary,
                               size: 24,
                             ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
@@ -128,7 +129,7 @@ class UserManagementContent extends StatelessWidget {
                   child: Row(
                     children: [
                       const Icon(
-                        Icons.add,
+                        Iconsax.add,
                         color: AppColors.textPrimary,
                         size: 18,
                       ),

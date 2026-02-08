@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
@@ -173,7 +174,7 @@ class EmployeeCard extends StatelessWidget {
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Icon(
-                  Icons.chevron_right,
+                  Iconsax.arrow_right_2,
                   color: AppColors.textTertiary,
                   size: 24,
                 ),
