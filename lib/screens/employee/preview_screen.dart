@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
-import '../../widgets/buttons/primary_button.dart';
 import '../../widgets/inputs/text_input_field.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/glass/glass_chip.dart';
+import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/navigation/app_header.dart';
 
 /// Preview Screen
@@ -27,8 +28,10 @@ class PreviewScreen extends StatefulWidget {
 
 class _PreviewScreenState extends State<PreviewScreen> {
   String _category = 'distributor';
+  String _customerType = 'new';
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _notesController = TextEditingController();
   bool _createFollowUp = false;
   DateTime? _dueDate;
 
@@ -36,6 +39,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
@@ -86,204 +90,383 @@ class _PreviewScreenState extends State<PreviewScreen> {
           child: Column(
             children: [
               const AppHeader(
-                title: 'Preview',
+                title: 'Photo Preview',
                 type: AppHeaderType.secondary,
                 showAvatar: false,
               ),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                    AppSpacing.lg,
+                    140,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                    // Photo Preview
-                    Container(
-                      width: double.infinity,
-                      height: 200,
-                      decoration: BoxDecoration(
-                        color: AppColors.secondary,
-                        borderRadius: BorderRadius.circular(
-                          AppSpacing.radiusLg,
-                        ),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Stack(
-                        children: [
-                          // Placeholder
-                          Center(
-                            child: Icon(
-                              Iconsax.image,
-                              color: AppColors.textTertiary,
-                              size: 48,
-                            ),
-                          ),
-                          // Location overlay
-                          Positioned(
-                            left: AppSpacing.md,
-                            bottom: AppSpacing.md,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.sm,
-                                vertical: AppSpacing.xs,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.gradientStart.withValues(
-                                  alpha: 0.6,
-                                ),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Iconsax.location,
-                                    color: AppColors.textPrimary,
-                                    size: 12,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    widget.location,
-                                    style: AppTypography.small.copyWith(
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xxl),
-                    // Category Selection
-                    Text('Category:', style: AppTypography.label),
-                    const SizedBox(height: AppSpacing.sm),
-                    Row(
-                      children: [
-                        _buildCategoryChip('Distributor', 'distributor'),
-                        const SizedBox(width: AppSpacing.md),
-                        _buildCategoryChip('Farmer', 'farmer'),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
-                    // Name Input
-                    TextInputField(
-                      label: 'Name',
-                      hint: 'Enter name',
-                      controller: _nameController,
-                      prefixIcon: Iconsax.user,
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                    // Phone Input
-                    TextInputField(
-                      label: 'Phone (Optional)',
-                      hint: 'Enter phone number',
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      prefixIcon: Iconsax.call,
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
-                    // Create Follow-up Checkbox
-                    GestureDetector(
-                      onTap: () =>
-                          setState(() => _createFollowUp = !_createFollowUp),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: _createFollowUp
-                                  ? AppColors.primary
-                                  : AppColors.glassPrimary,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: _createFollowUp
-                                    ? AppColors.primary
-                                    : AppColors.border,
-                                width: 2,
-                              ),
-                            ),
-                            child: _createFollowUp
-                                ? const Icon(
-                                    Icons.check,
-                                    size: 16,
-                                    color: AppColors.textPrimary,
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: AppSpacing.md),
-                          Text(
-                            'Create Follow-up',
-                            style: AppTypography.bodyMedium,
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Due Date (if follow-up enabled)
-                    if (_createFollowUp) ...[
+                      _buildPhotoPreview(),
+                      const SizedBox(height: AppSpacing.xxl),
+                      _buildMetadataCard(),
                       const SizedBox(height: AppSpacing.lg),
-                      GestureDetector(
-                        onTap: _selectDueDate,
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(AppSpacing.lg),
-                          decoration: BoxDecoration(
-                            color: AppColors.glassPrimary,
-                            borderRadius: BorderRadius.circular(
-                              AppSpacing.radiusMd,
-                            ),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Iconsax.calendar,
-                                color: AppColors.textTertiary,
-                                size: 20,
-                              ),
-                              const SizedBox(width: AppSpacing.md),
-                              Text(
-                                'Due Date',
-                                style: AppTypography.body.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                _dueDate != null
-                                    ? _formatDate(_dueDate!)
-                                    : 'Select date',
-                                style: AppTypography.bodyMedium.copyWith(
-                                  color: _dueDate != null
-                                      ? AppColors.textPrimary
-                                      : AppColors.textTertiary,
-                                ),
-                              ),
-                              const SizedBox(width: AppSpacing.sm),
-                              Icon(
-                                Icons.chevron_right,
-                                color: AppColors.textTertiary,
-                                size: 20,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      _buildFollowUpCard(),
                     ],
-                    const SizedBox(height: AppSpacing.xxxl),
-                    // Save Button
-                    PrimaryButton.rectangular(
-                      label: 'Save Photo',
-                      icon: Iconsax.tick_circle,
-                      onPressed: _savePhoto,
-                    ),
-                    const SizedBox(height: AppSpacing.xxxl),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      bottomSheet: _buildBottomActions(),
+    );
+  }
+
+  Widget _buildPhotoPreview() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(32),
+      child: Container(
+        height: 360,
+        decoration: BoxDecoration(
+          color: AppColors.glassStrong,
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: AppColors.glassBorder),
+          boxShadow: AppShadows.glass,
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              'https://picsum.photos/seed/preview/800/1200',
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                color: AppColors.glassPrimary,
+                child: const Icon(
+                  Iconsax.image,
+                  color: AppColors.textTertiary,
+                  size: 48,
+                ),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    AppColors.gradientStart.withValues(alpha: 0.8),
                   ],
                 ),
               ),
+            ),
+            Positioned(
+              left: 16,
+              bottom: 16,
+              right: 16,
+              child: GlassPanel(
+                padding: const EdgeInsets.all(12),
+                backgroundColor: AppColors.glassPrimary.withValues(alpha: 0.85),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Iconsax.location,
+                        color: AppColors.primary,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.location,
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_formatDate(widget.timestamp)} • ${widget.timestamp.hour.toString().padLeft(2, '0')}:${widget.timestamp.minute.toString().padLeft(2, '0')}',
+                            style: AppTypography.small.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetadataCard() {
+    return GlassPanel(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Iconsax.edit, size: 18, color: AppColors.textPrimary),
+              const SizedBox(width: 8),
+              Text(
+                'Metadata Entry',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          Text('Customer Type', style: AppTypography.label),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildToggleChip('New', 'new'),
+              const SizedBox(width: 10),
+              _buildToggleChip('Old', 'old'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text('Category', style: AppTypography.label),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildCategoryChip('Distributor', 'distributor'),
+              const SizedBox(width: 10),
+              _buildCategoryChip('Farmer', 'farmer'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          TextInputField(
+            label: 'Full Name',
+            hint: 'Enter name',
+            controller: _nameController,
+            prefixIcon: Iconsax.user,
+          ),
+          const SizedBox(height: 14),
+          TextInputField(
+            label: 'Phone Number',
+            hint: '00000 00000',
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            prefixIcon: Iconsax.call,
+          ),
+          const SizedBox(height: 14),
+          GlassInputField(
+            label: 'Notes',
+            hint: 'Add field observations...',
+            controller: _notesController,
+            maxLines: 3,
+            prefixIcon: Iconsax.note,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFollowUpCard() {
+    return GlassPanel(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Iconsax.calendar_add,
+                  color: AppColors.primary,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Schedule Follow-up',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Switch(
+                value: _createFollowUp,
+                onChanged: (v) => setState(() => _createFollowUp = v),
+                activeColor: AppColors.primary,
+                activeTrackColor: AppColors.primary.withValues(alpha: 0.3),
+              ),
+            ],
+          ),
+          if (_createFollowUp) ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: _selectDueDate,
+              child: GlassPanel(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg,
+                  vertical: AppSpacing.md,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Iconsax.calendar,
+                      color: AppColors.textSecondary,
+                      size: 18,
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Text(
+                      _dueDate != null ? _formatDate(_dueDate!) : 'Select date',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: _dueDate != null
+                            ? AppColors.textPrimary
+                            : AppColors.textTertiary,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      Icons.chevron_right,
+                      color: AppColors.textTertiary,
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomActions() {
+    return Container(
+      padding: EdgeInsets.only(
+        left: AppSpacing.lg,
+        right: AppSpacing.lg,
+        bottom: MediaQuery.of(context).padding.bottom + AppSpacing.md,
+        top: AppSpacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.glassNav,
+        border: Border(top: BorderSide(color: AppColors.glassBorder)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  color: AppColors.glassPrimary,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: AppColors.glassBorder),
+                ),
+                child: Center(
+                  child: Text(
+                    'Retake',
+                    style: AppTypography.buttonMedium.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 2,
+            child: GestureDetector(
+              onTap: _savePhoto,
+              child: Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.35),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Iconsax.cloud_add,
+                      color: AppColors.textPrimary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Upload',
+                      style: AppTypography.buttonMedium.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToggleChip(String label, String value) {
+    final isSelected = _customerType == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _customerType = value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primary : AppColors.glassPrimary,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isSelected ? AppColors.primary : AppColors.glassBorder,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: AppTypography.bodySmall.copyWith(
+                color: isSelected
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ),
       ),

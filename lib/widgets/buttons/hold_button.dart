@@ -137,6 +137,31 @@ class _HoldButtonState extends State<HoldButton>
                       ],
                     ),
                   ),
+                  // Visible progress bar track
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: 8,
+                    child: Container(
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.glassBorder,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: _controller.value,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
@@ -8,45 +7,51 @@ import '../../widgets/navigation/app_header.dart';
 import 'create_group_screen.dart';
 import 'edit_group_screen.dart';
 
-/// Groups Screen - Enterprise Dark Glass Design
+const List<Map<String, dynamic>> _groups = [
+  {
+    'id': '1',
+    'name': 'North Zone',
+    'lead': 'Rahul Kumar',
+    'leadId': 'rajesh',
+    'members': 3,
+    'color': AppColors.info, // Indigo
+    'membersList': [
+      {'name': 'Amit Patel', 'initials': 'AP', 'status': 'active'},
+      {'name': 'Priya Sharma', 'initials': 'PS', 'status': 'active'},
+      {'name': 'David Kim', 'initials': 'DK', 'status': 'away'},
+    ],
+  },
+  {
+    'id': '2',
+    'name': 'South Zone',
+    'lead': 'Priya Singh',
+    'leadId': 'sarah',
+    'members': 4,
+    'color': AppColors.success, // Green
+    'membersList': [],
+  },
+  {
+    'id': '3',
+    'name': 'Central District',
+    'lead': 'Amit Sharma',
+    'leadId': 'mike',
+    'members': 2,
+    'color': AppColors.warning, // Orange/Amber
+    'membersList': [],
+  },
+];
+
+/// Management Screen - Enterprise Dark Glass Design
 /// Team and group management
 class GroupsScreen extends StatelessWidget {
-  const GroupsScreen({super.key});
+  final bool showHeader;
+  final bool showCreateButton;
 
-  // Mock groups data
-  static const List<Map<String, dynamic>> _groups = [
-    {
-      'id': '1',
-      'name': 'North Zone',
-      'lead': 'Rahul Kumar',
-      'leadId': 'rajesh',
-      'members': 3,
-      'color': AppColors.info, // Indigo
-      'membersList': [
-        {'name': 'Amit Patel', 'initials': 'AP', 'status': 'active'},
-        {'name': 'Priya Sharma', 'initials': 'PS', 'status': 'active'},
-        {'name': 'David Kim', 'initials': 'DK', 'status': 'away'},
-      ],
-    },
-    {
-      'id': '2',
-      'name': 'South Zone',
-      'lead': 'Priya Singh',
-      'leadId': 'sarah',
-      'members': 4,
-      'color': AppColors.success, // Green
-      'membersList': [],
-    },
-    {
-      'id': '3',
-      'name': 'Central District',
-      'lead': 'Amit Sharma',
-      'leadId': 'mike',
-      'members': 2,
-      'color': AppColors.warning, // Orange/Amber
-      'membersList': [],
-    },
-  ];
+  const GroupsScreen({
+    super.key,
+    this.showHeader = true,
+    this.showCreateButton = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -55,52 +60,67 @@ class GroupsScreen extends StatelessWidget {
         bottom: false,
         child: Column(
           children: [
-            const AppHeader(
-              title: 'Groups',
-              type: AppHeaderType.primary,
-              showAvatar: false,
-            ),
+            if (showHeader)
+              const AppHeader(
+                title: 'Management',
+                type: AppHeaderType.primary,
+                showAvatar: false,
+              ),
 
-            // Content
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Create Group Button
-                    _buildCreateButton(context),
-                    const SizedBox(height: 24),
-
-                    // Groups Label
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4),
-                      child: Text(
-                        'GROUPS (${_groups.length})',
-                        style: AppTypography.caption.copyWith(
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.0,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Groups List
-                    ...List.generate(_groups.length, (index) {
-                      final group = _groups[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildGroupCard(context, group),
-                      );
-                    }),
-                  ],
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  showHeader ? 16 : 4,
+                  20,
+                  120,
+                ),
+                child: GroupsContent(
+                  showCreateButton: showCreateButton,
                 ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class GroupsContent extends StatelessWidget {
+  final bool showCreateButton;
+
+  const GroupsContent({super.key, this.showCreateButton = true});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (showCreateButton) ...[
+          _buildCreateButton(context),
+          const SizedBox(height: 24),
+        ],
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            'MANAGEMENT (${_groups.length})',
+            style: AppTypography.caption.copyWith(
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.0,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...List.generate(_groups.length, (index) {
+          final group = _groups[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildGroupCard(context, group),
+          );
+        }),
+      ],
     );
   }
 

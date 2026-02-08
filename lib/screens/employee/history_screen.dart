@@ -506,6 +506,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       : () => setState(
                           () => _expandedDay = isExpanded ? null : index,
                         ),
+                  behavior: HitTestBehavior.opaque,
                   child: Padding(
                     padding: EdgeInsets.all(isExpanded ? 20 : 16),
                     child: Row(

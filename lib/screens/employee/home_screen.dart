@@ -7,6 +7,7 @@ import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 import 'end_of_day_screen.dart';
+import '../notifications/notifications_screen.dart';
 
 /// Employee Home Screen - Glassmorphism Design
 /// Shows IDLE or ACTIVE state based on session status
@@ -100,7 +101,15 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             AppHeader(
               title: 'Izumi',
-              showNotification: _isSessionActive,
+              showNotification: true,
+              onNotificationTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen(),
+                  ),
+                );
+              },
               onAvatarTap: widget.onAvatarTap,
             ),
 

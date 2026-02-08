@@ -6,6 +6,7 @@ import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
+import 'employee_activity_screen.dart';
 
 /// Analytics Screen - Glassmorphism Design
 /// Enterprise activity overview
@@ -18,7 +19,6 @@ class AnalyticsScreen extends StatefulWidget {
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
   String _selectedPeriod = 'This Week';
-  final Set<int> _expandedEmployees = {};
 
   final List<String> _periods = ['Today', 'This Week', 'This Month', 'Custom'];
   final List<Map<String, dynamic>> _employees = [
@@ -33,11 +33,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           'title': 'Location Update',
           'time': '2 min ago',
           'detail': 'Checked in at Sector 45, Gurgaon',
+          'type': 'visit',
         },
         {
           'title': 'Task Started',
           'time': '15 min ago',
           'detail': 'Inventory Check - Warehouse A',
+          'type': 'task',
+        },
+        {
+          'title': 'Photo Captured',
+          'time': '1h ago',
+          'detail': 'Site Frontage - Evidence uploaded',
+          'type': 'photo',
         },
       ],
     },
@@ -52,6 +60,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           'title': 'Photo Captured',
           'time': '45 min ago',
           'detail': 'Site Frontage - Evidence uploaded',
+          'type': 'photo',
+        },
+        {
+          'title': 'Location Update',
+          'time': '2h ago',
+          'detail': 'Checked in at Sector 9, Gurgaon',
+          'type': 'visit',
         },
       ],
     },
@@ -66,6 +81,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           'title': 'Commute Started',
           'time': '1h ago',
           'detail': 'Traveling to Sector 45',
+          'type': 'visit',
+        },
+        {
+          'title': 'Task Completed',
+          'time': '3h ago',
+          'detail': 'Warehouse A inventory verified',
+          'type': 'task',
         },
       ],
     },
@@ -80,6 +102,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           'title': 'Task Completed',
           'time': '2h ago',
           'detail': 'Store Audit - West Region',
+          'type': 'task',
+        },
+        {
+          'title': 'Photo Captured',
+          'time': '4h ago',
+          'detail': 'Shelf compliance snapshot',
+          'type': 'photo',
         },
       ],
     },
@@ -94,6 +123,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           'title': 'Break',
           'time': '3h ago',
           'detail': 'Paused for lunch',
+          'type': 'task',
+        },
+        {
+          'title': 'Location Update',
+          'time': '5h ago',
+          'detail': 'Checked in at Warehouse B',
+          'type': 'visit',
         },
       ],
     },
@@ -203,78 +239,32 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Employee Performance Cards (expandable logs)
-                        ..._employees.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final emp = entry.value;
-                          final isExpanded = _expandedEmployees.contains(index);
+                        // Employee Performance Cards (open detail screen)
+                        ..._employees.map((emp) {
                           return _buildEmployeeCard(
                             name: emp['name'],
                             hours: emp['hours'],
                             distance: emp['distance'],
                             photos: emp['photos'],
                             isTop: emp['isTop'] == true,
-                            logs: List<Map<String, String>>.from(emp['logs']),
-                            isExpanded: isExpanded,
-                            onToggle: () {
-                              setState(() {
-                                if (isExpanded) {
-                                  _expandedEmployees.remove(index);
-                                } else {
-                                  _expandedEmployees.add(index);
-                                }
-                              });
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => EmployeeActivityScreen(
+                                    employeeName: emp['name'],
+                                    periodLabel: _selectedPeriod,
+                                    activities:
+                                        List<Map<String, String>>.from(
+                                          emp['logs'],
+                                        ),
+                                  ),
+                                ),
+                              );
                             },
                           );
                         }),
 
-                        const SizedBox(height: 24),
-
-                        // Export Button
-                        GestureDetector(
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text(
-                                  'Export feature coming soon!',
-                                ),
-                                backgroundColor: AppColors.primary,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(18),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: AppColors.primary.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Iconsax.export,
-                                  size: 20,
-                                  color: AppColors.primary,
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  'Export Report',
-                                  style: AppTypography.bodyMedium.copyWith(
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -460,15 +450,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     required int hours,
     required double distance,
     required int photos,
-    required List<Map<String, String>> logs,
-    required bool isExpanded,
-    required VoidCallback onToggle,
+    required VoidCallback onTap,
     bool isTop = false,
   }) {
     final initials = name.split(' ').take(2).map((e) => e[0]).join('');
 
     return GestureDetector(
-      onTap: onToggle,
+      onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
@@ -482,175 +470,99 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ),
           boxShadow: AppShadows.glass,
         ),
-        child: Column(
+        child: Row(
           children: [
-            Row(
-              children: [
-                // Avatar
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: isTop
-                        ? AppColors.primary.withValues(alpha: 0.1)
-                        : AppColors.surfaceMuted,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Center(
-                    child: Text(
-                      initials,
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: isTop
-                            ? AppColors.primary
-                            : AppColors.textSecondary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+            // Avatar
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: isTop
+                    ? AppColors.primary.withValues(alpha: 0.1)
+                    : AppColors.surfaceMuted,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Center(
+                child: Text(
+                  initials,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: isTop ? AppColors.primary : AppColors.textSecondary,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(width: 16),
+              ),
+            ),
+            const SizedBox(width: 16),
 
-                // Name
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            // Name
+            Expanded(
+              flex: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Text(
-                            name,
-                            style: AppTypography.bodyMedium.copyWith(
-                              color: AppColors.textPrimary,
+                      Text(
+                        name,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (isTop) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Top',
+                            style: AppTypography.overline.copyWith(
+                              color: AppColors.primary,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          if (isTop) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                'Top',
-                                style: AppTypography.overline.copyWith(
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Stats
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildMiniStat(
-                          Iconsax.timer_1,
-                          '${hours}h',
-                          AppColors.iconOrange,
-                        ),
-                        const SizedBox(width: 12),
-                        _buildMiniStat(
-                          Iconsax.routing_2,
-                          '${distance.toStringAsFixed(0)}km',
-                          AppColors.iconTeal,
-                        ),
-                        const SizedBox(width: 12),
-                        _buildMiniStat(
-                          Iconsax.gallery,
-                          '$photos',
-                          AppColors.iconAmber,
                         ),
                       ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Stats
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildMiniStat(
+                      Iconsax.timer_1,
+                      '${hours}h',
+                      AppColors.iconOrange,
+                    ),
+                    const SizedBox(width: 12),
+                    _buildMiniStat(
+                      Iconsax.routing_2,
+                      '${distance.toStringAsFixed(0)}km',
+                      AppColors.iconTeal,
+                    ),
+                    const SizedBox(width: 12),
+                    _buildMiniStat(
+                      Iconsax.gallery,
+                      '$photos',
+                      AppColors.iconAmber,
                     ),
                   ],
                 ),
               ],
             ),
-            if (isExpanded) ...[
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.glassStrong,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.glassBorder),
-                ),
-                child: Column(
-                  children: logs
-                      .map(
-                        (log) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                margin: const EdgeInsets.only(top: 6),
-                                decoration: const BoxDecoration(
-                                  color: AppColors.primary,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          log['title'] ?? '',
-                                          style: AppTypography.bodySmall
-                                              .copyWith(
-                                            color: AppColors.textPrimary,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        Text(
-                                          log['time'] ?? '',
-                                          style: AppTypography.caption.copyWith(
-                                            color: AppColors.textTertiary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      log['detail'] ?? '',
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-            ],
           ],
         ),
       ),

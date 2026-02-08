@@ -137,8 +137,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
           ),
         ),
 
-        // Bottom Actions
-        bottomSheet: _buildBottomActions(),
+        // Bottom Actions removed (icons in header)
       ),
     );
   }
@@ -183,7 +182,48 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   textAlign: TextAlign.center,
                 ),
               ),
-              const SizedBox(width: 40), // Spacer
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      // Save changes
+                      Navigator.pop(context);
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.glassPrimary,
+                        border: Border.all(color: AppColors.glassBorder),
+                      ),
+                      child: const Icon(
+                        Iconsax.tick_circle,
+                        color: AppColors.textPrimary,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _deleteGroup,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.glassPrimary,
+                        border: Border.all(color: AppColors.glassBorder),
+                      ),
+                      child: const Icon(
+                        Iconsax.trash,
+                        color: AppColors.critical,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -303,18 +343,6 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
               style: AppTypography.bodyLarge.copyWith(
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.w600,
-              ),
-            ),
-            GestureDetector(
-              onTap: () {
-                // Manage members
-              },
-              child: Text(
-                'Manage',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                ),
               ),
             ),
           ],
@@ -486,73 +514,5 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     );
   }
 
-  Widget _buildBottomActions() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.transparent,
-            AppColors.glassStrong.withValues(alpha: 0.9),
-            AppColors.glassStrong,
-          ],
-          stops: const [0.0, 0.3, 1.0],
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Save Button
-            GestureDetector(
-              onTap: () {
-                // Save changes
-                Navigator.pop(context);
-              },
-              child: Container(
-                height: 56,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.3),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Text(
-                    'Save Changes',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Delete Button
-            GestureDetector(
-              onTap: _deleteGroup,
-              child: Text(
-                'Delete Group',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.critical,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 

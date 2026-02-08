@@ -148,6 +148,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Widget _buildPhotoGroup(Map<String, dynamic> group) {
     final photos = group['photos'] as List;
+    const spacing = 12.0;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
@@ -184,7 +186,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       border: Border.all(color: AppColors.glassBorder),
                     ),
                     child: Text(
-                      '${group['count']} PHOTOS',
+                      '${photos.length} PHOTOS',
                       style: TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 11,
@@ -197,19 +199,23 @@ class _GalleryScreenState extends State<GalleryScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Photo Grid
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemCount: photos.length,
-                itemBuilder: (context, index) {
-                  final photo = photos[index];
-                  return _buildPhotoTile(photo, group['title']);
+              // Photo Grid (auto-sized)
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final tileSize =
+                      (constraints.maxWidth - (spacing * 2)) / 3;
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    children: [
+                      for (final photo in photos)
+                        SizedBox(
+                          width: tileSize,
+                          height: tileSize,
+                          child: _buildPhotoTile(photo, group['title']),
+                        ),
+                    ],
+                  );
                 },
               ),
             ],
@@ -301,10 +307,10 @@ class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
   _SearchBarDelegate({required this.controller});
 
   @override
-  double get minExtent => 72;
+  double get minExtent => 76;
 
   @override
-  double get maxExtent => 72;
+  double get maxExtent => 76;
 
   @override
   bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) =>
@@ -320,12 +326,9 @@ class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
           decoration: BoxDecoration(
             color: AppColors.glassHeader,
-            border: Border(
-              bottom: BorderSide(color: AppColors.glassBorder),
-            ),
           ),
           child: GlassInputField(
             controller: controller,

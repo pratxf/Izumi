@@ -5,7 +5,9 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/glass/glass_chip.dart';
+import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/navigation/app_header.dart';
+import '../../widgets/buttons/hold_button.dart';
 import '../admin/create_task_screen.dart';
 
 /// Todo Screen - Redesigned per reference
@@ -82,11 +84,12 @@ class _TodoScreenState extends State<TodoScreen> {
                           GestureDetector(
                             onTap: _openCreateTaskScreen,
                             child: Container(
-                              width: 44,
-                              height: 44,
+                              height: 40,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 14),
                               decoration: BoxDecoration(
                                 color: AppColors.primary,
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(20),
                                 boxShadow: [
                                   BoxShadow(
                                     color: AppColors.primary.withValues(
@@ -102,10 +105,24 @@ class _TodoScreenState extends State<TodoScreen> {
                                   ),
                                 ),
                               ),
-                              child: const Icon(
-                                Iconsax.add,
-                                color: AppColors.textPrimary,
-                                size: 22,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Iconsax.add,
+                                    color: AppColors.textPrimary,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Create Task',
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.textPrimary,
+                                      fontWeight: FontWeight.w600,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -294,278 +311,229 @@ class _TodoScreenState extends State<TodoScreen> {
         badgeText = 'LOW';
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.glassPrimary,
-            borderRadius: BorderRadius.circular(20),
-            border: Border(
-              left: BorderSide(color: borderColor, width: 6),
-              top: BorderSide(color: AppColors.glassBorder),
-              right: BorderSide(color: AppColors.glassBorder),
-              bottom: BorderSide(color: AppColors.glassBorder),
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
+    return GlassCard(
+      borderRadius: 20,
+      borderLeftColor: borderColor,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title Row
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title Row
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      task['emoji'] ?? '📋',
-                      style: const TextStyle(fontSize: 18),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        task['title'],
-                        style: AppTypography.headline.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    if (isHighPriority)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: badgeBgColor,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          badgeText,
-                          style: TextStyle(
-                            color: badgeColor,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                  ],
+                Text(
+                  task['emoji'] ?? '📋',
+                  style: const TextStyle(fontSize: 18),
                 ),
-                const SizedBox(height: 16),
-
-                // Task details
-                if (!isFollowUp) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Icon(
-                              Iconsax.user,
-                              size: 16,
-                              color: AppColors.textTertiary,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Assigned by: ${task['assignedBy']}',
-                              style: AppTypography.caption.copyWith(
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          Icon(
-                            Iconsax.calendar,
-                            size: 16,
-                            color: AppColors.textTertiary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Due: ${task['dueDate']}',
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    task['title'],
+                    style: AppTypography.headline.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.none,
+                    ),
                   ),
-                ] else ...[
-                  // Follow up details
+                ),
+                if (isHighPriority)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
+                      horizontal: 8,
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(6),
+                      color: badgeBgColor,
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      'Type: ${task['contactType']}',
+                      badgeText,
                       style: TextStyle(
-                        color: AppColors.warning,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                        color: badgeColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                        decoration: TextDecoration.none,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Iconsax.call,
-                            size: 16,
-                            color: AppColors.textTertiary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            task['phone'],
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (task['dueToday'] == true)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.glassPrimary,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            'Due Today',
-                            style: AppTypography.overline.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w600,
-                            ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Task details
+            if (!isFollowUp) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Icon(
+                          Iconsax.user,
+                          size: 16,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Assigned by: ${task['assignedBy']}',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.textSecondary,
+                            decoration: TextDecoration.none,
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Icon(
+                        Iconsax.calendar,
+                        size: 16,
+                        color: AppColors.textTertiary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Due: ${task['dueDate']}',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
                     ],
                   ),
                 ],
-
-                // Complete Button (for tasks)
-                if (!isFollowUp) ...[
-                  const SizedBox(height: 20),
-                  GestureDetector(
-                    onLongPress: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('Task completed!'),
-                          backgroundColor: AppColors.success,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceMuted,
-                        borderRadius: BorderRadius.circular(16),
+              ),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Type: ${task['contactType']}',
+                  style: TextStyle(
+                    color: AppColors.warning,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Iconsax.call,
+                        size: 16,
+                        color: AppColors.textTertiary,
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Iconsax.finger_scan,
-                            size: 18,
-                            color: AppColors.textSecondary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Hold to Complete',
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(width: 6),
+                      Text(
+                        task['phone'],
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.textSecondary,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (task['dueToday'] == true)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.glassPrimary,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Due Today',
+                        style: AppTypography.overline.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
                     ),
-                  ),
                 ],
-              ],
+              ),
+            ],
+
+            const SizedBox(height: 20),
+            HoldButton(
+              label: 'Hold to Complete',
+              onComplete: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Task completed!'),
+                    backgroundColor: AppColors.success,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                );
+              },
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildCompletedTaskCard(Map<String, dynamic> task) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Opacity(
-          opacity: 0.6,
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.glassPrimary,
-              borderRadius: BorderRadius.circular(20),
-              border: Border(
-                left: BorderSide(color: AppColors.textTertiary, width: 6),
-                top: BorderSide(color: AppColors.glassBorder),
-                right: BorderSide(color: AppColors.glassBorder),
-                bottom: BorderSide(color: AppColors.glassBorder),
+    return Opacity(
+      opacity: 0.6,
+      child: GlassCard(
+        borderRadius: 20,
+        borderLeftColor: AppColors.textTertiary,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Text(
+                task['emoji'] ?? '✅',
+                style: const TextStyle(fontSize: 18),
               ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Text(
-                    task['emoji'] ?? '✅',
-                    style: const TextStyle(fontSize: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          task['title'],
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.bold,
-                            decoration: TextDecoration.lineThrough,
-                            decorationThickness: 2,
-                            decorationColor: AppColors.textTertiary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Completed at ${task['completedAt']}',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                      ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task['title'],
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.bold,
+                        decoration: TextDecoration.lineThrough,
+                        decorationThickness: 2,
+                        decorationColor: AppColors.textTertiary,
+                      ),
                     ),
-                  ),
-                  Icon(Icons.chevron_right, color: AppColors.textTertiary),
-                ],
+                    const SizedBox(height: 2),
+                    Text(
+                      'Completed at ${task['completedAt']}',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.textTertiary,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+              Icon(Icons.chevron_right, color: AppColors.textTertiary),
+            ],
           ),
         ),
       ),

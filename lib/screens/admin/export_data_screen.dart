@@ -4,6 +4,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
+import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/navigation/app_header.dart';
 
 /// Export Data Screen - Configure and generate data exports
@@ -45,14 +46,15 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
               // Content
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 160),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 160),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Data to Export Section
                       _buildSectionHeader('Data to Export'),
                       const SizedBox(height: 12),
-                      _buildGlassCard(
+                      GlassPanel(
+                        padding: EdgeInsets.zero,
                         child: Column(
                           children: [
                             _buildCheckboxRow(
@@ -111,15 +113,9 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
                       const SizedBox(height: 24),
 
                       // Security Check Section
-                      Container(
+                      GlassPanel(
                         padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade100.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: Colors.amber.shade200.withValues(alpha: 0.5),
-                          ),
-                        ),
+                        backgroundColor: AppColors.glassStrong,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -128,13 +124,13 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
                                 Icon(
                                   Iconsax.lock,
                                   size: 20,
-                                  color: Colors.amber.shade700,
+                                  color: AppColors.warning,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
                                   'SECURITY CHECK',
                                   style: AppTypography.overline.copyWith(
-                                    color: Colors.amber.shade900,
+                                    color: AppColors.warning,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 0.5,
                                   ),
@@ -142,12 +138,8 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            Container(
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: AppColors.textPrimary.withValues(alpha: 0.5),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                            GlassPanel(
+                              padding: EdgeInsets.zero,
                               child: TextField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
@@ -258,23 +250,6 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
           color: AppColors.textSecondary,
           fontWeight: FontWeight.bold,
           letterSpacing: 1.2,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlassCard({required Widget child}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.glassPrimary,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassBorder),
-          ),
-          child: child,
         ),
       ),
     );

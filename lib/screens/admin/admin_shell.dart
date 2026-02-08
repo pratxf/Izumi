@@ -4,7 +4,7 @@ import 'dashboard_screen.dart';
 import 'images_screen.dart';
 import '../employee/monitor_screen.dart';
 import 'analytics_screen.dart';
-import 'groups_screen.dart';
+import 'management_screen.dart';
 import '../employee/profile_screen.dart';
 
 /// Admin Shell
@@ -24,7 +24,7 @@ class _AdminShellState extends State<AdminShell> {
     const ImagesScreen(),
     const MonitorScreen(),
     const AnalyticsScreen(),
-    const GroupsScreen(),
+    const ManagementScreen(),
   ];
 
   void _onTabTap(int index) {
@@ -34,7 +34,7 @@ class _AdminShellState extends State<AdminShell> {
   void _openProfile() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+      MaterialPageRoute(builder: (_) => const ProfileScreen(isAdmin: true)),
     );
   }
 

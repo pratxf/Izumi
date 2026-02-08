@@ -7,11 +7,15 @@ import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 import '../auth/welcome_screen.dart';
+import 'edit_profile_screen.dart';
+import '../admin/export_data_screen.dart';
 
 /// Profile Screen - Glassmorphism Design
 /// User profile with settings and logout
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+  final bool isAdmin;
+
+  const ProfileScreen({super.key, this.isAdmin = false});
 
   void _logout(BuildContext context) {
     showDialog(
@@ -216,26 +220,28 @@ class ProfileScreen extends StatelessWidget {
               _buildMenuItem(
                 icon: Iconsax.user_edit,
                 label: 'Edit Profile',
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+                  );
+                },
               ),
-              _buildDivider(),
-              _buildMenuItem(
-                icon: Iconsax.message_question,
-                label: 'Help & Support',
-                onTap: () {},
-              ),
-              _buildDivider(),
-              _buildMenuItem(
-                icon: Iconsax.info_circle,
-                label: 'About',
-                onTap: () {},
-              ),
-              _buildDivider(),
-              _buildMenuItem(
-                icon: Iconsax.setting_2,
-                label: 'Settings',
-                onTap: () {},
-              ),
+              if (isAdmin) ...[
+                _buildDivider(),
+                _buildMenuItem(
+                  icon: Iconsax.export_1,
+                  label: 'Export Data',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ExportDataScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         ),

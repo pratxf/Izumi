@@ -5,7 +5,9 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
+import '../../widgets/inputs/text_input_field.dart';
 import 'employee_detail_screen.dart';
+import '../notifications/notifications_screen.dart';
 
 /// Dashboard Screen - Enterprise Admin
 /// Overview with search, stats, and employee list
@@ -60,19 +62,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     },
   ];
 
+  String _statusFilter = 'active';
+
   List<Map<String, dynamic>> get _filteredEmployees {
     final query = _searchController.text.toLowerCase();
-    if (query.isEmpty) return _employees;
-    return _employees.where((e) {
+    final filtered = _employees.where((e) {
       return e['name'].toString().toLowerCase().contains(query) ||
           e['location'].toString().toLowerCase().contains(query);
     }).toList();
+
+    if (_statusFilter == 'active') {
+      return filtered.where((e) => e['status'] == 'active').toList();
+    }
+    if (_statusFilter == 'offline') {
+      return filtered.where((e) => e['status'] == 'offline').toList();
+    }
+    return filtered;
   }
 
   int get _activeCount =>
       _employees.where((e) => e['status'] == 'active').length;
-  double get _totalDistance =>
-      _employees.fold(0.0, (sum, e) => sum + (e['distance'] as double));
+  int get _offlineCount =>
+      _employees.where((e) => e['status'] == 'offline').length;
 
   @override
   void dispose() {
@@ -91,10 +102,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title: 'Dashboard',
               type: AppHeaderType.primary,
               showNotification: true,
+              onNotificationTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen(),
+                  ),
+                );
+              },
               onAvatarTap: widget.onAvatarTap,
             ),
 
-            // Search Bar (on gradient)
+            // Search Bar (clean glass, gallery style)
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
               child: ClipRRect(
@@ -102,33 +121,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                   child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.glassPrimary,
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(color: AppColors.glassBorder),
                     ),
-                    child: TextField(
+                    child: GlassInputField(
                       controller: _searchController,
+                      hint: 'Search employees...',
+                      prefixIcon: Iconsax.search_normal,
                       onChanged: (_) => setState(() {}),
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Search employees...',
-                        hintStyle: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                        prefixIcon: Icon(
-                          Iconsax.search_normal,
-                          color: AppColors.textSecondary,
-                          size: 24,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 16,
-                        ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
                       ),
                     ),
                   ),
@@ -164,11 +173,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const SizedBox(width: 16),
                       Expanded(
                         child: _buildOverviewCard(
-                          icon: Iconsax.routing_2,
-                          label: 'Distance',
-                          value: '${_totalDistance.toInt()}',
-                          unit: 'km',
-                          sublabel: "Today's coverage",
+                          icon: Iconsax.user_remove,
+                          label: 'Offline',
+                          value: '$_offlineCount',
+                          sublabel: 'Personnel offline',
                         ),
                       ),
                     ],
@@ -206,18 +214,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ],
                           ),
                         ),
-                        GestureDetector(
-                          onTap: () {},
-                          child: Text(
-                            'View Map',
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.primaryLight,
-                              fontWeight: FontWeight.bold,
-                              decoration: TextDecoration.underline,
-                              decorationColor: AppColors.primaryLight
-                                  .withOpacity(0.5),
+                        Row(
+                          children: [
+                            _buildFilterPill(
+                              label: 'Active',
+                              selected: _statusFilter == 'active',
+                              onTap: () =>
+                                  setState(() => _statusFilter = 'active'),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            _buildFilterPill(
+                              label: 'Offline',
+                              selected: _statusFilter == 'offline',
+                              onTap: () =>
+                                  setState(() => _statusFilter = 'offline'),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -337,6 +349,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterPill({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.glassBorder,
+          ),
+        ),
+        child: Text(
+          label,
+          style: AppTypography.caption.copyWith(
+            color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),

@@ -67,26 +67,32 @@ class _TasksScreenState extends State<TasksScreen> {
                     );
                   },
                   child: Container(
-                    width: 44,
-                    height: 44,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primary.withOpacity(0.4),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                      color: AppColors.glassPrimary,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.glassBorder),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Iconsax.add,
+                          size: 18,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Create Task',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ],
-                      border: Border.all(
-                        color: AppColors.textPrimary.withOpacity(0.2),
-                      ),
-                    ),
-                    child: const Icon(
-                      Iconsax.add,
-                      color: AppColors.textPrimary,
-                      size: 22,
                     ),
                   ),
                 ),

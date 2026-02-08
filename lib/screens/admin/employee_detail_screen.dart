@@ -1,12 +1,14 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 import '../employee/gallery_screen.dart';
+import 'create_task_screen.dart';
 
 /// Employee Detail Screen
 /// Layout based on "Employee Activity Logs" HTML reference
@@ -30,8 +32,8 @@ class EmployeeDetailScreen extends StatelessWidget {
           bottom: false,
           child: Column(
             children: [
-              const AppHeader(
-                title: 'Employee',
+              AppHeader(
+                title: "$name's History",
                 type: AppHeaderType.secondary,
                 showAvatar: false,
               ),
@@ -280,11 +282,21 @@ class EmployeeDetailScreen extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _buildActionButton(
             Iconsax.task_square,
             'Assign Task',
-            () {}, // TODO: Implement Task Assignment
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CreateTaskScreen(
+                    initialAssigneeName: name,
+                  ),
+                ),
+              );
+            },
           ),
           const SizedBox(width: 12),
           _buildActionButton(Iconsax.gallery, 'View Photos', () {
@@ -293,12 +305,6 @@ class EmployeeDetailScreen extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const GalleryScreen()),
             );
           }),
-          const SizedBox(width: 12),
-          _buildActionButton(
-            Iconsax.map,
-            'View Route',
-            () {}, // TODO: Implement Route View
-          ),
         ],
       ),
     );
@@ -382,6 +388,7 @@ class EmployeeDetailScreen extends StatelessWidget {
     required bool isLast,
     bool isOpacity = false,
   }) {
+    final showMap = icon == Iconsax.location;
     return Opacity(
       opacity: isOpacity ? 0.8 : 1.0,
       child: IntrinsicHeight(
@@ -453,14 +460,42 @@ class EmployeeDetailScreen extends StatelessWidget {
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    Text(
-                                      time,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary
-                                            .withValues(alpha: 0.6),
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 10,
-                                      ),
+                                    Row(
+                                      children: [
+                                        if (showMap)
+                                          GestureDetector(
+                                            onTap: () =>
+                                                _openMaps(description),
+                                            child: Container(
+                                              width: 28,
+                                              height: 28,
+                                              decoration: BoxDecoration(
+                                                color: AppColors.glassPrimary,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                border: Border.all(
+                                                  color: AppColors.glassBorder,
+                                                ),
+                                              ),
+                                              child: const Icon(
+                                                Iconsax.map_1,
+                                                size: 14,
+                                                color: AppColors.primary,
+                                              ),
+                                            ),
+                                          ),
+                                        if (showMap)
+                                          const SizedBox(width: 8),
+                                        Text(
+                                          time,
+                                          style: AppTypography.caption.copyWith(
+                                            color: AppColors.textSecondary
+                                                .withValues(alpha: 0.6),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -485,6 +520,15 @@ class EmployeeDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openMaps(String query) async {
+    final uri = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}',
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   Widget _buildFloatingNav() {

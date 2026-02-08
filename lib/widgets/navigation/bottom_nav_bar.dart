@@ -80,7 +80,7 @@ class BottomNavBar extends StatelessWidget {
       activeIcon: Iconsax.chart_2,
     ),
     BottomNavItem(
-      label: 'Groups',
+      label: 'Management',
       icon: Iconsax.people_copy,
       activeIcon: Iconsax.people,
     ),

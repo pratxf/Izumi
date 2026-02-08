@@ -9,7 +9,9 @@ import '../../widgets/navigation/app_header.dart';
 /// Create Task Screen - Standard Dark Glass Design
 /// Admin screen for creating and assigning tasks
 class CreateTaskScreen extends StatefulWidget {
-  const CreateTaskScreen({super.key});
+  final String? initialAssigneeName;
+
+  const CreateTaskScreen({super.key, this.initialAssigneeName});
 
   @override
   State<CreateTaskScreen> createState() => _CreateTaskScreenState();
@@ -20,15 +22,27 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     text: 'Regional survey Q1 2026',
   );
   final _descriptionController = TextEditingController();
+  final _assignedEmployeeController = TextEditingController();
 
-  String _assignType = 'individual'; // 'individual', 'group'
+  String _assignType = 'team_lead'; // 'individual', 'team_lead', 'group'
   String _priority = 'high'; // 'high', 'medium', 'low'
   bool _sendNotification = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialAssigneeName != null &&
+        widget.initialAssigneeName!.isNotEmpty) {
+      _assignType = 'individual';
+      _assignedEmployeeController.text = widget.initialAssigneeName!;
+    }
+  }
 
   @override
   void dispose() {
     _taskTitleController.dispose();
     _descriptionController.dispose();
+    _assignedEmployeeController.dispose();
     super.dispose();
   }
 
@@ -92,6 +106,14 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                           ),
                           const SizedBox(height: 12),
                           _buildRadioCard(
+                            title: 'Team Lead',
+                            icon: Icons.supervisor_account_outlined,
+                            value: 'team_lead',
+                            isPrimary: true,
+                            showVerified: true,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildRadioCard(
                             title: 'Entire Group',
                             icon: Icons.groups_outlined,
                             value: 'group',
@@ -99,6 +121,24 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                         ],
                       ),
                       const SizedBox(height: 24),
+
+                      // Assigned Employee (when individual)
+                      if (_assignType == 'individual') ...[
+                        _buildInputLabel('Assigned Employee'),
+                        GlassInputField(
+                          controller: _assignedEmployeeController,
+                          enabled: false,
+                          prefixIcon: Icons.person_outline,
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+
+                      // Select Team Lead Dropdown
+                      if (_assignType == 'team_lead') ...[
+                        _buildInputLabel('Select Team Lead'),
+                        _buildTeamLeadSelector(),
+                        const SizedBox(height: 24),
+                      ],
 
                       // Due Date & Priority Grid
                       _buildInputLabel('Due Date'),
@@ -274,6 +314,48 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             ),
           ),
           const Icon(Icons.calendar_today, color: AppColors.primary, size: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTeamLeadSelector() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.glassPrimary,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                'RK',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Rajesh Kumar',
+            style: AppTypography.bodyMedium.copyWith(
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const Spacer(),
+          Icon(Icons.expand_more, color: AppColors.textSecondary),
         ],
       ),
     );

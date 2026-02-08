@@ -7,6 +7,7 @@ import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/glass/glass_chip.dart';
 import '../../widgets/navigation/app_header.dart';
 import '../admin/create_task_screen.dart';
+import 'todo_screen.dart';
 
 /// Monitor Screen - Team Lead task monitoring view
 /// Standard Dark Glass Design
@@ -75,26 +76,32 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   GestureDetector(
                     onTap: _openCreateTaskScreen,
                     child: Container(
-                      width: 44,
-                      height: 44,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.4),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
+                        color: AppColors.glassPrimary,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.glassBorder),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.add,
+                            size: 18,
+                            color: AppColors.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Create Task',
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ],
-                        border: Border.all(
-                          color: AppColors.textPrimary.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.add,
-                        color: AppColors.textPrimary,
-                        size: 22,
                       ),
                     ),
                   ),
@@ -103,7 +110,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
 
               // Filter Tabs
               _buildFilterTabs(),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
               // Content
               Expanded(
@@ -112,21 +119,8 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Text(
-                          'My Group Tasks',
-                          style: AppTypography.h3,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
                       // Main Task Card
                       _buildTaskCard(),
-                      const SizedBox(height: 24),
-
-                      // New Region Assignment Card
-                      _buildNewAssignmentCard(),
                     ],
                   ),
                 ),
@@ -141,11 +135,9 @@ class _MonitorScreenState extends State<MonitorScreen> {
   Widget _buildFilterTabs() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
       child: Row(
         children: [
-          _buildFilterPill('All', 'all'),
-          const SizedBox(width: 12),
           _buildFilterPill('Task', 'task'),
           const SizedBox(width: 12),
           _buildFilterPill('Monitor', 'monitor'),
@@ -159,7 +151,17 @@ class _MonitorScreenState extends State<MonitorScreen> {
     return GlassChip(
       label: label,
       selected: isSelected,
-      onTap: () => setState(() => _selectedFilter = value),
+      onTap: () {
+        setState(() => _selectedFilter = value);
+        if (value == 'task') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const TodoScreen(isTeamLead: true),
+            ),
+          );
+        }
+      },
     );
   }
 
@@ -174,85 +176,47 @@ class _MonitorScreenState extends State<MonitorScreen> {
       ),
       child: Column(
         children: [
-          // Map Image Header
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            child: SizedBox(
-              height: 192,
-              width: double.infinity,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    'https://lh3.googleusercontent.com/aida-public/AB6AXuAbg-MMgaGbKRQwM82KB0Uwq3QJBENjWPVBxBnrGUgEC9H8ZG9rT3MOMLNcaihnp-qGfTyXZhNc0h1duikkQ-8Wi5cTrRxfS0m5QR1FaaSqWxZ1lwUfEgTPZNAX9soE1WXVgX891oQ-vo6PYirMzy4LZ5LCbyjR90VIIQ6f1cCkoycNkym5oXmUaRMTuX3BowkIsxP16jm3eaF9rScJ_56dcZj0zqktSNuGLMPAER4tvJYnZk27RFg5p7Q7Ila7kYhTHn8mnrmrfNsp',
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
-                        Container(color: AppColors.background),
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          AppColors.gradientStart.withValues(alpha: 0.8),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 16,
-                    left: 24,
-                    right: 24,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          // Title Section (no cover image)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Visit Region A', style: AppTypography.h2),
+                    const SizedBox(height: 4),
+                    Row(
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Visit Region A', style: AppTypography.h2),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.group,
-                                  color: AppColors.textSecondary,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Assigned to: 5 employees',
-                                  style: AppTypography.caption,
-                                ),
-                              ],
-                            ),
-                          ],
+                        const Icon(
+                          Icons.group,
+                          color: AppColors.textSecondary,
+                          size: 16,
                         ),
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: AppColors.glassPrimary,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: AppColors.glassBorder,
-                            ),
-                          ),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                            child: const Icon(
-                              Icons.more_horiz,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Assigned to: 5 employees',
+                          style: AppTypography.caption,
                         ),
                       ],
                     ),
+                  ],
+                ),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.glassPrimary,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.glassBorder),
                   ),
-                ],
-              ),
+                  child: const Icon(
+                    Icons.more_horiz,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -322,40 +286,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
             ),
           ),
 
-          // View Full Report Button
-          GestureDetector(
-            onTap: () {}, // Add functionality
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: AppColors.glassPrimary,
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(24),
-                ),
-                border: Border(
-                  top: BorderSide(color: AppColors.glassBorder),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'View Full Report',
-                    style: AppTypography.buttonMedium.copyWith(
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Icon(
-                    Icons.arrow_forward,
-                    size: 18,
-                    color: AppColors.primary,
-                  ),
-                ],
-              ),
-            ),
-          ),
+          const SizedBox(height: 12),
         ],
       ),
     );
@@ -443,34 +374,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
     );
   }
 
-  Widget _buildNewAssignmentCard() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24),
-      height: 96,
-      decoration: BoxDecoration(
-        color: AppColors.glassPrimary,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassBorder),
-        boxShadow: AppShadows.glass,
-      ),
-      child: Center(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add_circle, color: AppColors.textSecondary),
-            const SizedBox(width: 8),
-            Text(
-              'New Region Assignment',
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
+  // New assignment removed per latest spec
   void _openCreateTaskScreen() {
     Navigator.push(
       context,

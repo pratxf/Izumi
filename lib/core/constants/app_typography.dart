@@ -15,6 +15,7 @@ class AppTypography {
     fontSize: 34,
     fontWeight: FontWeight.w600, // SemiBold
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.4,
     height: 1.2,
   );
@@ -24,6 +25,7 @@ class AppTypography {
     fontSize: 28,
     fontWeight: FontWeight.w600, // SemiBold
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.4,
     height: 1.2,
   );
@@ -33,6 +35,7 @@ class AppTypography {
     fontSize: 22,
     fontWeight: FontWeight.w600, // SemiBold
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.4,
     height: 1.3,
   );
@@ -42,6 +45,7 @@ class AppTypography {
     fontSize: 20,
     fontWeight: FontWeight.w500, // Medium
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.4,
     height: 1.3,
   );
@@ -51,6 +55,7 @@ class AppTypography {
     fontSize: 17,
     fontWeight: FontWeight.w500, // Medium
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.4,
     height: 1.3,
   );
@@ -60,6 +65,7 @@ class AppTypography {
     fontSize: 17,
     fontWeight: FontWeight.w400, // Regular
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.4,
     height: 1.5,
   );
@@ -69,6 +75,7 @@ class AppTypography {
     fontSize: 16,
     fontWeight: FontWeight.w400, // Regular
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.3,
     height: 1.5,
   );
@@ -78,6 +85,7 @@ class AppTypography {
     fontSize: 15,
     fontWeight: FontWeight.w400, // Regular
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.2,
     height: 1.5,
   );
@@ -87,6 +95,7 @@ class AppTypography {
     fontSize: 13,
     fontWeight: FontWeight.w400, // Regular
     color: AppColors.textSecondary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.1,
     height: 1.4,
   );
@@ -96,6 +105,7 @@ class AppTypography {
     fontSize: 11,
     fontWeight: FontWeight.w400, // Regular
     color: AppColors.textTertiary,
+    decoration: TextDecoration.none,
     letterSpacing: 0,
     height: 1.4,
   );
@@ -105,6 +115,7 @@ class AppTypography {
     fontSize: 17,
     fontWeight: FontWeight.w500, // Medium
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.4,
     height: 1.2,
   );
@@ -113,6 +124,7 @@ class AppTypography {
     fontSize: 15,
     fontWeight: FontWeight.w500, // Medium
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.2,
     height: 1.2,
   );
@@ -122,6 +134,7 @@ class AppTypography {
     fontSize: 17,
     fontWeight: FontWeight.w400, // Regular
     color: AppColors.textPrimary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.4,
     height: 1.3,
   );
@@ -130,6 +143,7 @@ class AppTypography {
     fontSize: 17,
     fontWeight: FontWeight.w400, // Regular
     color: AppColors.textTertiary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.4,
     height: 1.3,
   );
@@ -139,6 +153,7 @@ class AppTypography {
     fontSize: 13,
     fontWeight: FontWeight.w400, // Regular
     color: AppColors.textSecondary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.1,
     height: 1.4,
   );
@@ -147,6 +162,7 @@ class AppTypography {
     fontSize: 10,
     fontWeight: FontWeight.w600,
     color: AppColors.primary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.1,
     height: 1.2,
   );
@@ -155,6 +171,7 @@ class AppTypography {
     fontSize: 10,
     fontWeight: FontWeight.w500,
     color: AppColors.textTertiary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.1,
     height: 1.2,
   );
@@ -164,6 +181,7 @@ class AppTypography {
     fontSize: 13,
     fontWeight: FontWeight.w400,
     color: AppColors.textSecondary,
+    decoration: TextDecoration.none,
     letterSpacing: -0.1,
     height: 1.4,
   );
@@ -173,6 +191,7 @@ class AppTypography {
     fontSize: 10,
     fontWeight: FontWeight.w500,
     color: AppColors.textTertiary,
+    decoration: TextDecoration.none,
     letterSpacing: 0.5,
     height: 1.3,
   );
