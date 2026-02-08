@@ -101,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             AppHeader(
               title: 'Izumi',
+              showLeading: false,
               showNotification: true,
               onNotificationTap: () {
                 Navigator.push(
@@ -251,32 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: Stack(
             children: [
-              // Decorative blurs
-              Positioned(
-                top: -40,
-                left: -40,
-                child: Container(
-                  width: 128,
-                  height: 128,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-              if (_isSessionActive)
-                Positioned(
-                  bottom: -40,
-                  right: -40,
-                  child: Container(
-                    width: 128,
-                    height: 128,
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
+              // Decorative blurs removed
               // Content
               Column(
                 children: [

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../widgets/inputs/otp_input_field.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
@@ -277,70 +278,23 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   Widget _buildLogo() {
-    return SizedBox(
-      width: 56,
-      height: 56,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Transform.rotate(
-            angle: 0.785398,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: AppColors.glassBorder,
-                  width: 2,
-                  strokeAlign: BorderSide.strokeAlignCenter,
-                ),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Center(
-                child: Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(4),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+    return Column(
+      children: [
+        SvgPicture.asset(
+          'assets/branding/izumi_logo.svg',
+          width: 64,
+          height: 64,
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'IZUMI',
+          style: AppTypography.h2.copyWith(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+            letterSpacing: -0.4,
           ),
-          Positioned(
-            top: 4,
-            right: 4,
-            child: Container(
-              width: 6,
-              height: 6,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.glassBorder,
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 4,
-            left: 4,
-            child: Container(
-              width: 6,
-              height: 6,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.glassBorder,
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

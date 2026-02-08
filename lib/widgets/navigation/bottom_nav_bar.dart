@@ -57,6 +57,30 @@ class BottomNavBar extends StatelessWidget {
     ),
   ];
 
+  /// Team Lead navigation items
+  static List<BottomNavItem> get teamLeadItems => const [
+    BottomNavItem(
+      label: 'Home',
+      icon: Iconsax.home_2_copy,
+      activeIcon: Iconsax.home_2,
+    ),
+    BottomNavItem(
+      label: 'Gallery',
+      icon: Iconsax.camera_copy,
+      activeIcon: Iconsax.camera,
+    ),
+    BottomNavItem(
+      label: 'Todo',
+      icon: Iconsax.task_square_copy,
+      activeIcon: Iconsax.task_square,
+    ),
+    BottomNavItem(
+      label: 'History',
+      icon: Iconsax.clock_copy,
+      activeIcon: Iconsax.clock,
+    ),
+  ];
+
   /// Admin navigation items
   static List<BottomNavItem> get adminItems => const [
     BottomNavItem(

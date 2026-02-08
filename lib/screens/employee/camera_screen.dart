@@ -26,7 +26,7 @@ class _CameraScreenState extends State<CameraScreen> {
   FlashMode _flashMode = FlashMode.off;
 
   final String _locationName = 'Rajendra Nagar';
-  final String _coords = '17.4065° N, 78.4842° E';
+  final String _coords = '17.4065ï¿½ N, 78.4842ï¿½ E';
   late final DateTime _timestamp = DateTime.now();
 
   @override
@@ -262,7 +262,15 @@ class _CameraScreenState extends State<CameraScreen> {
       future: _initializeControllerFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.done) {
-          return CameraPreview(_controller!);
+          final preview = CameraPreview(_controller!);
+          return FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: _controller!.value.previewSize?.height ?? 0,
+              height: _controller!.value.previewSize?.width ?? 0,
+              child: preview,
+            ),
+          );
         }
         return Container(
           color: Colors.black,
@@ -332,7 +340,7 @@ class _CameraScreenState extends State<CameraScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'IZUMI • FIELD INTELLIGENCE',
+                            'IZUMI ï¿½ FIELD INTELLIGENCE',
                             style: AppTypography.small.copyWith(
                               color: AppColors.textSecondary,
                               fontWeight: FontWeight.w700,
@@ -483,3 +491,4 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 }
+

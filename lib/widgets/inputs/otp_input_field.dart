@@ -56,6 +56,10 @@ class _OtpInputFieldState extends State<OtpInputField> {
     }
   }
 
+  void _requestFocus() {
+    FocusScope.of(context).requestFocus(_focusNode);
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasError = widget.errorText != null;
@@ -63,20 +67,20 @@ class _OtpInputFieldState extends State<OtpInputField> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(widget.length, (index) {
-            final hasFocus = _focusNode.hasFocus;
-            final isFilled = _value.length > index;
-            final isActive = hasFocus && _value.length == index;
-            final displayChar = isFilled ? _value[index] : '';
+        GestureDetector(
+          onTap: _requestFocus,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(widget.length, (index) {
+              final hasFocus = _focusNode.hasFocus;
+              final isFilled = _value.length > index;
+              final isActive = hasFocus && _value.length == index;
+              final displayChar = isFilled ? _value[index] : '';
 
-            return Padding(
-              padding: EdgeInsets.only(
-                right: index < widget.length - 1 ? AppSpacing.md : 0,
-              ),
-              child: GestureDetector(
-                onTap: () => _focusNode.requestFocus(),
+              return Padding(
+                padding: EdgeInsets.only(
+                  right: index < widget.length - 1 ? AppSpacing.md : 0,
+                ),
                 child: Container(
                   width: 64,
                   height: 64,
@@ -109,9 +113,9 @@ class _OtpInputFieldState extends State<OtpInputField> {
                     ),
                   ),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
         ),
         // Hidden input for OTP entry
         SizedBox(
@@ -124,6 +128,7 @@ class _OtpInputFieldState extends State<OtpInputField> {
             textInputAction: TextInputAction.done,
             maxLength: widget.length,
             onChanged: _onChanged,
+            onTap: _requestFocus,
             style: const TextStyle(color: Colors.transparent, fontSize: 1),
             cursorColor: Colors.transparent,
             enableInteractiveSelection: false,

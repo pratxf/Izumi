@@ -135,6 +135,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     },
   ];
 
+  List<Map<String, dynamic>> get _sortedEmployees {
+    final sorted = List<Map<String, dynamic>>.from(_employees);
+    sorted.sort(
+      (a, b) => (a['name'] as String)
+          .toLowerCase()
+          .compareTo((b['name'] as String).toLowerCase()),
+    );
+    return sorted;
+  }
+
   @override
   Widget build(BuildContext context) {
     return GradientBackground(
@@ -146,6 +156,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               title: 'Analytics',
               type: AppHeaderType.primary,
               showAvatar: false,
+              showLeading: false,
               actions: [_buildPeriodSelector()],
             ),
             const SizedBox(height: 16),
@@ -198,7 +209,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Employee Breakdown',
+                              'Employee Logs',
                               style: AppTypography.h3.copyWith(
                                 color: AppColors.textPrimary,
                                 fontWeight: FontWeight.bold,
@@ -240,7 +251,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         const SizedBox(height: 16),
 
                         // Employee Performance Cards (open detail screen)
-                        ..._employees.map((emp) {
+                        ..._sortedEmployees.map((emp) {
                           return _buildEmployeeCard(
                             name: emp['name'],
                             hours: emp['hours'],

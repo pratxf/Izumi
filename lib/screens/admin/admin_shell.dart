@@ -22,7 +22,7 @@ class _AdminShellState extends State<AdminShell> {
   final List<Widget> _screens = [
     const DashboardScreen(),
     const ImagesScreen(),
-    const MonitorScreen(),
+    const MonitorScreen(showFilter: false, isAdmin: true),
     const AnalyticsScreen(),
     const ManagementScreen(),
   ];

@@ -102,6 +102,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title: 'Dashboard',
               type: AppHeaderType.primary,
               showNotification: true,
+              showLeading: false,
               onNotificationTap: () {
                 Navigator.push(
                   context,
@@ -116,31 +117,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             // Search Bar (clean glass, gallery style)
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.glassPrimary,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppColors.glassBorder),
-                    ),
-                    child: GlassInputField(
-                      controller: _searchController,
-                      hint: 'Search employees...',
-                      prefixIcon: Iconsax.search_normal,
-                      onChanged: (_) => setState(() {}),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
+              child: GlassInputField(
+                controller: _searchController,
+                hint: 'Search employees...',
+                prefixIcon: Iconsax.search_normal,
+                onChanged: (_) => setState(() {}),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
                 ),
               ),
             ),

@@ -48,7 +48,7 @@ class NotificationsScreen extends StatelessWidget {
         title: 'Field Report Submitted',
         time: 'Yesterday',
         description: 'Report #8892 successfully uploaded to cloud storage.',
-        icon: Iconsax.document_text,
+        icon: Iconsax.note_2,
         color: AppColors.textSecondary,
         isMuted: true,
       ),
@@ -65,6 +65,7 @@ class NotificationsScreen extends StatelessWidget {
                 title: 'Notifications',
                 type: AppHeaderType.secondary,
                 showAvatar: false,
+                actions: [],
               ),
               Expanded(
                 child: ListView(
@@ -104,11 +105,19 @@ class NotificationsScreen extends StatelessWidget {
   Widget _buildNotificationCard(_NotificationItem item) {
     return GlassCard(
       margin: const EdgeInsets.only(bottom: 12),
-      borderRadius: 20,
-      borderLeftColor: item.isMuted ? null : item.color,
+      borderRadius: 22,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            width: 4,
+            height: 56,
+            decoration: BoxDecoration(
+              color: item.isMuted ? AppColors.glassBorder : item.color,
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          const SizedBox(width: 12),
           Container(
             width: 44,
             height: 44,

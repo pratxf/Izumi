@@ -63,6 +63,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
               title: 'Gallery',
               type: AppHeaderType.secondary,
               showAvatar: false,
+              showLeading: false,
             ),
 
             // Content
@@ -322,23 +323,16 @@ class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-          decoration: BoxDecoration(
-            color: AppColors.glassHeader,
-          ),
-          child: GlassInputField(
-            controller: controller,
-            hint: 'Search photos, tags...',
-            prefixIcon: Iconsax.search_normal,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
-            ),
-          ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      color: AppColors.glassHeader,
+      child: GlassInputField(
+        controller: controller,
+        hint: 'Search photos, tags...',
+        prefixIcon: Iconsax.search_normal,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
         ),
       ),
     );

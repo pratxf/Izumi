@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../widgets/inputs/text_input_field.dart';
@@ -199,79 +200,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Widget _buildLogo() {
     return Column(
       children: [
-        // Izumi Logo
-        SizedBox(
-          width: 64,
-          height: 64,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Transform.rotate(
-                angle: 0.785398, // 45 degrees
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: AppColors.glassBorder,
-                      width: 2,
-                      strokeAlign: BorderSide.strokeAlignCenter,
-                    ),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Center(
-                    child: Transform.rotate(
-                      angle: 0, // Keep inner square aligned
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Corner dots
-              Positioned(
-                top: 4,
-                right: 4,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.glassBorder,
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 4,
-                left: 4,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.glassBorder,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        SvgPicture.asset(
+          'assets/branding/izumi_logo.svg',
+          width: 72,
+          height: 72,
         ),
         const SizedBox(height: 16),
         Text(
-          'Izumi',
+          'IZUMI',
           style: AppTypography.h1.copyWith(
             color: AppColors.textPrimary,
             fontWeight: FontWeight.bold,

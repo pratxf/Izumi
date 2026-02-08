@@ -14,6 +14,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final bool showBackButton;
   final bool showAvatar;
   final bool showNotification;
+  final bool showLeading;
   final String? avatarUrl;
   final VoidCallback? onAvatarTap;
   final VoidCallback? onBackTap;
@@ -27,6 +28,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
     this.showBackButton = false,
     this.showAvatar = true,
     this.showNotification = false,
+    this.showLeading = true,
     this.avatarUrl,
     this.onAvatarTap,
     this.onBackTap,
@@ -61,7 +63,9 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
           child: Row(
             children: [
               // Back Button or Identity Icon
-              if (type == AppHeaderType.secondary || showBackButton)
+              if (!showLeading)
+                const SizedBox.shrink()
+              else if (type == AppHeaderType.secondary || showBackButton)
                 _GlassIconButton(
                   icon: Icons.arrow_back_ios_new_rounded,
                   onTap: onBackTap ?? () => Navigator.of(context).pop(),
@@ -198,4 +202,5 @@ class _GlassIconButton extends StatelessWidget {
     );
   }
 }
+
 

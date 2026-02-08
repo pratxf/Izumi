@@ -144,6 +144,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               title: 'History',
               type: AppHeaderType.primary,
               showAvatar: false,
+              showLeading: false,
             ),
 
             // Month Selector - Centered
@@ -180,27 +181,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          GestureDetector(
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text('Exporting CSV...'),
-                                  backgroundColor: AppColors.primary,
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Text(
-                              'Export CSV',
-                              style: AppTypography.caption.copyWith(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
+                          const SizedBox.shrink(),
                         ],
                       ),
                     ),
@@ -573,11 +554,34 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   ),
                                 )
                               else
-                                Text(
-                                  '${day['duration']} • ${day['distance']}',
-                                  style: AppTypography.caption.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Iconsax.timer_1,
+                                      size: 14,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      day['duration'] ?? '',
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Icon(
+                                      Iconsax.location,
+                                      size: 14,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      day['distance'] ?? '',
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                             ],
                           ),
@@ -632,42 +636,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                   ),
 
-                  // View Map Button
-                  Container(
-                    margin: const EdgeInsets.only(top: 16),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(
-                          color: AppColors.glassBorder,
-                        ),
-                      ),
-                    ),
-                    child: TextButton(
-                      onPressed: () {},
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        minimumSize: const Size(double.infinity, 48),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'View Detailed Map',
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            Icons.arrow_forward,
-                            size: 14,
-                            color: AppColors.textSecondary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  const SizedBox.shrink(),
                 ],
               ],
             ),

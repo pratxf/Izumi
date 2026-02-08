@@ -96,13 +96,17 @@ class _HoldButtonState extends State<HoldButton>
               borderRadius: BorderRadius.circular(AppSpacing.radiusMd - 2),
               child: Stack(
                 children: [
-                  // Progress fill
+                  // Full-bar fill on hold
                   Positioned.fill(
                     child: FractionallySizedBox(
                       alignment: Alignment.centerLeft,
                       widthFactor: _controller.value,
                       child: Container(
-                        color: AppColors.primary.withValues(alpha: 0.2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.2),
+                          borderRadius:
+                              BorderRadius.circular(AppSpacing.radiusMd - 2),
+                        ),
                       ),
                     ),
                   ),
@@ -135,31 +139,6 @@ class _HoldButtonState extends State<HoldButton>
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                  // Visible progress bar track
-                  Positioned(
-                    left: 12,
-                    right: 12,
-                    bottom: 8,
-                    child: Container(
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.glassBorder,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: FractionallySizedBox(
-                          widthFactor: _controller.value,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                        ),
-                      ),
                     ),
                   ),
                 ],

@@ -106,6 +106,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
               title: 'Gallery',
               type: AppHeaderType.secondary,
               showAvatar: false,
+              showLeading: false,
             ),
 
             // Content

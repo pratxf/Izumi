@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local analysis outputs
+analyze_output.txt
+analysis_errors_revert.txt
+analysis_errors_revert_v2.txt
+

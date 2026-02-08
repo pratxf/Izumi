@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/navigation/bottom_nav_bar.dart';
 import 'home_screen.dart';
 import 'gallery_screen.dart';
+import 'monitor_screen.dart';
 import 'todo_screen.dart';
 import 'history_screen.dart';
 import 'profile_screen.dart';
@@ -34,12 +35,19 @@ class _EmployeeShellState extends State<EmployeeShell> {
   @override
   Widget build(BuildContext context) {
     // Build screens with proper parameters
-    final screens = [
-      HomeScreen(isTeamLead: widget.isTeamLead, onAvatarTap: _openProfile),
-      const GalleryScreen(),
-      TodoScreen(isTeamLead: widget.isTeamLead),
-      const HistoryScreen(),
-    ];
+    final screens = widget.isTeamLead
+        ? [
+            HomeScreen(isTeamLead: true, onAvatarTap: _openProfile),
+            const GalleryScreen(),
+            const MonitorScreen(showFilter: true, isAdmin: false),
+            const HistoryScreen(),
+          ]
+        : [
+            HomeScreen(isTeamLead: false, onAvatarTap: _openProfile),
+            const GalleryScreen(),
+            TodoScreen(isTeamLead: false),
+            const HistoryScreen(),
+          ];
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -48,7 +56,9 @@ class _EmployeeShellState extends State<EmployeeShell> {
       bottomNavigationBar: BottomNavBar(
         currentIndex: _currentIndex,
         onTap: _onTabTap,
-        items: BottomNavBar.employeeItems,
+        items: widget.isTeamLead
+            ? BottomNavBar.teamLeadItems
+            : BottomNavBar.employeeItems,
       ),
     );
   }

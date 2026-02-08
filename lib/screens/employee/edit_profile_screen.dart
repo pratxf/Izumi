@@ -17,13 +17,11 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _nameController = TextEditingController(text: 'Rahul Kumar');
-  final _roleController = TextEditingController(text: 'Field Officer');
   final _phoneController = TextEditingController(text: '+91 98765 43210');
 
   @override
   void dispose() {
     _nameController.dispose();
-    _roleController.dispose();
     _phoneController.dispose();
     super.dispose();
   }
@@ -64,12 +62,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         label: 'Full Name',
                         controller: _nameController,
                         prefixIcon: Iconsax.user,
-                      ),
-                      const SizedBox(height: 16),
-                      _buildField(
-                        label: 'Designation',
-                        controller: _roleController,
-                        prefixIcon: Iconsax.briefcase,
                       ),
                       const SizedBox(height: 16),
                       _buildField(

@@ -10,8 +10,13 @@ import '../../widgets/navigation/app_header.dart';
 /// Admin screen for creating and assigning tasks
 class CreateTaskScreen extends StatefulWidget {
   final String? initialAssigneeName;
+  final bool isTeamLead;
 
-  const CreateTaskScreen({super.key, this.initialAssigneeName});
+  const CreateTaskScreen({
+    super.key,
+    this.initialAssigneeName,
+    this.isTeamLead = false,
+  });
 
   @override
   State<CreateTaskScreen> createState() => _CreateTaskScreenState();
@@ -24,9 +29,25 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   final _descriptionController = TextEditingController();
   final _assignedEmployeeController = TextEditingController();
 
-  String _assignType = 'team_lead'; // 'individual', 'team_lead', 'group'
+  String _assignType = 'individual'; // 'individual', 'team_lead', 'group'
   String _priority = 'high'; // 'high', 'medium', 'low'
   bool _sendNotification = true;
+
+  final List<String> _employees = [
+    'Rajesh Kumar',
+    'Priya Sharma',
+    'Amit Patel',
+    'David Kim',
+  ];
+
+  final List<String> _groups = [
+    'North Zone',
+    'South Zone',
+    'Central District',
+  ];
+
+  String _selectedEmployee = 'Rajesh Kumar';
+  String _selectedGroup = 'North Zone';
 
   @override
   void initState() {
@@ -35,6 +56,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         widget.initialAssigneeName!.isNotEmpty) {
       _assignType = 'individual';
       _assignedEmployeeController.text = widget.initialAssigneeName!;
+      _selectedEmployee = widget.initialAssigneeName!;
     }
   }
 
@@ -104,15 +126,18 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                             icon: Icons.person_outline,
                             value: 'individual',
                           ),
-                          const SizedBox(height: 12),
-                          _buildRadioCard(
-                            title: 'Team Lead',
-                            icon: Icons.supervisor_account_outlined,
-                            value: 'team_lead',
-                            isPrimary: true,
-                            showVerified: true,
-                          ),
-                          const SizedBox(height: 12),
+                          if (!widget.isTeamLead) ...[
+                            const SizedBox(height: 12),
+                            _buildRadioCard(
+                              title: 'Team Lead',
+                              icon: Icons.supervisor_account_outlined,
+                              value: 'team_lead',
+                              isPrimary: true,
+                              showVerified: true,
+                            ),
+                            const SizedBox(height: 12),
+                          ] else
+                            const SizedBox(height: 12),
                           _buildRadioCard(
                             title: 'Entire Group',
                             icon: Icons.groups_outlined,
@@ -124,19 +149,43 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
 
                       // Assigned Employee (when individual)
                       if (_assignType == 'individual') ...[
-                        _buildInputLabel('Assigned Employee'),
-                        GlassInputField(
-                          controller: _assignedEmployeeController,
-                          enabled: false,
-                          prefixIcon: Icons.person_outline,
+                        _buildInputLabel(
+                          widget.isTeamLead
+                              ? 'Choose Employee'
+                              : 'Assigned Employee',
                         ),
+                        widget.isTeamLead
+                            ? _buildEmployeeSelector()
+                            : GlassInputField(
+                                controller: _assignedEmployeeController,
+                                enabled: false,
+                                prefixIcon: Icons.person_outline,
+                              ),
                         const SizedBox(height: 24),
                       ],
 
                       // Select Team Lead Dropdown
-                      if (_assignType == 'team_lead') ...[
+                      if (_assignType == 'team_lead' &&
+                          !widget.isTeamLead) ...[
                         _buildInputLabel('Select Team Lead'),
                         _buildTeamLeadSelector(),
+                        const SizedBox(height: 24),
+                      ],
+
+                      // Group Selector (team lead)
+                      if (_assignType == 'group' && widget.isTeamLead) ...[
+                        _buildInputLabel('Choose Group'),
+                        _buildGroupSelector(),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'All employees in the selected group will be assigned.',
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 24),
                       ],
 
@@ -285,9 +334,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
               ),
             ),
-            if (showVerified) ...[
+            if (isSelected) ...[
               const Spacer(),
-              const Icon(Icons.verified, color: AppColors.primary, size: 20),
+              const Icon(Icons.check_circle, color: AppColors.primary, size: 20),
             ],
           ],
         ),
@@ -356,6 +405,130 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           ),
           const Spacer(),
           Icon(Icons.expand_more, color: AppColors.textSecondary),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmployeeSelector() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.glassPrimary,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                _selectedEmployee
+                    .split(' ')
+                    .map((e) => e[0])
+                    .take(2)
+                    .join(),
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _selectedEmployee,
+              style: AppTypography.bodyMedium.copyWith(
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          PopupMenuButton<String>(
+            color: AppColors.glassStrong,
+            icon: Icon(Icons.expand_more, color: AppColors.textSecondary),
+            onSelected: (value) => setState(() => _selectedEmployee = value),
+            itemBuilder: (context) {
+              return _employees
+                  .map(
+                    (employee) => PopupMenuItem(
+                      value: employee,
+                      child: Text(
+                        employee,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupSelector() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.glassPrimary,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.groups_outlined,
+              size: 18,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _selectedGroup,
+              style: AppTypography.bodyMedium.copyWith(
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          PopupMenuButton<String>(
+            color: AppColors.glassStrong,
+            icon: Icon(Icons.expand_more, color: AppColors.textSecondary),
+            onSelected: (value) => setState(() => _selectedGroup = value),
+            itemBuilder: (context) {
+              return _groups
+                  .map(
+                    (group) => PopupMenuItem(
+                      value: group,
+                      child: Text(
+                        group,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList();
+            },
+          ),
         ],
       ),
     );

@@ -34,9 +34,14 @@ class GlassChip extends StatelessWidget {
               vertical: AppSpacing.sm,
             ),
             decoration: BoxDecoration(
-              color: selected ? AppColors.glassHover : AppColors.glassPrimary,
+              color: selected
+                  ? AppColors.primary.withValues(alpha: 0.25)
+                  : AppColors.glassPrimary,
               borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-              border: Border.all(color: AppColors.glassBorder, width: 1),
+              border: Border.all(
+                color: selected ? AppColors.primary : AppColors.glassBorder,
+                width: 1,
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -54,9 +59,8 @@ class GlassChip extends StatelessWidget {
                 Text(
                   label,
                   style: AppTypography.bodySmall.copyWith(
-                    color: selected
-                        ? AppColors.textPrimary
-                        : AppColors.textSecondary,
+                    color:
+                        selected ? AppColors.textPrimary : AppColors.textSecondary,
                     fontWeight: FontWeight.w500,
                   ),
                 ),

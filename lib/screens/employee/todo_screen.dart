@@ -9,6 +9,7 @@ import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/navigation/app_header.dart';
 import '../../widgets/buttons/hold_button.dart';
 import '../admin/create_task_screen.dart';
+import 'monitor_screen.dart';
 
 /// Todo Screen - Redesigned per reference
 /// Shows tasks and follow-ups with filter pills
@@ -76,42 +77,32 @@ class _TodoScreenState extends State<TodoScreen> {
             Column(
               children: [
                 AppHeader(
-                  title: 'Tasks',
+                  title: 'Todo',
                   type: AppHeaderType.primary,
                   showAvatar: false,
+                  showLeading: false,
                   actions: widget.isTeamLead
                       ? [
                           GestureDetector(
                             onTap: _openCreateTaskScreen,
                             child: Container(
-                              height: 40,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 14),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
                               decoration: BoxDecoration(
-                                color: AppColors.primary,
+                                color: AppColors.glassPrimary,
                                 borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.primary.withValues(
-                                      alpha: 0.4,
-                                    ),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                                border: Border.all(
-                                  color: AppColors.textPrimary.withValues(
-                                    alpha: 0.2,
-                                  ),
-                                ),
+                                border:
+                                    Border.all(color: AppColors.glassBorder),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(
+                                  Icon(
                                     Iconsax.add,
-                                    color: AppColors.textPrimary,
                                     size: 18,
+                                    color: AppColors.primary,
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
@@ -119,7 +110,6 @@ class _TodoScreenState extends State<TodoScreen> {
                                     style: AppTypography.bodySmall.copyWith(
                                       color: AppColors.textPrimary,
                                       fontWeight: FontWeight.w600,
-                                      decoration: TextDecoration.none,
                                     ),
                                   ),
                                 ],
@@ -142,6 +132,10 @@ class _TodoScreenState extends State<TodoScreen> {
                       _buildFilterPill('Task', 'task'),
                       const SizedBox(width: 12),
                       _buildFilterPill('Follow Up', 'followup'),
+                      if (widget.isTeamLead) ...[
+                        const SizedBox(width: 12),
+                        _buildFilterPill('Monitor', 'monitor'),
+                      ],
                     ],
                   ),
                 ),
@@ -273,11 +267,22 @@ class _TodoScreenState extends State<TodoScreen> {
   }
 
   Widget _buildFilterPill(String label, String value) {
-    final isSelected = _selectedTab == value;
+    final isSelected = value != 'monitor' && _selectedTab == value;
     return GlassChip(
       label: label,
       selected: isSelected,
-      onTap: () => setState(() => _selectedTab = value),
+      onTap: () {
+        if (value == 'monitor') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const MonitorScreen(showFilter: true),
+            ),
+          );
+          return;
+        }
+        setState(() => _selectedTab = value);
+      },
     );
   }
 
@@ -311,135 +316,78 @@ class _TodoScreenState extends State<TodoScreen> {
         badgeText = 'LOW';
     }
 
-    return GlassCard(
-      borderRadius: 20,
-      borderLeftColor: borderColor,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Title Row
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task['emoji'] ?? '📋',
-                  style: const TextStyle(fontSize: 18),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    task['title'],
-                    style: AppTypography.headline.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-                if (isHighPriority)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: badgeBgColor,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      badgeText,
-                      style: TextStyle(
-                        color: badgeColor,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Task details
-            if (!isFollowUp) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Icon(
-                          Iconsax.user,
-                          size: 16,
-                          color: AppColors.textTertiary,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Assigned by: ${task['assignedBy']}',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.textSecondary,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      Icon(
-                        Iconsax.calendar,
-                        size: 16,
-                        color: AppColors.textTertiary,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Due: ${task['dueDate']}',
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ] else ...[
+    return GlassPanel(
+      borderRadius: 24,
+      padding: const EdgeInsets.all(20),
+      backgroundColor: AppColors.glassStrong,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
+                width: 4,
+                height: 28,
+                margin: const EdgeInsets.only(top: 2, right: 10),
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.2),
+                  color: borderColor,
                   borderRadius: BorderRadius.circular(8),
                 ),
+              ),
+              Text(
+                task['emoji'] ?? '??',
+                style: const TextStyle(fontSize: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
                 child: Text(
-                  'Type: ${task['contactType']}',
-                  style: TextStyle(
-                    color: AppColors.warning,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                  task['title'],
+                  style: AppTypography.headline.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.bold,
                     decoration: TextDecoration.none,
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
+              if (isHighPriority)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: badgeBgColor,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    badgeText,
+                    style: TextStyle(
+                      color: badgeColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (!isFollowUp) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Row(
                     children: [
                       Icon(
-                        Iconsax.call,
+                        Iconsax.user,
                         size: 16,
                         color: AppColors.textTertiary,
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        task['phone'],
+                        'Assigned by: ${task['assignedBy']}',
                         style: AppTypography.caption.copyWith(
                           color: AppColors.textSecondary,
                           decoration: TextDecoration.none,
@@ -447,94 +395,161 @@ class _TodoScreenState extends State<TodoScreen> {
                       ),
                     ],
                   ),
-                  if (task['dueToday'] == true)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.glassPrimary,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Due Today',
-                        style: AppTypography.overline.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-
-            const SizedBox(height: 20),
-            HoldButton(
-              label: 'Hold to Complete',
-              onComplete: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Task completed!'),
-                    backgroundColor: AppColors.success,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCompletedTaskCard(Map<String, dynamic> task) {
-    return Opacity(
-      opacity: 0.6,
-      child: GlassCard(
-        borderRadius: 20,
-        borderLeftColor: AppColors.textTertiary,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Text(
-                task['emoji'] ?? '✅',
-                style: const TextStyle(fontSize: 18),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+                Row(
                   children: [
-                    Text(
-                      task['title'],
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.bold,
-                        decoration: TextDecoration.lineThrough,
-                        decorationThickness: 2,
-                        decorationColor: AppColors.textTertiary,
-                      ),
+                    Icon(
+                      Iconsax.calendar,
+                      size: 16,
+                      color: AppColors.textTertiary,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(width: 6),
                     Text(
-                      'Completed at ${task['completedAt']}',
+                      'Due: ${task['dueDate']}',
                       style: AppTypography.caption.copyWith(
-                        color: AppColors.textTertiary,
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
                         decoration: TextDecoration.none,
                       ),
                     ),
                   ],
                 ),
+              ],
+            ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 4,
               ),
-              Icon(Icons.chevron_right, color: AppColors.textTertiary),
-            ],
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'Type: ${task['contactType']}',
+                style: TextStyle(
+                  color: AppColors.warning,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Iconsax.call,
+                      size: 16,
+                      color: AppColors.textTertiary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      task['phone'],
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.textSecondary,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+                if (task['dueToday'] == true)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.glassPrimary,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      'Due Today',
+                      style: AppTypography.overline.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 20),
+          HoldButton(
+            label: 'Hold to Complete',
+            onComplete: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Task completed!'),
+                  backgroundColor: AppColors.success,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              );
+            },
           ),
+        ],
+      ),
+    );
+  }
+
+Widget _buildCompletedTaskCard(Map<String, dynamic> task) {
+    return Opacity(
+      opacity: 0.6,
+      child: GlassPanel(
+        borderRadius: 24,
+        padding: const EdgeInsets.all(16),
+        backgroundColor: AppColors.glassStrong,
+        child: Row(
+          children: [
+            Container(
+              width: 4,
+              height: 28,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            Text(
+              task['emoji'] ?? '?',
+              style: const TextStyle(fontSize: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    task['title'],
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.lineThrough,
+                      decorationThickness: 2,
+                      decorationColor: AppColors.textTertiary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Completed at ${task['completedAt']}',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textTertiary,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: AppColors.textTertiary),
+          ],
         ),
       ),
     );
@@ -543,8 +558,11 @@ class _TodoScreenState extends State<TodoScreen> {
   void _openCreateTaskScreen() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CreateTaskScreen()),
+      MaterialPageRoute(
+        builder: (_) => CreateTaskScreen(isTeamLead: widget.isTeamLead),
+      ),
     );
   }
 }
+
 

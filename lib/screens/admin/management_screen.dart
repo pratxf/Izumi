@@ -37,6 +37,7 @@ class _ManagementScreenState extends State<ManagementScreen> {
               title: 'Management',
               type: AppHeaderType.primary,
               showAvatar: false,
+              showLeading: false,
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
