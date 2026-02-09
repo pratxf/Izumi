@@ -309,9 +309,6 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   WidgetStateProperty.all(AppColors.textPrimary),
               todayBackgroundColor:
                   WidgetStateProperty.all(AppColors.primary.withOpacity(0.2)),
-              actionsPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              actionBarHeight: 48,
             ),
           ),
           child: child!,

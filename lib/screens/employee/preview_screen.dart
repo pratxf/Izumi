@@ -87,8 +87,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   WidgetStateProperty.all(AppColors.textPrimary),
               todayBackgroundColor:
                   WidgetStateProperty.all(AppColors.primary.withOpacity(0.2)),
-              actionsPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             ),
           ),
           child: child!,
