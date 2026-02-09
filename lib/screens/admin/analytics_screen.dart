@@ -1,7 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
@@ -20,6 +19,7 @@ class AnalyticsScreen extends StatefulWidget {
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
   String _selectedPeriod = 'This Week';
+  DateTimeRange? _customRange;
 
   final List<String> _periods = ['Today', 'This Week', 'This Month', 'Custom'];
   final List<Map<String, dynamic>> _employees = [
@@ -28,7 +28,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       'hours': 32,
       'distance': 45.2,
       'photos': 28,
-      'isTop': true,
+      'isTop': false,
       'logs': [
         {
           'title': 'Location Update',
@@ -216,37 +216,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.surfaceMuted,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: AppColors.glassBorder,
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Iconsax.sort,
-                                    size: 14,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Sort',
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                           ],
                         ),
                         const SizedBox(height: 16),
@@ -311,11 +280,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Icon(
-              Iconsax.arrow_down_1,
-              size: 18,
-              color: AppColors.textPrimary,
-            ),
           ],
         ),
       ),
@@ -345,8 +309,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     ? Icon(Iconsax.check, color: AppColors.primary)
                     : null,
                 onTap: () {
-                  setState(() => _selectedPeriod = period);
                   Navigator.pop(context);
+                  if (period == 'Custom') {
+                    _pickCustomRange();
+                  } else {
+                    setState(() {
+                      _selectedPeriod = period;
+                      _customRange = null;
+                    });
+                  }
                 },
               ),
             ),
@@ -354,6 +325,65 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final initialRange = _customRange ??
+        DateTimeRange(start: now.subtract(const Duration(days: 6)), end: now);
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2024, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
+      initialDateRange: initialRange,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: AppColors.primary,
+              onPrimary: AppColors.textPrimary,
+              surface: AppColors.glassNav,
+              onSurface: AppColors.textPrimary,
+            ),
+            dialogBackgroundColor: AppColors.glassNav,
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                textStyle: AppTypography.bodySmall.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _customRange = picked;
+        _selectedPeriod = '${_formatDate(picked.start)} - ${_formatDate(picked.end)}';
+      });
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${date.day} ${months[date.month - 1]}';
   }
 
   Widget _buildSummaryCard() {
@@ -475,11 +505,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         decoration: BoxDecoration(
           color: AppColors.glassPrimary,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isTop
-                ? AppColors.primary.withValues(alpha: 0.5)
-                : AppColors.glassBorder,
-          ),
+          border: Border.all(color: AppColors.glassBorder),
           boxShadow: AppShadows.glass,
         ),
         child: Row(
@@ -489,16 +515,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: isTop
-                    ? AppColors.primary.withValues(alpha: 0.1)
-                    : AppColors.surfaceMuted,
+                color: AppColors.surfaceMuted,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Center(
                 child: Text(
                   initials,
                   style: AppTypography.bodyMedium.copyWith(
-                    color: isTop ? AppColors.primary : AppColors.textSecondary,
+                    color: AppColors.textSecondary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -512,36 +536,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        name,
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (isTop) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            'Top',
-                            style: AppTypography.overline.copyWith(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                  Text(
+                    name,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),

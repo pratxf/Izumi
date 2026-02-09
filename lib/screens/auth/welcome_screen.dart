@@ -41,12 +41,16 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       return;
     }
 
+    final normalizedPhone = _phoneController.text.replaceAll(RegExp(r'\s+'), '');
+    final resolvedRole =
+        normalizedPhone == '8888888888' ? 'team_lead' : role;
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => OtpScreen(
           phoneNumber: '$_selectedCountryCode ${_phoneController.text}',
-          role: role,
+          role: resolvedRole,
         ),
       ),
     );
@@ -163,13 +167,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   child: Column(
                     children: [
                       _buildPrimaryButton(
-                        'Sign in as Employee',
+                        'Sign In',
                         onTap: () => _signIn('employee'),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildGlassButton(
-                        'Sign in as Team Lead',
-                        onTap: () => _signIn('team_lead'),
                       ),
                       const SizedBox(height: 16),
                       _buildGlassButton(
