@@ -1,0 +1,223 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =============================================
+    // Helper Functions
+    // =============================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Get the user's active role from custom claims (with backward compat)
+    function getUserRole() {
+      return request.auth.token.activeRole != null
+        ? request.auth.token.activeRole
+        : request.auth.token.role;
+    }
+
+    // Get the user's roles array from custom claims
+    function getUserRoles() {
+      return request.auth.token.roles != null
+        ? request.auth.token.roles
+        : [request.auth.token.role];
+    }
+
+    // Get the user's enterprise ID from custom claims
+    function getEnterpriseId() {
+      return request.auth.token.enterpriseId;
+    }
+
+    // Get the user's group ID from custom claims
+    function getGroupId() {
+      return request.auth.token.groupId;
+    }
+
+    // Check if the user is an admin (checks roles array with fallback)
+    function isAdmin() {
+      return (request.auth.token.roles != null && 'admin' in request.auth.token.roles)
+        || getUserRole() == 'admin';
+    }
+
+    // Check if the user is a team lead
+    function isTeamLead() {
+      return (request.auth.token.roles != null && 'team_lead' in request.auth.token.roles)
+        || getUserRole() == 'team_lead';
+    }
+
+    // Check if the user is an employee
+    function isEmployee() {
+      return (request.auth.token.roles != null && 'employee' in request.auth.token.roles)
+        || getUserRole() == 'employee';
+    }
+
+    // Check if the user belongs to the given enterprise
+    function belongsToEnterprise(enterpriseId) {
+      return getEnterpriseId() == enterpriseId;
+    }
+
+    // Check if the authenticated user is the owner of the resource
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Check if a user is in the team lead's group
+    function isInMyGroup(userId) {
+      return isTeamLead() &&
+        exists(/databases/$(database)/documents/groups/$(getGroupId())) &&
+        userId in get(/databases/$(database)/documents/groups/$(getGroupId())).data.memberIds;
+    }
+
+    // =============================================
+    // Users Collection
+    // =============================================
+    match /users/{userId} {
+      // Read: Own profile OR admin in same enterprise OR team lead in same enterprise
+      // Also allow authenticated users to query by their own phone number (for pre-created user migration)
+      allow read: if isAuthenticated() &&
+        (isOwner(userId) ||
+         (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId)) ||
+         (resource.data.phone == request.auth.token.phone_number));
+
+      // Create: Admin can create any user; authenticated users can create their own doc
+      allow create: if isAuthenticated() &&
+        (isAdmin() || isOwner(userId));
+
+      // Update: Own profile OR admin in same enterprise
+      allow update: if isAuthenticated() &&
+        (isOwner(userId) ||
+         (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)));
+
+      // Delete: Admin only
+      allow delete: if isAuthenticated() &&
+        isAdmin() && belongsToEnterprise(resource.data.enterpriseId);
+    }
+
+    // =============================================
+    // Sessions Collection
+    // =============================================
+    match /sessions/{sessionId} {
+      // Read: Own session OR admin in same enterprise OR team lead reading group member session
+      allow read: if isAuthenticated() &&
+        (isOwner(resource.data.employeeId) ||
+         (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId) && isInMyGroup(resource.data.employeeId)));
+
+      // Create: Only the session owner (employeeId must match auth uid)
+      allow create: if isAuthenticated() &&
+        isOwner(request.resource.data.employeeId);
+
+      // Update: Only the session owner
+      allow update: if isAuthenticated() &&
+        isOwner(resource.data.employeeId);
+
+      // Delete: Never delete sessions
+      allow delete: if false;
+
+      // -----------------------------------------
+      // Session Locations Subcollection
+      // -----------------------------------------
+      match /locations/{locationId} {
+        // Read/Write: Only if the user owns the parent session
+        allow read, write: if isAuthenticated() &&
+          isOwner(get(/databases/$(database)/documents/sessions/$(sessionId)).data.employeeId);
+      }
+    }
+
+    // =============================================
+    // Photos Collection
+    // =============================================
+    match /photos/{photoId} {
+      // Read: Own photos OR admin in same enterprise OR team lead reading group member photos
+      allow read: if isAuthenticated() &&
+        (isOwner(resource.data.employeeId) ||
+         (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId) && isInMyGroup(resource.data.employeeId)));
+
+      // Create: Only the photo owner (employeeId must match auth uid)
+      allow create: if isAuthenticated() &&
+        isOwner(request.resource.data.employeeId);
+
+      // Delete: Own photos OR admin
+      allow delete: if isAuthenticated() &&
+        (isOwner(resource.data.employeeId) ||
+         (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)));
+    }
+
+    // =============================================
+    // Tasks Collection
+    // =============================================
+    match /tasks/{taskId} {
+      // Read: Assigned employee OR admin in same enterprise OR team_lead in same enterprise
+      allow read: if isAuthenticated() &&
+        (isOwner(resource.data.assignedTo) ||
+         (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId)));
+
+      // Create: Admin or team_lead in same enterprise
+      allow create: if isAuthenticated() &&
+        (isAdmin() || isTeamLead()) &&
+        belongsToEnterprise(request.resource.data.enterpriseId);
+
+      // Update: Assigned employee OR admin in same enterprise
+      allow update: if isAuthenticated() &&
+        (isOwner(resource.data.assignedTo) ||
+         (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)));
+
+      // Delete: Admin only in same enterprise
+      allow delete: if isAuthenticated() &&
+        isAdmin() && belongsToEnterprise(resource.data.enterpriseId);
+    }
+
+    // =============================================
+    // Groups Collection
+    // =============================================
+    match /groups/{groupId} {
+      // Read: Any authenticated user in the same enterprise
+      allow read: if isAuthenticated() &&
+        belongsToEnterprise(resource.data.enterpriseId);
+
+      // Create, Update, Delete: Admin only in same enterprise
+      allow create: if isAuthenticated() &&
+        isAdmin() && belongsToEnterprise(request.resource.data.enterpriseId);
+
+      allow update: if isAuthenticated() &&
+        isAdmin() && belongsToEnterprise(resource.data.enterpriseId);
+
+      allow delete: if isAuthenticated() &&
+        isAdmin() && belongsToEnterprise(resource.data.enterpriseId);
+    }
+
+    // =============================================
+    // Daily Summaries Collection
+    // =============================================
+    match /dailySummaries/{summaryId} {
+      // Read: Own summaries OR admin in same enterprise OR team lead reading group member summaries
+      allow read: if isAuthenticated() &&
+        (isOwner(resource.data.employeeId) ||
+         (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId) && isInMyGroup(resource.data.employeeId)));
+
+      // Write: Only Cloud Functions (no client writes allowed)
+      allow write: if false;
+    }
+
+    // =============================================
+    // Activity Logs Collection
+    // =============================================
+    match /activityLogs/{logId} {
+      // Read: Own logs OR admin in same enterprise OR team lead reading group member logs
+      allow read: if isAuthenticated() &&
+        (isOwner(resource.data.employeeId) ||
+         (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId) && isInMyGroup(resource.data.employeeId)));
+
+      // Create: Only the log owner (employeeId must match auth uid)
+      allow create: if isAuthenticated() &&
+        isOwner(request.resource.data.employeeId);
+    }
+  }
+}

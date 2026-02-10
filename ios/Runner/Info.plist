@@ -41,6 +41,14 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Izumi needs camera access to capture geotagged field photos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Izumi needs microphone access for camera functionality.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Izumi needs your location to geotag photos and track field sessions.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Izumi needs background location access for continuous session tracking.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

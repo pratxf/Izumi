@@ -1,11 +1,15 @@
 import 'dart:ui';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
-import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/navigation/app_header.dart';
 
 /// Export Data Screen - Configure and generate data exports
@@ -17,16 +21,47 @@ class ExportDataScreen extends StatefulWidget {
 }
 
 class _ExportDataScreenState extends State<ExportDataScreen> {
-  bool _exportDistributorData = true;
-  bool _exportFarmerData = true;
+  String _selectedExportType = 'sessions';
   String _selectedFormat = 'csv';
+  DateTime _startDate = DateTime.now().subtract(const Duration(days: 30));
+  DateTime _endDate = DateTime.now();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isExporting = false;
+
+  static const _exportTypes = [
+    {'key': 'sessions', 'label': 'Sessions', 'icon': Iconsax.timer_1},
+    {'key': 'tasks', 'label': 'Tasks', 'icon': Iconsax.task_square},
+    {'key': 'photos', 'label': 'Photos', 'icon': Iconsax.camera},
+    {'key': 'attendance', 'label': 'Attendance', 'icon': Iconsax.calendar_tick},
+    {'key': 'summary', 'label': 'Summary', 'icon': Iconsax.chart_2},
+  ];
 
   @override
   void dispose() {
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDate({required bool isStart}) async {
+    final initial = isStart ? _startDate : _endDate;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now(),
+    );
+    if (date != null) {
+      setState(() {
+        if (isStart) {
+          _startDate = date;
+          if (_startDate.isAfter(_endDate)) _endDate = _startDate;
+        } else {
+          _endDate = date;
+          if (_endDate.isBefore(_startDate)) _startDate = _endDate;
+        }
+      });
+    }
   }
 
   @override
@@ -47,37 +82,57 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
               // Content
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 160),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 160),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Data to Export Section
-                      _buildSectionHeader('Data to Export'),
+                      // Export Type Section
+                      _buildSectionHeader('Export Type'),
                       const SizedBox(height: 12),
-                      GlassPanel(
-                        padding: EdgeInsets.zero,
+                      _buildGlassCard(
                         child: Column(
-                          children: [
-                            _buildCheckboxRow(
-                              'Distributor Data',
-                              _exportDistributorData,
-                              (val) => setState(
-                                () => _exportDistributorData = val ?? true,
-                              ),
-                            ),
-                            Container(
-                              height: 1,
-                              color: AppColors.glassPrimary,
-                            ),
-                            _buildCheckboxRow(
-                              'Farmer Data',
-                              _exportFarmerData,
-                              (val) => setState(
-                                () => _exportFarmerData = val ?? true,
-                              ),
-                            ),
-                          ],
+                          children: _exportTypes.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final type = entry.value;
+                            final key = type['key'] as String;
+                            final label = type['label'] as String;
+                            final icon = type['icon'] as IconData;
+                            return Column(
+                              children: [
+                                if (index > 0)
+                                  Container(
+                                    height: 1,
+                                    color: AppColors.glassPrimary,
+                                  ),
+                                _buildExportTypeRow(key, label, icon),
+                              ],
+                            );
+                          }).toList(),
                         ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Date Range Section
+                      _buildSectionHeader('Date Range'),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildDatePickerCard(
+                              'Start',
+                              _startDate,
+                              () => _pickDate(isStart: true),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildDatePickerCard(
+                              'End',
+                              _endDate,
+                              () => _pickDate(isStart: false),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 24),
 
@@ -114,9 +169,15 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
                       const SizedBox(height: 24),
 
                       // Security Check Section
-                      GlassPanel(
+                      Container(
                         padding: const EdgeInsets.all(16),
-                        backgroundColor: AppColors.glassStrong,
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade100.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Colors.amber.shade200.withValues(alpha: 0.5),
+                          ),
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -125,13 +186,13 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
                                 Icon(
                                   Iconsax.lock,
                                   size: 20,
-                                  color: AppColors.warning,
+                                  color: Colors.amber.shade700,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
                                   'SECURITY CHECK',
                                   style: AppTypography.overline.copyWith(
-                                    color: AppColors.warning,
+                                    color: Colors.amber.shade900,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 0.5,
                                   ),
@@ -139,8 +200,13 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            GlassPanel(
-                              padding: EdgeInsets.zero,
+                            Container(
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: AppColors.textPrimary
+                                    .withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
                               child: TextField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
@@ -203,7 +269,7 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
             ),
           ),
           child: GestureDetector(
-            onTap: _generateExport,
+            onTap: _isExporting ? null : _generateExport,
             child: Container(
               height: 64,
               decoration: BoxDecoration(
@@ -219,21 +285,32 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Iconsax.arrow_down_2,
-                    color: AppColors.textPrimary,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Generate Export',
-                    style: AppTypography.headline.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
+                children: _isExporting
+                    ? [
+                        const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ]
+                    : [
+                        const Icon(
+                          Iconsax.arrow_down_2,
+                          color: AppColors.textPrimary,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Generate Export',
+                          style: AppTypography.headline.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
               ),
             ),
           ),
@@ -256,42 +333,114 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
     );
   }
 
-  Widget _buildCheckboxRow(
-    String label,
-    bool value,
-    ValueChanged<bool?> onChanged,
-  ) {
+  Widget _buildGlassCard({required Widget child}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.glassPrimary,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppColors.glassBorder),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExportTypeRow(String key, String label, IconData icon) {
+    final isSelected = _selectedExportType == key;
     return GestureDetector(
-      onTap: () => onChanged(!value),
+      onTap: () => setState(() => _selectedExportType = key),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              label,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? AppColors.primary : AppColors.textTertiary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                ),
               ),
             ),
             Container(
               width: 24,
               height: 24,
               decoration: BoxDecoration(
-                color: value ? AppColors.primary : AppColors.textPrimary,
+                color: isSelected ? AppColors.primary : Colors.transparent,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: value ? AppColors.primary : AppColors.border,
+                  color: isSelected ? AppColors.primary : AppColors.border,
                   width: 2,
                 ),
               ),
-              child: value
+              child: isSelected
                   ? const Icon(Iconsax.check,
                       color: AppColors.textPrimary, size: 16)
                   : null,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDatePickerCard(String label, DateTime date, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.glassPrimary,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppColors.glassBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: AppTypography.overline.copyWith(
+                    color: AppColors.textTertiary,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Iconsax.calendar_1,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      DateFormat('dd MMM yyyy').format(date),
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -345,12 +494,12 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
     );
   }
 
-  void _generateExport() {
+  Future<void> _generateExport() async {
     if (_passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Please confirm your password'),
-        backgroundColor: AppColors.critical,
+          backgroundColor: AppColors.critical,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -360,30 +509,99 @@ class _ExportDataScreenState extends State<ExportDataScreen> {
       return;
     }
 
-    if (!_exportDistributorData && !_exportFarmerData) {
+    setState(() => _isExporting = true);
+
+    try {
+      // Re-authenticate with password to verify admin identity
+      final authProvider = context.read<AuthProvider>();
+      final email = authProvider.currentUser?.email;
+
+      if (email != null && email.isNotEmpty) {
+        final success = await authProvider.reauthenticateWithPassword(
+          _passwordController.text,
+        );
+        if (!success) {
+          if (!mounted) return;
+          setState(() => _isExporting = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Incorrect password'),
+              backgroundColor: AppColors.critical,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+          return;
+        }
+      }
+
+      // Call Cloud Function to generate export
+      final enterpriseId = authProvider.enterpriseId ?? '';
+      final functions = FirebaseFunctions.instanceFor(region: 'asia-south1');
+      final callable = functions.httpsCallable('exportReport');
+
+      final result = await callable.call<Map<String, dynamic>>({
+        'enterpriseId': enterpriseId,
+        'type': _selectedExportType,
+        'period': {
+          'startDate': _startDate.toIso8601String(),
+          'endDate': _endDate.toIso8601String(),
+        },
+        'format': _selectedFormat,
+      });
+
+      if (!mounted) return;
+
+      final data = result.data;
+      final downloadUrl = data['downloadUrl'] as String;
+      final fileName = data['fileName'] as String;
+      final recordCount = data['recordCount'] as int;
+
+      setState(() => _isExporting = false);
+
+      // Open download URL in browser
+      final uri = Uri.parse(downloadUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+
+      if (!mounted) return;
+      context.pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Please select at least one data type'),
-        backgroundColor: AppColors.critical,
+          content: Text('$fileName exported ($recordCount records)'),
+          backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
-      return;
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      setState(() => _isExporting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message ?? 'Export failed'),
+          backgroundColor: AppColors.critical,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isExporting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Export failed: ${e.toString()}'),
+          backgroundColor: AppColors.critical,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
     }
-
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Exporting ${_selectedFormat.toUpperCase()} file...'),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
   }
 }
-
-

@@ -1,9 +1,15 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/daily_summary_model.dart';
+import '../../models/session_location_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../repositories/daily_summary_repository.dart';
+import '../../repositories/session_repository.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 
@@ -17,120 +23,100 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  String _selectedMonth = 'February 2026';
+  final DailySummaryRepository _summaryRepo = DailySummaryRepository();
+  final SessionRepository _sessionRepo = SessionRepository();
+
+  int _selectedYear = DateTime.now().year;
+  int _selectedMonth = DateTime.now().month;
   int? _expandedDay;
+  bool _isLoading = true;
 
-  final List<String> _months = [
-    'February 2026',
-    'January 2026',
-    'December 2025',
+  Map<String, dynamic> _monthSummary = {};
+  List<DailySummaryModel> _dailySummaries = [];
+  // Cache: day index -> session locations
+  final Map<int, List<SessionLocationModel>> _locationCache = {};
+
+  static const _monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
   ];
 
-  // Mock data - Monthly summary
-  final Map<String, dynamic> _monthSummary = {
-    'distance': 245.8,
-    'hours': 98,
-    'minutes': 30,
-    'activeDays': 18,
-  };
-
-  // Mock data - Daily logs
-  final List<Map<String, dynamic>> _dailyLogs = [
-    {
-      'day': '04',
-      'dayName': 'Today',
-      'isToday': true,
-      'isActive': true,
-      'duration': null,
-      'distance': null,
-      'locations': [
-        {
-          'time': '09:30',
-          'title': 'Session Started',
-          'subtitle': 'Automated check-in',
-          'type': 'start',
-        },
-        {
-          'time': '11:00',
-          'title': 'Rajendra Nagar',
-          'subtitle': 'Client Visit: Site 4B',
-          'type': 'visit',
-        },
-        {
-          'time': '13:30',
-          'title': 'MG Road',
-          'subtitle': 'Delivery Drop-off',
-          'type': 'visit',
-        },
-      ],
-    },
-    {
-      'day': '03',
-      'dayName': 'Monday',
-      'isToday': false,
-      'isActive': false,
-      'duration': '8h 15m',
-      'distance': '12km',
-      'locations': [
-        {
-          'time': '09:00',
-          'title': 'Session Started',
-          'subtitle': 'Automated check-in',
-          'type': 'start',
-        },
-        {
-          'time': '10:30',
-          'title': 'Kankarbagh',
-          'subtitle': 'Site Inspection',
-          'type': 'visit',
-        },
-        {
-          'time': '17:15',
-          'title': 'Session Ended',
-          'subtitle': 'Day complete',
-          'type': 'end',
-        },
-      ],
-    },
-    {
-      'day': '02',
-      'dayName': 'Sunday',
-      'isToday': false,
-      'isActive': false,
-      'duration': null,
-      'distance': null,
-      'isOffDuty': true,
-      'locations': [],
-    },
-    {
-      'day': '01',
-      'dayName': 'Saturday',
-      'isToday': false,
-      'isActive': false,
-      'duration': '6h 30m',
-      'distance': '9km',
-      'locations': [
-        {
-          'time': '09:30',
-          'title': 'Session Started',
-          'subtitle': 'Automated check-in',
-          'type': 'start',
-        },
-        {
-          'time': '16:00',
-          'title': 'Session Ended',
-          'subtitle': 'Day complete',
-          'type': 'end',
-        },
-      ],
-    },
-  ];
+  String get _selectedMonthLabel =>
+      '${_monthNames[_selectedMonth - 1]} $_selectedYear';
 
   @override
   void initState() {
     super.initState();
-    // Auto-expand today's card
-    _expandedDay = 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
+  }
+
+  Future<void> _loadData() async {
+    final auth = context.read<AuthProvider>();
+    final userId = auth.currentUser?.id ?? '';
+    if (userId.isEmpty) return;
+
+    setState(() => _isLoading = true);
+    _locationCache.clear();
+
+    try {
+      final startDate = DateTime(_selectedYear, _selectedMonth, 1);
+      final endDate = DateTime(_selectedYear, _selectedMonth + 1, 0, 23, 59, 59);
+
+      final results = await Future.wait([
+        _summaryRepo.getMonthlySummary(userId, _selectedYear, _selectedMonth),
+        _summaryRepo.getDailySummaries(
+          userId,
+          startDate: startDate,
+          endDate: endDate,
+        ),
+      ]);
+
+      if (!mounted) return;
+      setState(() {
+        _monthSummary = results[0] as Map<String, dynamic>;
+        _dailySummaries = results[1] as List<DailySummaryModel>;
+        _isLoading = false;
+        // Auto-expand today's card if present
+        _expandedDay = _dailySummaries.indexWhere((s) => s.isToday);
+        if (_expandedDay == -1) _expandedDay = null;
+      });
+
+      // Load locations for today's expanded card
+      if (_expandedDay != null) {
+        _loadLocationsForDay(_expandedDay!);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      debugPrint('[HistoryScreen] loadData error: $e');
+    }
+  }
+
+  Future<void> _loadLocationsForDay(int index) async {
+    if (_locationCache.containsKey(index)) return;
+    final summary = _dailySummaries[index];
+    if (summary.sessionIds.isEmpty) return;
+
+    try {
+      final allLocations = <SessionLocationModel>[];
+      for (final sessionId in summary.sessionIds) {
+        final locations = await _sessionRepo.getSessionLocations(sessionId);
+        allLocations.addAll(locations);
+      }
+      // Sort by timestamp
+      allLocations.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+      if (mounted) {
+        setState(() {
+          _locationCache[index] = allLocations;
+        });
+      }
+    } catch (e) {
+      debugPrint('[HistoryScreen] loadLocations error: $e');
+    }
   }
 
   @override
@@ -155,72 +141,66 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
             // Scrollable Content
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.only(
-                  left: 20,
-                  right: 20,
-                  bottom: 120,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Monthly Summary
-                    _buildMonthlySummary(),
-                    const SizedBox(height: 24),
-
-                    // Daily Logs Header
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.only(
+                        left: 20,
+                        right: 20,
+                        bottom: 120,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Daily Logs',
-                            style: AppTypography.h3.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.bold,
+                          // Monthly Summary
+                          _buildMonthlySummary(),
+                          const SizedBox(height: 24),
+
+                          // Daily Logs Header
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Daily Logs',
+                                  style: AppTypography.h3.copyWith(
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox.shrink(),
+                              ],
                             ),
                           ),
-                          const SizedBox.shrink(),
+                          const SizedBox(height: 16),
+
+                          // Daily Log Cards
+                          if (_dailySummaries.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 32),
+                              child: Center(
+                                child: Text(
+                                  'No activity this month',
+                                  style: AppTypography.bodyMedium.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            ...List.generate(_dailySummaries.length, (index) {
+                              return _buildDayCard(_dailySummaries[index], index);
+                            }),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-
-                    // Daily Log Cards
-                    ...List.generate(_dailyLogs.length, (index) {
-                      return _buildDayCard(_dailyLogs[index], index);
-                    }),
-                  ],
-                ),
-              ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlassButton({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.glassPrimary,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.glassBorder),
-            ),
-            child: Icon(icon, color: AppColors.textPrimary, size: 20),
-          ),
         ),
       ),
     );
@@ -251,7 +231,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  _selectedMonth,
+                  _selectedMonthLabel,
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
@@ -272,10 +252,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   void _showMonthPicker() {
+    // Build last 6 months
+    final now = DateTime.now();
+    final months = <Map<String, int>>[];
+    for (int i = 0; i < 6; i++) {
+      final d = DateTime(now.year, now.month - i, 1);
+      months.add({'year': d.year, 'month': d.month});
+    }
+
     showModalBottomSheet(
       context: context,
-      barrierColor: AppColors.gradientStart.withValues(alpha: 0.7),
       backgroundColor: Colors.transparent,
+      barrierColor: AppColors.gradientStart.withValues(alpha: 0.7),
       builder: (context) => Container(
         padding: const EdgeInsets.all(24),
         decoration: const BoxDecoration(
@@ -299,23 +287,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
               style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
             ),
             const SizedBox(height: 16),
-            ..._months.map(
-              (month) => ListTile(
+            ...months.map((m) {
+              final label =
+                  '${_monthNames[m['month']! - 1]} ${m['year']}';
+              final isSelected =
+                  m['year'] == _selectedYear && m['month'] == _selectedMonth;
+              return ListTile(
                 title: Text(
-                  month,
+                  label,
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.textPrimary,
                   ),
                 ),
-                trailing: _selectedMonth == month
+                trailing: isSelected
                     ? Icon(Iconsax.check, color: AppColors.primary)
                     : null,
                 onTap: () {
-                  setState(() => _selectedMonth = month);
+                  setState(() {
+                    _selectedYear = m['year']!;
+                    _selectedMonth = m['month']!;
+                  });
                   Navigator.pop(context);
+                  _loadData();
                 },
-              ),
-            ),
+              );
+            }),
           ],
         ),
       ),
@@ -323,6 +319,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildMonthlySummary() {
+    final distance = (_monthSummary['totalDistance'] as num?)?.toDouble() ?? 0.0;
+    final hours = _monthSummary['hours'] ?? 0;
+    final minutes = _monthSummary['minutes'] ?? 0;
+    final activeDays = _monthSummary['activeDays'] ?? 0;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
@@ -362,7 +363,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     iconBgColor: AppColors.success.withValues(alpha: 0.2),
                     iconColor: AppColors.success,
                     label: 'Distance',
-                    value: '${_monthSummary['distance']}',
+                    value: distance.toStringAsFixed(1),
                     unit: 'km',
                   ),
                   const SizedBox(width: 12),
@@ -371,8 +372,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     iconBgColor: AppColors.warning.withValues(alpha: 0.2),
                     iconColor: AppColors.warning,
                     label: 'Time',
-                    value:
-                        '${_monthSummary['hours']}h ${_monthSummary['minutes']}m',
+                    value: '${hours}h ${minutes}m',
                     unit: null,
                   ),
                   const SizedBox(width: 12),
@@ -381,7 +381,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     iconBgColor: AppColors.primary.withValues(alpha: 0.2),
                     iconColor: AppColors.primary,
                     label: 'Active',
-                    value: '${_monthSummary['activeDays']}',
+                    value: '$activeDays',
                     unit: 'days',
                   ),
                 ],
@@ -456,10 +456,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _buildDayCard(Map<String, dynamic> day, int index) {
+  Widget _buildDayCard(DailySummaryModel summary, int index) {
     final isExpanded = _expandedDay == index;
-    final isToday = day['isToday'] ?? false;
-    final isOffDuty = day['isOffDuty'] ?? false;
+    final isToday = summary.isToday;
+    final isOffDuty = summary.isOffDuty;
+    final dayNum = summary.date.day.toString().padLeft(2, '0');
+    final locations = _locationCache[index] ?? [];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -485,9 +487,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 GestureDetector(
                   onTap: isOffDuty
                       ? null
-                      : () => setState(
-                          () => _expandedDay = isExpanded ? null : index,
-                        ),
+                      : () {
+                          setState(
+                            () => _expandedDay = isExpanded ? null : index,
+                          );
+                          if (!isExpanded) {
+                            _loadLocationsForDay(index);
+                          }
+                        },
                   behavior: HitTestBehavior.opaque,
                   child: Padding(
                     padding: EdgeInsets.all(isExpanded ? 20 : 16),
@@ -514,7 +521,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     color: AppColors.primary,
                                   )
                                 : Text(
-                                    day['day'],
+                                    dayNum,
                                     style: AppTypography.h3.copyWith(
                                       color: AppColors.textPrimary,
                                       fontWeight: FontWeight.bold,
@@ -530,7 +537,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                isToday ? '${day['day']} Feb' : day['dayName'],
+                                isToday
+                                    ? '$dayNum ${_monthNames[summary.date.month - 1].substring(0, 3)}'
+                                    : summary.dayName,
                                 style: AppTypography.bodyMedium.copyWith(
                                   color: AppColors.textPrimary,
                                   fontWeight: FontWeight.bold,
@@ -564,7 +573,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      day['duration'] ?? '',
+                                      summary.formattedDuration,
                                       style: AppTypography.caption.copyWith(
                                         color: AppColors.textSecondary,
                                       ),
@@ -577,7 +586,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      day['distance'] ?? '',
+                                      '${summary.totalDistance.toStringAsFixed(1)}km',
                                       style: AppTypography.caption.copyWith(
                                         color: AppColors.textSecondary,
                                       ),
@@ -606,7 +615,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
                 // Expanded Timeline
                 if (isExpanded && !isOffDuty) ...[
-                  // Timeline Content
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                     child: Container(
@@ -620,23 +628,38 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                       margin: const EdgeInsets.only(left: 22),
                       padding: const EdgeInsets.only(left: 28),
-                      child: Column(
-                        children: List.generate(
-                          (day['locations'] as List).length,
-                          (locIndex) {
-                            final loc = (day['locations'] as List)[locIndex];
-                            return _buildTimelineItem(
-                              time: loc['time'],
-                              title: loc['title'],
-                              subtitle: loc['subtitle'],
-                              type: loc['type'],
-                            );
-                          },
-                        ),
-                      ),
+                      child: locations.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Text(
+                                'Loading timeline...',
+                                style: AppTypography.caption.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            )
+                          : Column(
+                              children: locations.map((loc) {
+                                String type;
+                                if (loc.isCheckIn) {
+                                  type = 'start';
+                                } else if (loc.isCheckOut) {
+                                  type = 'end';
+                                } else {
+                                  type = 'visit';
+                                }
+                                return _buildTimelineItem(
+                                  time: loc.formattedTime,
+                                  title: loc.title.isNotEmpty
+                                      ? loc.title
+                                      : loc.address,
+                                  subtitle: loc.address,
+                                  type: type,
+                                );
+                              }).toList(),
+                            ),
                     ),
                   ),
-
                   const SizedBox.shrink(),
                 ],
               ],
@@ -714,6 +737,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       style: AppTypography.caption.copyWith(
                         color: AppColors.textSecondary,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -741,4 +766,3 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
-

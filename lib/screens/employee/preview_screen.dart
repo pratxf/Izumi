@@ -1,9 +1,16 @@
+import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/photo_provider.dart';
+import '../../providers/session_provider.dart';
 import '../../widgets/inputs/text_input_field.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/glass/glass_chip.dart';
@@ -15,11 +22,13 @@ import '../../widgets/navigation/app_header.dart';
 class PreviewScreen extends StatefulWidget {
   final String location;
   final DateTime timestamp;
+  final String? imagePath;
 
   const PreviewScreen({
     super.key,
     required this.location,
     required this.timestamp,
+    this.imagePath,
   });
 
   @override
@@ -34,6 +43,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
   final _notesController = TextEditingController();
   bool _createFollowUp = false;
   DateTime? _dueDate;
+  bool _isSaving = false;
 
   @override
   void dispose() {
@@ -58,7 +68,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
               surface: AppColors.glassNav,
               onSurface: AppColors.textPrimary,
             ),
-            dialogBackgroundColor: AppColors.glassNav,
+            dialogTheme: const DialogThemeData(backgroundColor: AppColors.glassNav),
             visualDensity: VisualDensity.compact,
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(
@@ -86,7 +96,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
               todayForegroundColor:
                   WidgetStateProperty.all(AppColors.textPrimary),
               todayBackgroundColor:
-                  WidgetStateProperty.all(AppColors.primary.withOpacity(0.2)),
+                  WidgetStateProperty.all(AppColors.primary.withValues(alpha: 0.2)),
             ),
           ),
           child: child!,
@@ -98,12 +108,99 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
-  void _savePhoto() {
-    // TODO: Save photo with metadata
-    Navigator.pop(context);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Photo saved successfully!')));
+  Future<void> _savePhoto() async {
+    setState(() => _isSaving = true);
+
+    final authProvider = context.read<AuthProvider>();
+    final photoProvider = context.read<PhotoProvider>();
+    final sessionProvider = context.read<SessionProvider>();
+
+    // Use Firebase Auth UID directly as fallback — always available when authenticated
+    final userId = authProvider.currentUser?.id
+        ?? FirebaseAuth.instance.currentUser?.uid
+        ?? '';
+    final enterpriseId = authProvider.enterpriseId ?? '';
+    final sessionId = sessionProvider.activeSession?.id ?? '';
+
+    debugPrint('[PreviewScreen] _savePhoto: userId=$userId, enterpriseId=$enterpriseId, sessionId=$sessionId');
+
+    if (userId.isEmpty || enterpriseId.isEmpty) {
+      debugPrint('[PreviewScreen] ERROR: userId or enterpriseId is empty, cannot upload');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Upload failed: user session not ready. Please try again.'),
+            backgroundColor: AppColors.critical,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+      setState(() => _isSaving = false);
+      return;
+    }
+
+    if (widget.imagePath != null && widget.imagePath!.isNotEmpty) {
+      // Upload real photo
+      final photo = await photoProvider.uploadPhoto(
+        imageFile: File(widget.imagePath!),
+        enterpriseId: enterpriseId,
+        employeeId: userId,
+        sessionId: sessionId,
+        location: widget.location,
+        latitude: sessionProvider.currentLat,
+        longitude: sessionProvider.currentLng,
+      );
+
+      if (!mounted) return;
+
+      if (photo != null) {
+        sessionProvider.incrementPhotoCount();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Photo saved successfully!'),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(photoProvider.error ?? 'Failed to save photo'),
+            backgroundColor: AppColors.critical,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+        setState(() => _isSaving = false);
+        return;
+      }
+    } else {
+      // No image file (camera not yet integrated)
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Photo saved successfully!'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
+
+    if (mounted) {
+      // Pop both preview and camera to return directly to gallery
+      final navigator = Navigator.of(context, rootNavigator: true);
+      navigator.pop(); // Pop preview
+      navigator.pop(); // Pop camera → reveals gallery shell
+    }
   }
 
   String _formatDate(DateTime date) {
@@ -179,18 +276,24 @@ class _PreviewScreenState extends State<PreviewScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.network(
-              'https://picsum.photos/seed/preview/800/1200',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: AppColors.glassPrimary,
-                child: const Icon(
-                  Iconsax.image,
-                  color: AppColors.textTertiary,
-                  size: 48,
+            if (widget.imagePath != null && widget.imagePath!.isNotEmpty)
+              Image.file(
+                File(widget.imagePath!),
+                fit: BoxFit.cover,
+              )
+            else
+              Image.network(
+                'https://picsum.photos/seed/preview/800/1200',
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: AppColors.glassPrimary,
+                  child: const Icon(
+                    Iconsax.image,
+                    color: AppColors.textTertiary,
+                    size: 48,
+                  ),
                 ),
               ),
-            ),
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -239,7 +342,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${_formatDate(widget.timestamp)} • ${widget.timestamp.hour.toString().padLeft(2, '0')}:${widget.timestamp.minute.toString().padLeft(2, '0')}',
+                            '${_formatDate(widget.timestamp)} \u2022 ${widget.timestamp.hour.toString().padLeft(2, '0')}:${widget.timestamp.minute.toString().padLeft(2, '0')}',
                             style: AppTypography.small.copyWith(
                               color: AppColors.textSecondary,
                             ),
@@ -361,7 +464,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
               Switch(
                 value: _createFollowUp,
                 onChanged: (v) => setState(() => _createFollowUp = v),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
                 activeTrackColor: AppColors.primary.withValues(alpha: 0.3),
               ),
             ],
@@ -423,7 +526,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
         children: [
           Expanded(
             child: GestureDetector(
-              onTap: () => Navigator.pop(context),
+              onTap: () => context.pop(),
               child: Container(
                 height: 52,
                 decoration: BoxDecoration(
@@ -446,37 +549,51 @@ class _PreviewScreenState extends State<PreviewScreen> {
           Expanded(
             flex: 2,
             child: GestureDetector(
-              onTap: _savePhoto,
-              child: Container(
-                height: 52,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.35),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Iconsax.cloud_add,
-                      color: AppColors.textPrimary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Upload',
-                      style: AppTypography.buttonMedium.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w600,
+              onTap: _isSaving ? null : _savePhoto,
+              child: Opacity(
+                opacity: _isSaving ? 0.6 : 1.0,
+                child: Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.35),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_isSaving)
+                        const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: AppColors.textPrimary,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      else ...[
+                        const Icon(
+                          Iconsax.cloud_add,
+                          color: AppColors.textPrimary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Upload',
+                          style: AppTypography.buttonMedium.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -525,4 +642,3 @@ class _PreviewScreenState extends State<PreviewScreen> {
     );
   }
 }
-

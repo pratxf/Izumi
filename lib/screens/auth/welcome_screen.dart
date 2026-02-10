@@ -1,11 +1,12 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/inputs/text_input_field.dart';
-import 'otp_screen.dart';
-import 'enterprise_login_screen.dart';
 
 /// Welcome/Login Screen - Glassmorphism Design
 /// Phone number login with role selection
@@ -18,7 +19,8 @@ class WelcomeScreen extends StatefulWidget {
 
 class _WelcomeScreenState extends State<WelcomeScreen> {
   final _phoneController = TextEditingController();
-  String _selectedCountryCode = '+91';
+  final String _selectedCountryCode = '+91';
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -26,7 +28,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     super.dispose();
   }
 
-  void _signIn(String role) {
+  Future<void> _signIn(String role) async {
     if (_phoneController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -41,19 +43,44 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       return;
     }
 
-    final normalizedPhone = _phoneController.text.replaceAll(RegExp(r'\s+'), '');
-    final resolvedRole =
-        normalizedPhone == '8888888888' ? 'team_lead' : role;
+    setState(() => _isLoading = true);
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => OtpScreen(
-          phoneNumber: '$_selectedCountryCode ${_phoneController.text}',
-          role: resolvedRole,
-        ),
-      ),
+    final authProvider = context.read<AuthProvider>();
+    final fullPhone = '$_selectedCountryCode${_phoneController.text.replaceAll(RegExp(r'\s+'), '')}';
+
+    // Store pending registration data for new users
+    authProvider.setPendingRegistration(
+      name: '',
+      phone: fullPhone,
+      role: role,
     );
+
+    // Send OTP via Firebase Phone Auth
+    await authProvider.sendOTP(fullPhone);
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    // Check for immediate errors
+    if (authProvider.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.errorMessage!),
+          backgroundColor: AppColors.critical,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Navigate to OTP screen via GoRouter
+    context.push('/otp', extra: {
+      'phoneNumber': '$_selectedCountryCode ${_phoneController.text}',
+      'role': role,
+    });
   }
 
   @override
@@ -167,19 +194,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   child: Column(
                     children: [
                       _buildPrimaryButton(
-                        'Sign In',
-                        onTap: () => _signIn('employee'),
+                        _isLoading ? 'Sending OTP...' : 'Sign In',
+                        onTap: _isLoading ? null : () => _signIn('employee'),
                       ),
                       const SizedBox(height: 16),
                       _buildGlassButton(
                         'Sign in as Enterprise',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const EnterpriseLoginScreen(),
-                            ),
-                          );
+                        onTap: _isLoading ? null : () {
+                          context.push('/enterprise-login');
                         },
                       ),
                     ],
@@ -226,29 +248,32 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   // _buildPhoneCard removed in favor of PhoneInputField
 
-  Widget _buildPrimaryButton(String label, {required VoidCallback onTap}) {
+  Widget _buildPrimaryButton(String label, {VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        height: 56,
-        decoration: BoxDecoration(
-          color: AppColors.primary,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
+      child: Opacity(
+        opacity: onTap == null ? 0.6 : 1.0,
+        child: Container(
+          width: double.infinity,
+          height: 56,
+          decoration: BoxDecoration(
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Center(child: Text(label, style: AppTypography.buttonLarge)),
         ),
-        child: Center(child: Text(label, style: AppTypography.buttonLarge)),
       ),
     );
   }
 
-  Widget _buildGlassButton(String label, {required VoidCallback onTap}) {
+  Widget _buildGlassButton(String label, {VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: ClipRRect(

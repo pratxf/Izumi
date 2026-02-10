@@ -1,13 +1,18 @@
 import 'dart:ui';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/photo_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/photo_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 import '../../widgets/inputs/text_input_field.dart';
-import 'camera_screen.dart';
 import 'image_detail_screen.dart';
 
 /// Employee Gallery Screen - Photo gallery with glassmorphism design
@@ -20,31 +25,37 @@ class GalleryScreen extends StatefulWidget {
 
 class _GalleryScreenState extends State<GalleryScreen> {
   final _searchController = TextEditingController();
+  bool _initialized = false;
+  String _searchQuery = '';
 
-  // Mock photo data grouped by date
-  final List<Map<String, dynamic>> _photoGroups = [
-    {
-      'title': 'Today',
-      'count': 15,
-      'photos': [
-        {'time': '14:32', 'url': 'https://picsum.photos/seed/1/200'},
-        {'time': '14:15', 'url': 'https://picsum.photos/seed/2/200'},
-        {'time': '13:48', 'url': 'https://picsum.photos/seed/3/200'},
-        {'time': '11:20', 'url': 'https://picsum.photos/seed/4/200'},
-        {'time': '10:05', 'url': 'https://picsum.photos/seed/5/200'},
-        {'time': '09:55', 'url': 'https://picsum.photos/seed/6/200'},
-      ],
-    },
-    {
-      'title': 'Yesterday',
-      'count': 8,
-      'photos': [
-        {'time': '16:45', 'url': 'https://picsum.photos/seed/7/200'},
-        {'time': '15:30', 'url': 'https://picsum.photos/seed/8/200'},
-        {'time': '14:10', 'url': 'https://picsum.photos/seed/9/200'},
-      ],
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initProvider();
+    });
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
+  }
+
+  void _initProvider() {
+    if (_initialized) return;
+    _initialized = true;
+    final auth = context.read<AuthProvider>();
+    // Use Firebase Auth UID directly as fallback — always available when authenticated
+    final userId = auth.currentUser?.id
+        ?? FirebaseAuth.instance.currentUser?.uid
+        ?? '';
+    debugPrint('[GalleryScreen] _initProvider: userId=$userId');
+    if (userId.isEmpty) {
+      debugPrint('[GalleryScreen] ERROR: userId is empty, cannot load photos');
+      return;
+    }
+    context.read<PhotoProvider>().streamPhotos(userId);
+  }
 
   @override
   void dispose() {
@@ -54,6 +65,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final photoProvider = context.watch<PhotoProvider>();
+    final auth = context.read<AuthProvider>();
+
+    // If searching, filter photos; otherwise use grouped-by-date
+    final Map<String, List<PhotoModel>> photoGroups;
+    if (_searchQuery.isNotEmpty) {
+      final filtered = photoProvider.searchPhotos(_searchQuery);
+      // Group filtered results into a single group
+      photoGroups = filtered.isNotEmpty ? {'Results': filtered} : {};
+    } else {
+      photoGroups = photoProvider.photosByDate;
+    }
+
+    final groupKeys = photoGroups.keys.toList();
+
     return GradientBackground(
       child: SafeArea(
         bottom: false,
@@ -66,52 +92,62 @@ class _GalleryScreenState extends State<GalleryScreen> {
               showLeading: false,
             ),
 
+            // Search Bar
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              color: AppColors.glassHeader,
+              child: GlassInputField(
+                controller: _searchController,
+                hint: 'Search photos, tags...',
+                prefixIcon: Iconsax.search_normal,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+            ),
+
             // Content
             Expanded(
               child: Stack(
                 children: [
-                  CustomScrollView(
-                    slivers: [
-                      // Search Bar (sticky)
-                      SliverPersistentHeader(
-                        pinned: true,
-                        delegate: _SearchBarDelegate(
-                          controller: _searchController,
+                  if (photoProvider.isLoading && photoProvider.photos.isEmpty)
+                    const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                      ),
+                    )
+                  else if (groupKeys.isEmpty)
+                    Center(
+                      child: Text(
+                        _searchQuery.isNotEmpty
+                            ? 'No photos found'
+                            : 'No photos yet',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
                         ),
                       ),
-
-                      // Photo Groups
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate((
-                            context,
-                            index,
-                          ) {
-                            final group = _photoGroups[index];
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 16),
-                              child: _buildPhotoGroup(group),
-                            );
-                          }, childCount: _photoGroups.length),
-                        ),
-                      ),
-                    ],
-                  ),
+                    )
+                  else
+                    ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                      itemCount: groupKeys.length,
+                      itemBuilder: (context, index) {
+                        final key = groupKeys[index];
+                        final photos = photoGroups[key]!;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: _buildPhotoGroup(key, photos, auth),
+                        );
+                      },
+                    ),
 
                   // Camera FAB
                   Positioned(
                     right: 24,
                     bottom: 120,
                     child: GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const CameraScreen(),
-                          ),
-                        );
-                      },
+                      onTap: () => context.push('/employee/camera'),
                       child: Container(
                         width: 56,
                         height: 56,
@@ -147,8 +183,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
   }
 
-  Widget _buildPhotoGroup(Map<String, dynamic> group) {
-    final photos = group['photos'] as List;
+  Widget _buildPhotoGroup(
+    String title,
+    List<PhotoModel> photos,
+    AuthProvider auth,
+  ) {
     const spacing = 12.0;
 
     return ClipRRect(
@@ -170,7 +209,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    group['title'],
+                    title,
                     style: AppTypography.bodyLarge.copyWith(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.bold,
@@ -213,7 +252,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                         SizedBox(
                           width: tileSize,
                           height: tileSize,
-                          child: _buildPhotoTile(photo, group['title']),
+                          child: _buildPhotoTile(photo, auth),
                         ),
                     ],
                   );
@@ -226,18 +265,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
   }
 
-  Widget _buildPhotoTile(Map<String, dynamic> photo, String groupTitle) {
+  Widget _buildPhotoTile(PhotoModel photo, AuthProvider auth) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => ImageDetailScreen(
-              imageUrl: photo['url'],
-              location: groupTitle,
-              capturedBy: 'You',
-              employeeId: 'EMP-01',
-              timestamp: DateTime.now(),
+              imageUrl: photo.imageUrl,
+              location: photo.location,
+              capturedBy: auth.currentUser?.name ?? 'You',
+              employeeId: photo.employeeId,
+              timestamp: photo.timestamp,
             ),
           ),
         );
@@ -255,8 +294,27 @@ class _GalleryScreenState extends State<GalleryScreen> {
             fit: StackFit.expand,
             children: [
               Image.network(
-                photo['url'],
+                photo.thumbnailUrl.isNotEmpty
+                    ? photo.thumbnailUrl
+                    : photo.imageUrl,
                 fit: BoxFit.cover,
+                cacheWidth: 300,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    color: AppColors.glassPrimary,
+                    child: const Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ),
+                  );
+                },
                 errorBuilder: (_, __, ___) => Container(
                   color: AppColors.glassPrimary,
                   child: const Icon(
@@ -284,7 +342,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     ),
                   ),
                   child: Text(
-                    photo['time'],
+                    photo.formattedTime,
                     style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 10,
@@ -295,44 +353,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Sticky Search Bar Delegate
-class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
-  final TextEditingController controller;
-
-  _SearchBarDelegate({required this.controller});
-
-  @override
-  double get minExtent => 76;
-
-  @override
-  double get maxExtent => 76;
-
-  @override
-  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) =>
-      false;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      color: AppColors.glassHeader,
-      child: GlassInputField(
-        controller: controller,
-        hint: 'Search photos, tags...',
-        prefixIcon: Iconsax.search_normal,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 12,
         ),
       ),
     );

@@ -1,12 +1,17 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/photo_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/dashboard_provider.dart';
+import '../../providers/photo_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/inputs/text_input_field.dart';
 import '../../widgets/navigation/app_header.dart';
-import '../employee/image_detail_screen.dart';
 
 /// Admin Images Screen - Cloud images gallery with employee filter
 class ImagesScreen extends StatefulWidget {
@@ -18,76 +23,22 @@ class ImagesScreen extends StatefulWidget {
 
 class _ImagesScreenState extends State<ImagesScreen> {
   final _searchController = TextEditingController();
-  String _selectedEmployee = 'All Employees';
+  String _selectedEmployeeId = 'all';
+  String? _lastLoadedEnterpriseId;
 
-  final List<String> _employees = [
-    'All Employees',
-    'Rahul Kumar',
-    'Priya Singh',
-    'Amit Sharma',
-    'Neha Verma',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadPhotos();
+  }
 
-  // Mock photo data grouped by date
-  final List<Map<String, dynamic>> _photoGroups = [
-    {
-      'title': 'Today',
-      'count': 15,
-      'photos': [
-        {
-          'time': '14:32',
-          'employee': 'RK',
-          'url': 'https://picsum.photos/seed/a1/200',
-        },
-        {
-          'time': '14:15',
-          'employee': 'PS',
-          'url': 'https://picsum.photos/seed/a2/200',
-        },
-        {
-          'time': '13:48',
-          'employee': 'AS',
-          'url': 'https://picsum.photos/seed/a3/200',
-        },
-        {
-          'time': '11:20',
-          'employee': 'NV',
-          'url': 'https://picsum.photos/seed/a4/200',
-        },
-        {
-          'time': '10:05',
-          'employee': 'RK',
-          'url': 'https://picsum.photos/seed/a5/200',
-        },
-        {
-          'time': '09:55',
-          'employee': 'PS',
-          'url': 'https://picsum.photos/seed/a6/200',
-        },
-      ],
-    },
-    {
-      'title': 'Yesterday',
-      'count': 8,
-      'photos': [
-        {
-          'time': '16:45',
-          'employee': 'AS',
-          'url': 'https://picsum.photos/seed/b1/200',
-        },
-        {
-          'time': '15:30',
-          'employee': 'NV',
-          'url': 'https://picsum.photos/seed/b2/200',
-        },
-        {
-          'time': '14:10',
-          'employee': 'RK',
-          'url': 'https://picsum.photos/seed/b3/200',
-        },
-      ],
-    },
-  ];
+  void _loadPhotos() {
+    final enterpriseId = context.read<AuthProvider>().enterpriseId;
+    if (enterpriseId != null) {
+      _lastLoadedEnterpriseId = enterpriseId;
+      context.read<PhotoProvider>().streamPhotosForEnterprise(enterpriseId);
+    }
+  }
 
   @override
   void dispose() {
@@ -95,8 +46,45 @@ class _ImagesScreenState extends State<ImagesScreen> {
     super.dispose();
   }
 
+  Map<String, List<PhotoModel>> _filterPhotos(Map<String, List<PhotoModel>> photosByDate) {
+    if (_selectedEmployeeId == 'all') return photosByDate;
+    final filtered = <String, List<PhotoModel>>{};
+    for (final entry in photosByDate.entries) {
+      final photos = entry.value.where((p) => p.employeeId == _selectedEmployeeId).toList();
+      if (photos.isNotEmpty) {
+        filtered[entry.key] = photos;
+      }
+    }
+    return filtered;
+  }
+
+  String _getEmployeeName(String employeeId) {
+    final dashboardProvider = context.read<DashboardProvider>();
+    final emp = dashboardProvider.employees.where((e) => e.id == employeeId).firstOrNull;
+    return emp?.name ?? 'Employee';
+  }
+
+  String _getEmployeeInitials(String employeeId) {
+    final dashboardProvider = context.read<DashboardProvider>();
+    final emp = dashboardProvider.employees.where((e) => e.id == employeeId).firstOrNull;
+    return emp?.initials ?? '?';
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Reactive re-load when enterpriseId becomes available after init
+    final enterpriseId = context.watch<AuthProvider>().enterpriseId;
+    if (enterpriseId != null && enterpriseId != _lastLoadedEnterpriseId) {
+      _lastLoadedEnterpriseId = enterpriseId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        context.read<PhotoProvider>().streamPhotosForEnterprise(enterpriseId);
+      });
+    }
+
+    final photoProvider = context.watch<PhotoProvider>();
+    final dashboardProvider = context.watch<DashboardProvider>();
+    final filteredGroups = _filterPhotos(photoProvider.photosByDate);
+
     return GradientBackground(
       child: SafeArea(
         bottom: false,
@@ -109,39 +97,65 @@ class _ImagesScreenState extends State<ImagesScreen> {
               showLeading: false,
             ),
 
+            // Search Bar
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              color: AppColors.glassHeader,
+              child: GlassInputField(
+                controller: _searchController,
+                hint: 'Search photos, employees...',
+                prefixIcon: Iconsax.search_normal,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+            ),
+
+            // Employee Filter
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: _buildEmployeeFilter(dashboardProvider),
+            ),
+
             // Content
             Expanded(
-              child: CustomScrollView(
-                slivers: [
-                  // Search Bar (sticky)
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _SearchBarDelegate(controller: _searchController),
-                  ),
-
-                  // Employee Filter (tight to search bar)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                      child: _buildEmployeeFilter(),
-                    ),
-                  ),
-
-                  // Photo Groups
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final group = _photoGroups[index];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: _buildPhotoGroup(group),
-                        );
-                      }, childCount: _photoGroups.length),
-                    ),
-                  ),
-                ],
-              ),
+              child: photoProvider.isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: AppColors.primary),
+                    )
+                  : filteredGroups.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Iconsax.image,
+                                size: 48,
+                                color: AppColors.textTertiary,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No photos yet',
+                                style: AppTypography.bodyMedium.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+                          itemCount: filteredGroups.length,
+                          itemBuilder: (context, index) {
+                            final dateKey = filteredGroups.keys.elementAt(index);
+                            final photos = filteredGroups[dateKey]!;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: _buildPhotoGroup(dateKey, photos),
+                            );
+                          },
+                        ),
             ),
           ],
         ),
@@ -149,36 +163,9 @@ class _ImagesScreenState extends State<ImagesScreen> {
     );
   }
 
-  Widget _buildGlassButton({required IconData icon, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            width: 40,
-            height: 40,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.glassPrimary,
-                    AppColors.glassPrimary.withValues(alpha: 0.6),
-                  ],
-                ),
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.glassBorder),
-              ),
-            child: Icon(icon, color: AppColors.textPrimary, size: 22),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildEmployeeFilter(DashboardProvider dashboardProvider) {
+    final employees = dashboardProvider.employees;
 
-  Widget _buildEmployeeFilter() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
@@ -192,7 +179,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: _selectedEmployee,
+              value: _selectedEmployeeId,
               isExpanded: true,
               icon: Icon(
                 Iconsax.arrow_down_1,
@@ -203,24 +190,30 @@ class _ImagesScreenState extends State<ImagesScreen> {
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.textPrimary,
               ),
-              items: _employees.map((e) {
-                return DropdownMenuItem(
-                  value: e,
+              items: [
+                DropdownMenuItem(
+                  value: 'all',
                   child: Row(
                     children: [
-                      Icon(
-                        e == 'All Employees' ? Iconsax.people : Iconsax.user,
-                        size: 18,
-                        color: AppColors.textSecondary,
-                      ),
+                      Icon(Iconsax.people, size: 18, color: AppColors.textSecondary),
                       const SizedBox(width: 12),
-                      Text(e),
+                      const Text('All Employees'),
                     ],
                   ),
-                );
-              }).toList(),
+                ),
+                ...employees.map((e) => DropdownMenuItem(
+                      value: e.id,
+                      child: Row(
+                        children: [
+                          Icon(Iconsax.user, size: 18, color: AppColors.textSecondary),
+                          const SizedBox(width: 12),
+                          Text(e.name),
+                        ],
+                      ),
+                    )),
+              ],
               onChanged: (v) {
-                if (v != null) setState(() => _selectedEmployee = v);
+                if (v != null) setState(() => _selectedEmployeeId = v);
               },
             ),
           ),
@@ -229,8 +222,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
     );
   }
 
-  Widget _buildPhotoGroup(Map<String, dynamic> group) {
-    final photos = group['photos'] as List;
+  Widget _buildPhotoGroup(String dateKey, List<PhotoModel> photos) {
     const spacing = 12.0;
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -250,7 +242,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    group['title'],
+                    dateKey,
                     style: AppTypography.bodyLarge.copyWith(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.bold,
@@ -264,9 +256,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
                     decoration: BoxDecoration(
                       color: AppColors.glassPrimary,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppColors.glassBorder,
-                      ),
+                      border: Border.all(color: AppColors.glassBorder),
                     ),
                     child: Text(
                       '${photos.length} PHOTOS',
@@ -282,11 +272,10 @@ class _ImagesScreenState extends State<ImagesScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Photo Grid (auto-sized)
+              // Photo Grid
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final tileSize =
-                      (constraints.maxWidth - (spacing * 2)) / 3;
+                  final tileSize = (constraints.maxWidth - (spacing * 2)) / 3;
                   return Wrap(
                     spacing: spacing,
                     runSpacing: spacing,
@@ -308,21 +297,19 @@ class _ImagesScreenState extends State<ImagesScreen> {
     );
   }
 
-  Widget _buildPhotoTile(Map<String, dynamic> photo) {
+  Widget _buildPhotoTile(PhotoModel photo) {
+    final initials = _getEmployeeInitials(photo.employeeId);
+    final imageUrl = photo.thumbnailUrl.isNotEmpty ? photo.thumbnailUrl : photo.imageUrl;
+
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ImageDetailScreen(
-              imageUrl: photo['url'],
-              location: 'Field Capture',
-              capturedBy: photo['employee'] ?? 'Employee',
-              employeeId: photo['employee'] ?? 'EMP',
-              timestamp: DateTime.now(),
-            ),
-          ),
-        );
+        context.push('/employee/image-detail', extra: {
+          'imageUrl': photo.imageUrl,
+          'location': photo.location,
+          'capturedBy': _getEmployeeName(photo.employeeId),
+          'employeeId': photo.employeeId,
+          'timestamp': photo.timestamp,
+        });
       },
       child: Container(
         decoration: BoxDecoration(
@@ -341,7 +328,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
             fit: StackFit.expand,
             children: [
               Image.network(
-                photo['url'],
+                imageUrl,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(
                   color: AppColors.glassPrimary,
@@ -366,7 +353,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    photo['employee'],
+                    initials,
                     style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 9,
@@ -393,7 +380,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
                     ),
                   ),
                   child: Text(
-                    photo['time'],
+                    photo.formattedTime,
                     style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 10,
@@ -403,51 +390,6 @@ class _ImagesScreenState extends State<ImagesScreen> {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Sticky Search Bar Delegate
-class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
-  final TextEditingController controller;
-
-  _SearchBarDelegate({required this.controller});
-
-  @override
-  double get minExtent => 76;
-
-  @override
-  double get maxExtent => 76;
-
-  @override
-  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) =>
-      false;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-          decoration: BoxDecoration(
-            color: AppColors.glassHeader,
-          ),
-          child: GlassInputField(
-            controller: controller,
-            hint: 'Search photos, employees...',
-            prefixIcon: Iconsax.search_normal,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
-            ),
           ),
         ),
       ),

@@ -1,21 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/user_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/inputs/text_input_field.dart';
 import '../../widgets/navigation/app_header.dart';
-import 'add_user_screen.dart';
-
-const List<Map<String, String>> demoUsers = [
-  {'name': 'Amit Patel', 'role': 'Team Lead', 'initials': 'AP'},
-  {'name': 'Priya Sharma', 'role': 'Senior Field Officer', 'initials': 'PS'},
-  {'name': 'David Kim', 'role': 'Logistics Coordinator', 'initials': 'DK'},
-  {'name': 'Elena Rodriguez', 'role': 'Field Technician', 'initials': 'ER'},
-  {'name': 'James Bond', 'role': 'Security Lead', 'initials': 'JB'},
-];
 
 class UserManagementScreen extends StatefulWidget {
   final bool showHeader;
@@ -30,6 +25,19 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   final _searchController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    _loadUsers();
+  }
+
+  void _loadUsers() {
+    final enterpriseId = context.read<AuthProvider>().enterpriseId;
+    if (enterpriseId != null) {
+      context.read<UserProvider>().streamUsers(enterpriseId);
+    }
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
@@ -37,6 +45,9 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final userProvider = context.watch<UserProvider>();
+    final users = userProvider.users;
+
     return GradientBackground(
       child: SafeArea(
         bottom: false,
@@ -57,16 +68,9 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                   120,
                 ),
                 child: UserManagementContent(
-                  users: demoUsers,
+                  users: users,
                   searchController: _searchController,
-                  onAddUser: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const AddUserScreen(),
-                      ),
-                    );
-                  },
+                  onAddUser: () => context.push('/admin/add-user'),
                 ),
               ),
             ),
@@ -78,7 +82,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
 }
 
 class UserManagementContent extends StatelessWidget {
-  final List<Map<String, String>> users;
+  final List<UserModel> users;
   final TextEditingController searchController;
   final VoidCallback onAddUser;
 
@@ -88,6 +92,58 @@ class UserManagementContent extends StatelessWidget {
     required this.searchController,
     required this.onAddUser,
   });
+
+  void _confirmDeleteUser(BuildContext context, UserModel user) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.glassStrong,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.glassBorder),
+        ),
+        title: Text(
+          'Delete User',
+          style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
+        ),
+        content: Text(
+          'Are you sure you want to remove ${user.name}? This action cannot be undone.',
+          style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Cancel',
+              style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final success = await context.read<UserProvider>().deleteUser(user.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success ? '${user.name} removed' : 'Failed to delete user',
+                    ),
+                  ),
+                );
+              }
+            },
+            child: Text(
+              'Delete',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.critical,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -157,12 +213,12 @@ class UserManagementContent extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        ...users.map(_buildUserCard),
+        ...users.map((user) => _buildUserCard(context, user)),
       ],
     );
   }
 
-  Widget _buildUserCard(Map<String, String> user) {
+  Widget _buildUserCard(BuildContext context, UserModel user) {
     return GlassPanel(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -178,7 +234,7 @@ class UserManagementContent extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                user['initials'] ?? 'U',
+                user.initials,
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.primary,
                   fontWeight: FontWeight.bold,
@@ -192,7 +248,7 @@ class UserManagementContent extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  user['name'] ?? '',
+                  user.name,
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
@@ -200,7 +256,7 @@ class UserManagementContent extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  user['role'] ?? '',
+                  user.displayRole,
                   style: AppTypography.caption.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -209,7 +265,7 @@ class UserManagementContent extends StatelessWidget {
             ),
           ),
           GestureDetector(
-            onTap: () {},
+            onTap: () => _confirmDeleteUser(context, user),
             child: Container(
               width: 36,
               height: 36,

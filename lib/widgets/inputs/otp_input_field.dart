@@ -5,7 +5,7 @@ import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
 
 /// OTP Input Field Widget
-/// 4-box input with auto-advance cursor
+/// Configurable-length box input with auto-advance cursor
 class OtpInputField extends StatefulWidget {
   final int length;
   final ValueChanged<String>? onCompleted;
@@ -71,6 +71,10 @@ class _OtpInputFieldState extends State<OtpInputField> {
   Widget build(BuildContext context) {
     final hasError = widget.errorText != null;
 
+    // Scale box size based on length to fit within available width
+    final boxSize = widget.length <= 4 ? 64.0 : 48.0;
+    final spacing = widget.length <= 4 ? AppSpacing.md : 8.0;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -86,11 +90,11 @@ class _OtpInputFieldState extends State<OtpInputField> {
 
               return Padding(
                 padding: EdgeInsets.only(
-                  right: index < widget.length - 1 ? AppSpacing.md : 0,
+                  right: index < widget.length - 1 ? spacing : 0,
                 ),
                 child: Container(
-                  width: 64,
-                  height: 64,
+                  width: boxSize,
+                  height: boxSize,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppColors.glassPrimary,
@@ -126,14 +130,13 @@ class _OtpInputFieldState extends State<OtpInputField> {
         ),
         // Hidden input for OTP entry
         SizedBox(
-          height: 1,
-          width: 1,
+          height: 0,
+          width: 0,
           child: TextField(
             controller: _controller,
             focusNode: _focusNode,
             keyboardType: TextInputType.number,
             textInputAction: TextInputAction.done,
-            autofocus: false,
             maxLength: widget.length,
             onChanged: _onChanged,
             onTap: _requestFocus,

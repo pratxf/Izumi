@@ -1,19 +1,21 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/activity_log_model.dart';
+import '../../providers/dashboard_provider.dart';
+import '../../repositories/activity_log_repository.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
-import '../employee/gallery_screen.dart';
-import 'create_task_screen.dart';
 
 /// Employee Detail Screen
-/// Layout based on "Employee Activity Logs" HTML reference
-class EmployeeDetailScreen extends StatelessWidget {
+/// Shows real-time employee stats and activity feed
+class EmployeeDetailScreen extends StatefulWidget {
   final String name;
   final bool isActive;
   final String avatarUrl;
@@ -22,11 +24,65 @@ class EmployeeDetailScreen extends StatelessWidget {
     super.key,
     required this.name,
     required this.isActive,
-    this.avatarUrl = 'https://i.pravatar.cc/150?img=11', // Default callback
+    this.avatarUrl = 'https://i.pravatar.cc/150?img=11',
   });
 
   @override
+  State<EmployeeDetailScreen> createState() => _EmployeeDetailScreenState();
+}
+
+class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
+  final ActivityLogRepository _logRepo = ActivityLogRepository();
+  List<ActivityLogModel> _activityLogs = [];
+  StreamSubscription? _logSubscription;
+  String? _employeeId;
+
+  @override
+  void initState() {
+    super.initState();
+    // Extract employee ID from the route
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final id = GoRouterState.of(context).pathParameters['id'];
+      if (id != null) {
+        _employeeId = id;
+        _streamActivityLogs(id);
+      }
+    });
+  }
+
+  void _streamActivityLogs(String employeeId) {
+    _logSubscription?.cancel();
+    _logSubscription =
+        _logRepo.streamLogsByEmployee(employeeId).listen((logs) {
+      if (mounted) {
+        setState(() => _activityLogs = logs);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _logSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final dashboardProvider = context.watch<DashboardProvider>();
+    final stats = _employeeId != null
+        ? dashboardProvider.getEmployeeStats(_employeeId!)
+        : null;
+    // Format session time from stats
+    final sessionSeconds = stats?['sessionDuration'] as int? ?? 0;
+    final hours = (sessionSeconds ~/ 3600).toString().padLeft(2, '0');
+    final minutes = ((sessionSeconds % 3600) ~/ 60).toString().padLeft(2, '0');
+    final seconds = (sessionSeconds % 60).toString().padLeft(2, '0');
+    final sessionTimeDisplay = '$hours:$minutes:$seconds';
+
+    // Format distance
+    final distanceKm = (stats?['distance'] as num?)?.toDouble() ?? 0.0;
+    final distanceDisplay = '${distanceKm.toStringAsFixed(1)} km';
+
     return Scaffold(
       body: GradientBackground(
         child: SafeArea(
@@ -34,7 +90,7 @@ class EmployeeDetailScreen extends StatelessWidget {
           child: Column(
             children: [
               AppHeader(
-                title: "$name's History",
+                title: "${widget.name}'s History",
                 type: AppHeaderType.secondary,
                 showAvatar: false,
               ),
@@ -46,7 +102,7 @@ class EmployeeDetailScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       // Stats Row
-                      _buildStatsRow(),
+                      _buildStatsRow(sessionTimeDisplay, distanceDisplay),
                       const SizedBox(height: 32),
 
                       // Action Buttons (Horizontal Scroll)
@@ -76,137 +132,10 @@ class EmployeeDetailScreen extends StatelessWidget {
           ),
         ),
       ),
-      // Unified navigation handled by shell
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Back Button
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.textPrimary.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppColors.textPrimary.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  child: const Icon(
-                    Iconsax.arrow_left_2,
-                    color: AppColors.textPrimary,
-                    size: 18,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-
-          // Name and Role
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: AppTypography.h2.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.bold,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 4,
-                      ),
-                    ],
-                  ),
-                ),
-                Row(
-                  children: [
-                    Text(
-                      'Field Executive',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textPrimary.withValues(alpha: 0.8),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      width: 4,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.textPrimary.withValues(alpha: 0.6),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      isActive ? 'Online' : 'Offline',
-                      style: AppTypography.caption.copyWith(
-                        color: isActive ? AppColors.success : AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Avatar
-          Stack(
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.textPrimary, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: CircleAvatar(
-                  radius: 24,
-                  backgroundImage: NetworkImage(avatarUrl),
-                ),
-              ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: isActive ? AppColors.success : AppColors.textDisabled,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                    color: AppColors.textTertiary,
-                      width: 2,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatsRow() {
+  Widget _buildStatsRow(String sessionTime, String distance) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
@@ -238,7 +167,7 @@ class EmployeeDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '03:42:15',
+                      sessionTime,
                       style: AppTypography.h2.copyWith(
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.bold,
@@ -263,7 +192,7 @@ class EmployeeDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '12.4 km',
+                      distance,
                       style: AppTypography.h2.copyWith(
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.bold,
@@ -283,29 +212,23 @@ class EmployeeDetailScreen extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _buildActionButton(
             Iconsax.task_square,
             'Assign Task',
-            () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CreateTaskScreen(
-                    initialAssigneeName: name,
-                  ),
-                ),
-              );
-            },
+            () => context.push('/admin/create-task'),
           ),
           const SizedBox(width: 12),
           _buildActionButton(Iconsax.gallery, 'View Photos', () {
-            Navigator.push(
-              context, // Using context from build method if available, but checking _buildActionButtons signature
-              MaterialPageRoute(builder: (_) => const GalleryScreen()),
-            );
+            // Navigate to admin images screen (filtered by employee)
+            context.push('/admin/images');
           }),
+          const SizedBox(width: 12),
+          _buildActionButton(
+            Iconsax.map,
+            'View Route',
+            () {}, // Route view not yet implemented
+          ),
         ],
       ),
     );
@@ -346,38 +269,68 @@ class EmployeeDetailScreen extends StatelessWidget {
   }
 
   Widget _buildActivityFeed() {
+    if (_activityLogs.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 32),
+          child: Column(
+            children: [
+              Icon(
+                Iconsax.activity,
+                size: 48,
+                color: AppColors.textTertiary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No activity yet',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Column(
-      children: [
-        _buildTimelineItem(
-          icon: Iconsax.location,
-          title: 'Location Update',
-          time: '2 MIN AGO',
-          description: 'Checked in at Sector 45, Gurgaon',
-          isLast: false,
-        ),
-        _buildTimelineItem(
-          icon: Iconsax.box,
-          title: 'Task Started',
-          time: '15 MIN AGO',
-          description: 'Inventory Check - Warehouse A',
-          isLast: false,
-        ),
-        _buildTimelineItem(
-          icon: Iconsax.camera,
-          title: 'Photo Captured',
-          time: '45 MIN AGO',
-          description: 'Site Frontage - Evidence uploaded',
-          isLast: false,
-        ),
-        _buildTimelineItem(
-          icon: Iconsax.car,
-          title: 'Commute Started',
-          time: '1H AGO',
-          description: 'Traveling to Sector 45',
-          isLast: true,
-          isOpacity: true,
-        ),
-      ],
+      children: List.generate(_activityLogs.length, (index) {
+        final log = _activityLogs[index];
+        final isLast = index == _activityLogs.length - 1;
+
+        // Map log type to icon
+        IconData icon;
+        switch (log.type) {
+          case 'location_update':
+            icon = Iconsax.location;
+            break;
+          case 'task_started':
+          case 'task_completed':
+            icon = Iconsax.box;
+            break;
+          case 'photo_captured':
+            icon = Iconsax.camera;
+            break;
+          case 'session_started':
+          case 'session_ended':
+            icon = Iconsax.timer_start;
+            break;
+          case 'break':
+            icon = Iconsax.coffee;
+            break;
+          default:
+            icon = Iconsax.activity;
+        }
+
+        return _buildTimelineItem(
+          icon: icon,
+          title: log.title,
+          time: log.timeAgo.toUpperCase(),
+          description: log.detail,
+          isLast: isLast,
+          isOpacity: isLast,
+        );
+      }),
     );
   }
 
@@ -389,7 +342,6 @@ class EmployeeDetailScreen extends StatelessWidget {
     required bool isLast,
     bool isOpacity = false,
   }) {
-    final showMap = icon == Iconsax.location;
     return Opacity(
       opacity: isOpacity ? 0.8 : 1.0,
       child: IntrinsicHeight(
@@ -398,7 +350,7 @@ class EmployeeDetailScreen extends StatelessWidget {
           children: [
             // Timeline Line & Icon Placeholder space
             SizedBox(
-              width: 24, // Matches left padding for line alignment
+              width: 24,
               child: Stack(
                 alignment: Alignment.topCenter,
                 children: [
@@ -461,42 +413,14 @@ class EmployeeDetailScreen extends StatelessWidget {
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    Row(
-                                      children: [
-                                        if (showMap)
-                                          GestureDetector(
-                                            onTap: () =>
-                                                _openMaps(description),
-                                            child: Container(
-                                              width: 28,
-                                              height: 28,
-                                              decoration: BoxDecoration(
-                                                color: AppColors.glassPrimary,
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                                border: Border.all(
-                                                  color: AppColors.glassBorder,
-                                                ),
-                                              ),
-                                              child: const Icon(
-                                                Iconsax.map_1,
-                                                size: 14,
-                                                color: AppColors.primary,
-                                              ),
-                                            ),
-                                          ),
-                                        if (showMap)
-                                          const SizedBox(width: 8),
-                                        Text(
-                                          time,
-                                          style: AppTypography.caption.copyWith(
-                                            color: AppColors.textSecondary
-                                                .withValues(alpha: 0.6),
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 10,
-                                          ),
-                                        ),
-                                      ],
+                                    Text(
+                                      time,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary
+                                            .withValues(alpha: 0.6),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 10,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -522,79 +446,4 @@ class EmployeeDetailScreen extends StatelessWidget {
       ),
     );
   }
-
-  Future<void> _openMaps(String query) async {
-    final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}',
-    );
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  Widget _buildFloatingNav() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(40),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            height: 72,
-            decoration: BoxDecoration(
-              color: AppColors.textPrimary.withValues(alpha: 0.1), // Adjusted for nav
-              borderRadius: BorderRadius.circular(40),
-              border: Border.all(color: AppColors.textPrimary.withValues(alpha: 0.3)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildNavItem(Iconsax.grid_2, false),
-                _buildNavItem(Iconsax.task_square, true), // Active item mock
-                _buildNavItem(Iconsax.location, false),
-                _buildNavItem(Iconsax.chart_2, false),
-                _buildNavItem(Iconsax.setting_2, false),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem(IconData icon, bool isActive) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          icon,
-          size: 24,
-          color: isActive
-              ? AppColors.primary
-              : AppColors.textSecondary.withValues(alpha: 0.5),
-        ),
-        if (isActive) ...[
-          const SizedBox(height: 4),
-          Container(
-            width: 4,
-            height: 4,
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
-              shape: BoxShape.circle,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
 }
-
-
-

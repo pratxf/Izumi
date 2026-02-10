@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/group_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/glass/glass_chip.dart';
 import '../../widgets/navigation/app_header.dart';
-import 'add_user_screen.dart';
 import 'groups_screen.dart';
 import 'user_management_screen.dart';
 
@@ -19,6 +23,22 @@ class ManagementScreen extends StatefulWidget {
 class _ManagementScreenState extends State<ManagementScreen> {
   int _activeTab = 0;
   final TextEditingController _searchController = TextEditingController();
+  String? _lastLoadedEnterpriseId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  void _loadData() {
+    final enterpriseId = context.read<AuthProvider>().enterpriseId;
+    if (enterpriseId != null) {
+      _lastLoadedEnterpriseId = enterpriseId;
+      context.read<UserProvider>().streamUsers(enterpriseId);
+      context.read<GroupProvider>().streamGroups(enterpriseId);
+    }
+  }
 
   @override
   void dispose() {
@@ -28,6 +48,19 @@ class _ManagementScreenState extends State<ManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Reactive re-load when enterpriseId becomes available after init
+    final enterpriseId = context.watch<AuthProvider>().enterpriseId;
+    if (enterpriseId != null && enterpriseId != _lastLoadedEnterpriseId) {
+      _lastLoadedEnterpriseId = enterpriseId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        context.read<UserProvider>().streamUsers(enterpriseId);
+        context.read<GroupProvider>().streamGroups(enterpriseId);
+      });
+    }
+
+    final userProvider = context.watch<UserProvider>();
+    final users = userProvider.users;
+
     return GradientBackground(
       child: SafeArea(
         bottom: false,
@@ -60,6 +93,14 @@ class _ManagementScreenState extends State<ManagementScreen> {
                     onTap: () => setState(() => _activeTab = 1),
                   ),
                   const Spacer(),
+                  if (_activeTab == 1)
+                    Text(
+                      '${users.length} Users',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.textTertiary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -80,9 +121,9 @@ class _ManagementScreenState extends State<ManagementScreen> {
                         )
                       : UserManagementContent(
                           key: const ValueKey('users'),
-                          users: demoUsers,
+                          users: users,
                           searchController: _searchController,
-                          onAddUser: _openAddUser,
+                          onAddUser: () => context.push('/admin/add-user'),
                         ),
                 ),
               ),
@@ -90,12 +131,6 @@ class _ManagementScreenState extends State<ManagementScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  void _openAddUser() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const AddUserScreen()),
     );
   }
 }

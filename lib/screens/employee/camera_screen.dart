@@ -1,14 +1,15 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:camera/camera.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../providers/session_provider.dart';
 import '../../widgets/glass/glass_icon_button.dart';
 import '../../widgets/navigation/app_header.dart';
-import 'preview_screen.dart';
 
 /// Professional Geotagged Field Camera Screen
 /// Real camera preview with glass geotag overlay
@@ -26,8 +27,6 @@ class _CameraScreenState extends State<CameraScreen> {
   int _selectedCameraIndex = 0;
   FlashMode _flashMode = FlashMode.off;
 
-  final String _locationName = 'Rajendra Nagar';
-  final String _coords = '17.4065� N, 78.4842� E';
   late final DateTime _timestamp = DateTime.now();
 
   @override
@@ -287,8 +286,18 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Widget _buildGeoTagCard() {
+    final session = context.watch<SessionProvider>();
+    final locationName = session.currentLocation.isNotEmpty
+        ? session.currentLocation
+        : 'Fetching location...';
+    final lat = session.currentLat;
+    final lng = session.currentLng;
+    final coords = lat != 0.0 || lng != 0.0
+        ? '${lat.toStringAsFixed(4)}\u00B0 N, ${lng.toStringAsFixed(4)}\u00B0 E'
+        : 'Acquiring GPS...';
+
     return GestureDetector(
-      onTap: _openMap,
+      onTap: () => _openMap(lat, lng),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: BackdropFilter(
@@ -335,7 +344,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _locationName,
+                            locationName,
                             style: AppTypography.bodyMedium.copyWith(
                               color: AppColors.textPrimary,
                               fontWeight: FontWeight.w700,
@@ -385,7 +394,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 const SizedBox(height: 8),
                 Container(height: 1, color: AppColors.glassBorder),
                 const SizedBox(height: 8),
-                _buildWatermarkDetail('COORDINATES', _coords, isCoordinates: true),
+                _buildWatermarkDetail('COORDINATES', coords, isCoordinates: true),
               ],
             ),
           ),
@@ -472,22 +481,22 @@ class _CameraScreenState extends State<CameraScreen> {
       await _initializeControllerFuture;
       final file = await _controller!.takePicture();
       if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PreviewScreen(
-            location: _locationName,
-            timestamp: _timestamp,
-          ),
-        ),
-      );
-      // TODO: Wire `file.path` to preview screen for real image display.
+      final session = context.read<SessionProvider>();
+      final location = session.currentLocation.isNotEmpty
+          ? session.currentLocation
+          : 'Unknown location';
+      context.push('/employee/camera/preview', extra: {
+        'location': location,
+        'timestamp': DateTime.now(),
+        'imagePath': file.path,
+      });
     } catch (_) {}
   }
 
-  Future<void> _openMap() async {
+  Future<void> _openMap(double lat, double lng) async {
+    if (lat == 0.0 && lng == 0.0) return;
     final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=17.4065,78.4842',
+      'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
     );
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);

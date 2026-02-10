@@ -1,12 +1,16 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/user_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/dashboard_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 import '../../widgets/inputs/text_input_field.dart';
-import 'employee_detail_screen.dart';
 import '../notifications/notifications_screen.dart';
 
 /// Dashboard Screen - Enterprise Admin
@@ -22,68 +26,22 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _searchController = TextEditingController();
-
-  final List<Map<String, dynamic>> _employees = [
-    {
-      'name': 'Rajesh Kumar',
-      'status': 'active',
-      'location': 'Rajendra Nagar',
-      'lastUpdated': '2 min ago',
-      'distance': 12.4,
-      'duration': '7h 30m',
-      'avatar': 'https://i.pravatar.cc/150?img=11',
-    },
-    {
-      'name': 'Sarah Jenkins',
-      'status': 'break',
-      'location': 'Sector 45, Gurgaon',
-      'lastUpdated': '15 min ago',
-      'distance': 8.2,
-      'duration': '5h 15m',
-      'avatar': 'https://i.pravatar.cc/150?img=5',
-    },
-    {
-      'name': 'Vikram Singh',
-      'status': 'offline',
-      'location': 'Whitefield',
-      'lastUpdated': '5h ago',
-      'distance': 0.0,
-      'duration': '0m',
-      'avatar': 'https://i.pravatar.cc/150?img=12',
-    },
-    {
-      'name': 'Priya Sharma',
-      'status': 'active',
-      'location': 'MG Road',
-      'lastUpdated': '1 min ago',
-      'distance': 9.8,
-      'duration': '6h 45m',
-      'avatar': 'https://i.pravatar.cc/150?img=9',
-    },
-  ];
-
   String _statusFilter = 'active';
+  String? _lastLoadedEnterpriseId;
 
-  List<Map<String, dynamic>> get _filteredEmployees {
-    final query = _searchController.text.toLowerCase();
-    final filtered = _employees.where((e) {
-      return e['name'].toString().toLowerCase().contains(query) ||
-          e['location'].toString().toLowerCase().contains(query);
-    }).toList();
-
-    if (_statusFilter == 'active') {
-      return filtered.where((e) => e['status'] == 'active').toList();
-    }
-    if (_statusFilter == 'offline') {
-      return filtered.where((e) => e['status'] == 'offline').toList();
-    }
-    return filtered;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDashboard());
   }
 
-  int get _activeCount =>
-      _employees.where((e) => e['status'] == 'active').length;
-  int get _offlineCount =>
-      _employees.where((e) => e['status'] == 'offline').length;
+  void _loadDashboard() {
+    final enterpriseId = context.read<AuthProvider>().enterpriseId;
+    if (enterpriseId != null && enterpriseId != _lastLoadedEnterpriseId) {
+      _lastLoadedEnterpriseId = enterpriseId;
+      context.read<DashboardProvider>().initDashboard(enterpriseId);
+    }
+  }
 
   @override
   void dispose() {
@@ -91,8 +49,93 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.4),
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: AlertDialog(
+          backgroundColor: AppColors.glassStrong,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            'Logout',
+            style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
+          ),
+          content: Text(
+            'Are you sure you want to logout?',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Cancel',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await context.read<AuthProvider>().signOut();
+              },
+              child: Text(
+                'Logout',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.critical,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<UserModel> _getFilteredEmployees(DashboardProvider dashboardProvider) {
+    final query = _searchController.text.toLowerCase();
+    List<UserModel> employees = dashboardProvider.employees;
+
+    // Apply search filter
+    if (query.isNotEmpty) {
+      employees = employees.where((e) {
+        final location = dashboardProvider
+                .getEmployeeLocation(e.id)?['address']
+                ?.toString()
+                .toLowerCase() ??
+            '';
+        return e.name.toLowerCase().contains(query) ||
+            location.contains(query);
+      }).toList();
+    }
+
+    // Apply status filter
+    if (_statusFilter == 'active') {
+      return employees
+          .where((e) => dashboardProvider.getEmployeeStatus(e.id) == 'active')
+          .toList();
+    }
+    if (_statusFilter == 'offline') {
+      return employees
+          .where((e) => dashboardProvider.getEmployeeStatus(e.id) == 'offline')
+          .toList();
+    }
+    return employees;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final dashboardProvider = context.watch<DashboardProvider>();
+    final employees = dashboardProvider.employees;
+    final filteredEmployees = _getFilteredEmployees(dashboardProvider);
+
     return GradientBackground(
       child: SafeArea(
         bottom: false,
@@ -111,10 +154,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 );
               },
-              onAvatarTap: widget.onAvatarTap,
+              onAvatarTap: _showLogoutDialog,
             ),
 
-            // Search Bar (clean glass, gallery style)
+            // Search Bar
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
               child: GlassInputField(
@@ -149,7 +192,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: _buildOverviewCard(
                           icon: Iconsax.people,
                           label: 'Active',
-                          value: '$_activeCount',
+                          value: '${dashboardProvider.activeCount}',
                           sublabel: 'Personnel online',
                           showPulse: true,
                         ),
@@ -159,7 +202,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: _buildOverviewCard(
                           icon: Iconsax.user_remove,
                           label: 'Offline',
-                          value: '$_offlineCount',
+                          value: '${dashboardProvider.offlineCount}',
                           sublabel: 'Personnel offline',
                         ),
                       ),
@@ -172,69 +215,88 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             // All Employees Section
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: dashboardProvider.isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        RichText(
-                          text: TextSpan(
-                            style: AppTypography.h3.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const TextSpan(text: 'All Employees '),
-                              TextSpan(
-                                text: '(${_employees.length})',
-                                style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontWeight: FontWeight.normal,
+                              RichText(
+                                text: TextSpan(
+                                  style: AppTypography.h3.copyWith(
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  children: [
+                                    const TextSpan(text: 'All Employees '),
+                                    TextSpan(
+                                      text: '(${employees.length})',
+                                      style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontWeight: FontWeight.normal,
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                              ),
+                              Row(
+                                children: [
+                                  _buildFilterPill(
+                                    label: 'Active',
+                                    selected: _statusFilter == 'active',
+                                    onTap: () =>
+                                        setState(() => _statusFilter = 'active'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _buildFilterPill(
+                                    label: 'Offline',
+                                    selected: _statusFilter == 'offline',
+                                    onTap: () => setState(
+                                        () => _statusFilter = 'offline'),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ),
-                        Row(
-                          children: [
-                            _buildFilterPill(
-                              label: 'Active',
-                              selected: _statusFilter == 'active',
-                              onTap: () =>
-                                  setState(() => _statusFilter = 'active'),
-                            ),
-                            const SizedBox(width: 8),
-                            _buildFilterPill(
-                              label: 'Offline',
-                              selected: _statusFilter == 'offline',
-                              onTap: () =>
-                                  setState(() => _statusFilter = 'offline'),
-                            ),
-                          ],
+                        const SizedBox(height: 16),
+                        Expanded(
+                          child: filteredEmployees.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    'No $_statusFilter employees found',
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                )
+                              : ListView.separated(
+                                  padding: const EdgeInsets.only(
+                                    left: 24,
+                                    right: 24,
+                                    bottom: 120,
+                                  ),
+                                  itemCount: filteredEmployees.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 16),
+                                  itemBuilder: (context, index) {
+                                    return _buildEmployeeCard(
+                                      filteredEmployees[index],
+                                      dashboardProvider,
+                                    );
+                                  },
+                                ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: ListView.separated(
-                      padding: const EdgeInsets.only(
-                        left: 24,
-                        right: 24,
-                        bottom: 120,
-                      ),
-                      itemCount: _filteredEmployees.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 16),
-                      itemBuilder: (context, index) {
-                        return _buildEmployeeCard(_filteredEmployees[index]);
-                      },
-                    ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),
@@ -262,7 +324,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: AppColors.glassBorder),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05), blurRadius: 10),
             ],
           ),
           child: Column(
@@ -280,7 +343,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.success.withOpacity(0.4),
+                            color: AppColors.success.withValues(alpha: 0.4),
                             blurRadius: 8,
                             spreadRadius: 2,
                           ),
@@ -366,39 +429,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildEmployeeCard(Map<String, dynamic> employee) {
-    final status = employee['status'] as String;
+  Widget _buildEmployeeCard(
+      UserModel employee, DashboardProvider dashboardProvider) {
+    final status = dashboardProvider.getEmployeeStatus(employee.id);
     final isActive = status == 'active';
     final isBreak = status == 'break';
+
+    final locationData = dashboardProvider.getEmployeeLocation(employee.id);
+    final locationAddress =
+        locationData?['address'] as String? ?? 'Location unavailable';
+    final lastUpdated = locationData?['timestamp'];
+    String lastUpdatedStr = '';
+    if (lastUpdated != null) {
+      final ts = DateTime.fromMillisecondsSinceEpoch(lastUpdated is int
+          ? lastUpdated
+          : int.tryParse(lastUpdated.toString()) ?? 0);
+      final diff = DateTime.now().difference(ts);
+      if (diff.inMinutes < 1) {
+        lastUpdatedStr = 'Just now';
+      } else if (diff.inMinutes < 60) {
+        lastUpdatedStr = '${diff.inMinutes} min ago';
+      } else if (diff.inHours < 24) {
+        lastUpdatedStr = '${diff.inHours}h ago';
+      } else {
+        lastUpdatedStr = '${diff.inDays}d ago';
+      }
+    }
+
+    final stats = dashboardProvider.getEmployeeStats(employee.id);
+    final distance = stats?['distance'] as num? ?? 0.0;
+    final durationMs = stats?['duration'] as num? ?? 0;
+    final durationMin = (durationMs / 60000).round();
+    final durationStr = durationMin >= 60
+        ? '${durationMin ~/ 60}h ${durationMin % 60}m'
+        : '${durationMin}m';
 
     Color statusColor = isActive
         ? AppColors.success
         : isBreak
-        ? AppColors.warning
-        : AppColors.textDisabled;
+            ? AppColors.warning
+            : AppColors.textDisabled;
 
     Color statusBgColor = isActive
         ? AppColors.badgeActiveBackground
         : isBreak
-        ? AppColors.badgeBreakBackground
-        : AppColors.badgeOfflineBackground;
+            ? AppColors.badgeBreakBackground
+            : AppColors.badgeOfflineBackground;
 
     String statusLabel = isActive
         ? 'ACTIVE'
         : isBreak
-        ? 'BREAK'
-        : 'OFFLINE';
+            ? 'BREAK'
+            : 'OFFLINE';
 
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => EmployeeDetailScreen(
-              name: employee['name'],
-              isActive: isActive,
-            ),
-          ),
+        context.push(
+          '/admin/employee/${employee.id}',
+          extra: {
+            'name': employee.name,
+            'isActive': isActive,
+            'avatarUrl': employee.profileImageUrl ??
+                'https://i.pravatar.cc/150?img=11',
+          },
         );
       },
       child: ClipRRect(
@@ -426,37 +519,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           height: 48,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: AppColors.glassBorder, width: 2),
+                            border: Border.all(
+                                color: AppColors.glassBorder, width: 2),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
+                                color: Colors.black.withValues(alpha: 0.05),
                                 blurRadius: 4,
                               ),
                             ],
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(24),
-                            child: Image.network(
-                              employee['avatar'],
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                color: AppColors.surfaceMuted,
-                                child: Center(
-                                  child: Text(
-                                    employee['name']
-                                        .toString()
-                                        .split(' ')
-                                        .map((e) => e[0])
-                                        .take(2)
-                                        .join(),
-                                    style: AppTypography.bodySmall.copyWith(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
+                            child: employee.profileImageUrl != null
+                                ? Image.network(
+                                    employee.profileImageUrl!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        _buildAvatarFallback(employee),
+                                  )
+                                : _buildAvatarFallback(employee),
                           ),
                         ),
                         Positioned(
@@ -484,7 +565,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            employee['name'],
+                            employee.name,
                             style: AppTypography.bodyMedium.copyWith(
                               color: AppColors.textPrimary,
                               fontWeight: FontWeight.bold,
@@ -501,7 +582,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               const SizedBox(width: 4),
                               Flexible(
                                 child: Text(
-                                  employee['location'],
+                                  locationAddress,
                                   style: AppTypography.caption.copyWith(
                                     color: AppColors.textSecondary,
                                     fontWeight: FontWeight.w500,
@@ -523,7 +604,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       decoration: BoxDecoration(
                         color: statusBgColor,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: statusColor.withOpacity(0.3)),
+                        border: Border.all(
+                            color: statusColor.withValues(alpha: 0.3)),
                       ),
                       child: Text(
                         statusLabel,
@@ -555,23 +637,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       children: [
                         _buildStatColumn(
                           'DISTANCE',
-                          '${employee['distance']} km',
+                          '${distance.toStringAsFixed(1)} km',
                         ),
                         const SizedBox(width: 40),
-                        _buildStatColumn('DURATION', employee['duration']),
+                        _buildStatColumn('DURATION', durationStr),
                       ],
                     ),
-                    Text(
-                      'Updated: ${employee['lastUpdated']}',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textTertiary,
-                        fontWeight: FontWeight.w500,
+                    if (lastUpdatedStr.isNotEmpty)
+                      Text(
+                        'Updated: $lastUpdatedStr',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.textTertiary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatarFallback(UserModel employee) {
+    return Container(
+      color: AppColors.surfaceMuted,
+      child: Center(
+        child: Text(
+          employee.initials,
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.primary,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),
@@ -603,5 +701,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-
-

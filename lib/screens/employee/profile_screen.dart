@@ -1,21 +1,19 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
-import '../auth/welcome_screen.dart';
-import 'edit_profile_screen.dart';
-import '../admin/export_data_screen.dart';
 
 /// Profile Screen - Glassmorphism Design
 /// User profile with settings and logout
 class ProfileScreen extends StatelessWidget {
   final bool isAdmin;
-
   const ProfileScreen({super.key, this.isAdmin = false});
 
   void _logout(BuildContext context) {
@@ -50,13 +48,12 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(ctx);
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-                  (route) => false,
-                );
+                await context.read<AuthProvider>().signOut();
+                if (context.mounted) {
+                  context.go('/');
+                }
               },
               child: Text(
                 'Logout',
@@ -91,8 +88,11 @@ class ProfileScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     // Profile Card
-                    _buildProfileCard(),
+                    _buildProfileCard(context),
                     const SizedBox(height: 24),
+
+                    // Role Switcher (only if user has multiple roles)
+                    _buildRoleSwitcher(context),
 
                     // Menu Items Card
                     _buildMenuCard(context),
@@ -111,7 +111,14 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileCard() {
+  Widget _buildProfileCard(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
+    final user = authProvider.currentUser;
+    final initials = user?.initials ?? 'U';
+    final name = user?.name ?? 'User';
+    final phone = user?.phone ?? '';
+    final displayRole = user?.displayRole ?? authProvider.activeRole ?? 'Employee';
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(32),
       child: BackdropFilter(
@@ -147,7 +154,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    'RK',
+                    initials,
                     style: AppTypography.h2.copyWith(
                       color: AppColors.primary,
                       fontWeight: FontWeight.bold,
@@ -159,7 +166,7 @@ class ProfileScreen extends StatelessWidget {
 
               // Name
               Text(
-                'Rahul Kumar',
+                name,
                 style: AppTypography.h2.copyWith(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.bold,
@@ -169,7 +176,7 @@ class ProfileScreen extends StatelessWidget {
 
               // Phone
               Text(
-                '+91 98765 43210',
+                phone,
                 style: AppTypography.bodySmall.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -190,7 +197,7 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  'Field Employee',
+                  displayRole,
                   style: AppTypography.caption.copyWith(
                     color: AppColors.primary,
                     fontWeight: FontWeight.w600,
@@ -198,6 +205,101 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoleSwitcher(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
+    final user = authProvider.currentUser;
+    if (user == null || user.roles.length <= 1) return const SizedBox.shrink();
+
+    String roleLabel(String role) {
+      switch (role) {
+        case 'admin': return 'Enterprise Admin';
+        case 'team_lead': return 'Team Lead';
+        case 'employee': return 'Field Employee';
+        default: return role;
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: AppColors.glassPanelGradient,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppColors.glassBorder),
+              boxShadow: AppShadows.glass,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SWITCH ROLE',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: user.roles.map((role) {
+                    final isActive = role == user.activeRole;
+                    return GestureDetector(
+                      onTap: isActive
+                          ? null
+                          : () {
+                              authProvider.switchRole(role);
+                              // Navigate to appropriate home
+                              if (role == 'admin') {
+                                context.go('/admin/dashboard');
+                              } else {
+                                context.go('/employee/home');
+                              }
+                            },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? AppColors.primary
+                              : AppColors.glassPrimary,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isActive
+                                ? AppColors.primary
+                                : AppColors.glassBorder,
+                          ),
+                        ),
+                        child: Text(
+                          roleLabel(role),
+                          style: AppTypography.bodySmall.copyWith(
+                            color: isActive
+                                ? AppColors.textPrimary
+                                : AppColors.textSecondary,
+                            fontWeight:
+                                isActive ? FontWeight.bold : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -222,10 +324,7 @@ class ProfileScreen extends StatelessWidget {
                 icon: Iconsax.user_edit,
                 label: 'Edit Profile',
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-                  );
+                  // TODO: Navigate to edit profile
                 },
               ),
               if (isAdmin) ...[
@@ -234,12 +333,7 @@ class ProfileScreen extends StatelessWidget {
                   icon: Iconsax.export_1,
                   label: 'Export Data',
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ExportDataScreen(),
-                      ),
-                    );
+                    // TODO: Navigate to export data
                   },
                 ),
               ],
@@ -330,4 +424,3 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 }
-

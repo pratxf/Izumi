@@ -1,9 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/group_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 
 /// Edit Group Screen - Glassmorphism Design
@@ -28,48 +32,39 @@ class EditGroupScreen extends StatefulWidget {
 
 class _EditGroupScreenState extends State<EditGroupScreen> {
   late TextEditingController _nameController;
-  late TextEditingController _teamLeadSearchController;
   late String _selectedTeamLead;
   late List<Map<String, dynamic>> _members;
-
-  final List<Map<String, String>> _teamLeads = [
-    {'id': 'rajesh', 'name': 'Rajesh Kumar'},
-    {'id': 'sarah', 'name': 'Sarah Connor'},
-    {'id': 'mike', 'name': 'Mike Ross'},
-  ];
-
-  List<Map<String, String>> get _sortedTeamLeads {
-    final list = List<Map<String, String>>.from(_teamLeads);
-    list.sort((a, b) => a['name']!.compareTo(b['name']!));
-    return list;
-  }
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.groupName);
-    _teamLeadSearchController = TextEditingController();
     _selectedTeamLead = widget.teamLeadId;
     _members = List.from(widget.members);
+    // Safety net: ensure UserProvider has data even if navigated here directly
+    final userProvider = context.read<UserProvider>();
+    if (userProvider.employees.isEmpty) {
+      final enterpriseId = context.read<AuthProvider>().enterpriseId ?? '';
+      if (enterpriseId.isNotEmpty) {
+        userProvider.streamUsers(enterpriseId);
+      }
+    }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _teamLeadSearchController.dispose();
     super.dispose();
   }
 
-  String get _selectedLeadName {
-    return _teamLeads
-        .firstWhere(
-          (lead) => lead['id'] == _selectedTeamLead,
-          orElse: () => _teamLeads.first,
-        )['name']!;
-  }
-
-  void _removeMember(int index) {
-    setState(() => _members.removeAt(index));
+  Future<void> _removeMember(int index) async {
+    final memberId = _members[index]['id'] as String;
+    final groupProvider = context.read<GroupProvider>();
+    final success = await groupProvider.removeMember(widget.groupId, memberId);
+    if (success && mounted) {
+      setState(() => _members.removeAt(index));
+    }
   }
 
   void _deleteGroup() {
@@ -104,10 +99,24 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
               ),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(ctx);
-                Navigator.pop(context);
-                // Delete group logic
+                final groupProvider = context.read<GroupProvider>();
+                final success =
+                    await groupProvider.deleteGroup(widget.groupId);
+                if (success && mounted) {
+                  context.pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Group deleted'),
+                      backgroundColor: AppColors.success,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  );
+                }
               },
               child: Text(
                 'Delete',
@@ -123,8 +132,49 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     );
   }
 
+  Future<void> _saveChanges() async {
+    setState(() => _isSaving = true);
+
+    final groupProvider = context.read<GroupProvider>();
+    final success = await groupProvider.updateGroup(widget.groupId, {
+      'name': _nameController.text.trim(),
+      'leadId': _selectedTeamLead,
+      'memberIds': _members.map((m) => m['id'] as String).toList(),
+      'updatedAt': DateTime.now(),
+    });
+
+    if (!mounted) return;
+
+    if (success) {
+      context.pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Group updated successfully'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    } else {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(groupProvider.error ?? 'Failed to update group'),
+          backgroundColor: AppColors.critical,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final userProvider = context.watch<UserProvider>();
+    final employees = userProvider.employees;
+
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -142,7 +192,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Form Fields
-                      _buildFormSection(),
+                      _buildFormSection(employees),
                       const SizedBox(height: 32),
 
                       // Team Members
@@ -155,7 +205,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
           ),
         ),
 
-        // Bottom Actions removed (icons in header)
+        // Bottom Actions
+        bottomSheet: _buildBottomActions(),
       ),
     );
   }
@@ -175,7 +226,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
           child: Row(
             children: [
               GestureDetector(
-                onTap: () => Navigator.pop(context),
+                onTap: () => context.pop(),
                 child: Container(
                   width: 40,
                   height: 40,
@@ -200,48 +251,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   textAlign: TextAlign.center,
                 ),
               ),
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      // Save changes
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.glassPrimary,
-                        border: Border.all(color: AppColors.glassBorder),
-                      ),
-                      child: const Icon(
-                        Iconsax.tick_circle,
-                        color: AppColors.textPrimary,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: _deleteGroup,
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.glassPrimary,
-                        border: Border.all(color: AppColors.glassBorder),
-                      ),
-                      child: const Icon(
-                        Iconsax.trash,
-                        color: AppColors.critical,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              const SizedBox(width: 40), // Spacer
             ],
           ),
         ),
@@ -249,7 +259,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     );
   }
 
-  Widget _buildFormSection() {
+  Widget _buildFormSection(List employees) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -305,36 +315,48 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        GestureDetector(
-          onTap: _openTeamLeadPicker,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                height: 56,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: AppColors.glassPrimary,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _selectedLeadName,
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      Iconsax.search_normal,
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: AppColors.glassPrimary,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: employees.any((e) => e.id == _selectedTeamLead)
+                      ? _selectedTeamLead
+                      : null,
+                  isExpanded: true,
+                  icon: Icon(
+                    Iconsax.arrow_down_1,
+                    color: AppColors.textTertiary,
+                    size: 20,
+                  ),
+                  dropdownColor: AppColors.glassStrong,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  hint: Text(
+                    'Select team lead',
+                    style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.textTertiary,
-                      size: 20,
                     ),
-                  ],
+                  ),
+                  items: employees.map<DropdownMenuItem<String>>((emp) {
+                    return DropdownMenuItem(
+                      value: emp.id,
+                      child: Text(emp.name),
+                    );
+                  }).toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _selectedTeamLead = v);
+                  },
                 ),
               ),
             ),
@@ -359,6 +381,18 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            GestureDetector(
+              onTap: () {
+                // Manage members
+              },
+              child: Text(
+                'Manage',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -378,8 +412,9 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
   }
 
   Widget _buildMemberCard(Map<String, dynamic> member, int index) {
-    final isActive = member['status'] == 'active';
-    final isAway = member['status'] == 'away';
+    final status = member['status'] as String? ?? 'offline';
+    final isActive = status == 'active';
+    final isAway = status == 'away' || status == 'break';
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -405,7 +440,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    member['initials'] ?? member['name']![0],
+                    member['initials'] ?? member['name']?[0] ?? '?',
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.primary,
                       fontWeight: FontWeight.bold,
@@ -421,7 +456,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      member['name'],
+                      member['name'] ?? 'Unknown',
                       style: AppTypography.bodyMedium.copyWith(
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.w600,
@@ -439,8 +474,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                             color: isActive
                                 ? AppColors.success
                                 : isAway
-                                ? AppColors.warning
-                                : AppColors.textDisabled,
+                                    ? AppColors.warning
+                                    : AppColors.textDisabled,
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -448,8 +483,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                           isActive
                               ? 'Active'
                               : isAway
-                              ? 'Away'
-                              : 'Offline',
+                                  ? 'Away'
+                                  : 'Offline',
                           style: TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 12,
@@ -488,7 +523,9 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
 
   Widget _buildAddMemberButton() {
     return GestureDetector(
-      onTap: _openAddMemberSheet,
+      onTap: () {
+        _showAddMemberSheet();
+      },
       child: Container(
         height: 64,
         decoration: BoxDecoration(
@@ -526,177 +563,171 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     );
   }
 
-  void _openTeamLeadPicker() {
+  void _showAddMemberSheet() {
+    final userProvider = context.read<UserProvider>();
+    final allEmployees = userProvider.employees;
+    final currentMemberIds =
+        _members.map((m) => m['id'] as String).toSet();
+
+    // Filter out employees already in the group
+    final available =
+        allEmployees.where((e) => !currentMemberIds.contains(e.id)).toList();
+
     showModalBottomSheet(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
-      backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) {
-        final leads = _sortedTeamLeads;
-        return _buildSearchSheet(
-          title: 'Assign Team Lead',
-          controller: _teamLeadSearchController,
-          items: leads.map((lead) => lead['name']!).toList(),
-          onSelected: (value) {
-            final match = leads.firstWhere(
-              (lead) => lead['name'] == value,
-              orElse: () => leads.first,
-            );
-            setState(() => _selectedTeamLead = match['id']!);
-          },
-        );
-      },
-    );
-  }
-
-  void _openAddMemberSheet() {
-    showModalBottomSheet(
-      context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
       backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        final available = [
-          {'name': 'Amit Patel', 'status': 'active'},
-          {'name': 'Priya Sharma', 'status': 'active'},
-          {'name': 'David Kim', 'status': 'away'},
-          {'name': 'Neha Verma', 'status': 'offline'},
-        ];
-        available.sort((a, b) => a['name']!.compareTo(b['name']!));
-        return _buildSearchSheet(
-          title: 'Add Member',
-          controller: TextEditingController(),
-          items: available.map((member) => member['name']!).toList(),
-          onSelected: (value) {
-            final match = available.firstWhere(
-              (member) => member['name'] == value,
-              orElse: () => available.first,
-            );
-            setState(() {
-              _members.add({
-                'name': match['name']!,
-                'initials': match['name']!
-                    .split(' ')
-                    .map((part) => part[0])
-                    .take(2)
-                    .join()
-                    .toUpperCase(),
-                'status': match['status'] ?? 'active',
-              });
-            });
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildSearchSheet({
-    required String title,
-    required TextEditingController controller,
-    required List<String> items,
-    required ValueChanged<String> onSelected,
-  }) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.5,
-      maxChildSize: 0.9,
-      builder: (context, scrollController) {
-        return ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-            child: Container(
-              color: AppColors.glassNav,
-              child: Column(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 12, bottom: 16),
-                    decoration: BoxDecoration(
-                      color: AppColors.glassBorder,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Text(
-                      title,
-                      style: AppTypography.h3.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: TextField(
-                      controller: controller,
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        prefixIcon: Icon(Iconsax.search_normal,
-                            color: AppColors.textSecondary),
-                        hintText: 'Search...',
-                        hintStyle: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textTertiary,
-                        ),
-                        filled: true,
-                        fillColor: AppColors.glassPrimary,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide:
-                              BorderSide(color: AppColors.glassBorder),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide:
-                              BorderSide(color: AppColors.glassBorder),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide(color: AppColors.primary),
-                        ),
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: ListView(
-                      controller: scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      children: items
-                          .where((item) => item
-                              .toLowerCase()
-                              .contains(controller.text.toLowerCase()))
-                          .map(
-                            (item) => ListTile(
-                              title: Text(
-                                item,
-                                style: AppTypography.bodyMedium.copyWith(
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              onTap: () {
-                                Navigator.pop(context);
-                                onSelected(item);
-                              },
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  ),
-                ],
+      builder: (ctx) => Container(
+        height: MediaQuery.of(ctx).size.height * 0.5,
+        decoration: const BoxDecoration(
+          color: AppColors.glassStrong,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-          ),
-        );
-      },
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text('Add Member', style: AppTypography.h3),
+            ),
+            Expanded(
+              child: available.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No available employees',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: available.length,
+                      itemBuilder: (ctx, index) {
+                        final emp = available[index];
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: AppColors.surfaceMuted,
+                            child: Text(
+                              emp.initials,
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            emp.name,
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            final groupProvider =
+                                context.read<GroupProvider>();
+                            final success = await groupProvider.addMember(
+                                widget.groupId, emp.id);
+                            if (success && mounted) {
+                              setState(() {
+                                _members.add({
+                                  'id': emp.id,
+                                  'name': emp.name,
+                                  'initials': emp.initials,
+                                  'status': 'offline',
+                                });
+                              });
+                            }
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-}
+  Widget _buildBottomActions() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.transparent,
+            AppColors.glassStrong.withValues(alpha: 0.9),
+            AppColors.glassStrong,
+          ],
+          stops: const [0.0, 0.3, 1.0],
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Save Button
+            GestureDetector(
+              onTap: _isSaving ? null : _saveChanges,
+              child: Container(
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.textPrimary,
+                          ),
+                        )
+                      : Text(
+                          'Save Changes',
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
 
+            // Delete Button
+            GestureDetector(
+              onTap: _deleteGroup,
+              child: Text(
+                'Delete Group',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.critical,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

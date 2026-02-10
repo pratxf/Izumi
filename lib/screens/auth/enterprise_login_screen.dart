@@ -1,11 +1,11 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
-import '../../widgets/inputs/text_input_field.dart'; // Import TextInputField
-import '../admin/admin_shell.dart';
+import '../../widgets/inputs/text_input_field.dart';
+import '../../providers/auth_provider.dart';
 
 /// Enterprise Admin Login Screen - Glassmorphism Design
 /// Email/Password login for enterprise admins
@@ -28,12 +28,11 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
     super.dispose();
   }
 
-  void _signIn() {
-    // Mock authentication - accept any credentials for now
+  Future<void> _signIn() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Please enter email and password'),
+          content: const Text('Please enter email and password'),
           backgroundColor: AppColors.critical,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -44,12 +43,29 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
       return;
     }
 
-    // Navigate to admin shell
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const AdminShell()),
-      (route) => false,
+    final authProvider = context.read<AuthProvider>();
+    final success = await authProvider.loginEnterprise(
+      _emailController.text.trim(),
+      _passwordController.text,
     );
+
+    if (!mounted) return;
+
+    if (success) {
+      // GoRouter redirect handles navigation to admin dashboard
+      context.go('/admin/dashboard');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.errorMessage ?? 'Login failed'),
+          backgroundColor: AppColors.critical,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -94,15 +110,15 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> {
                     child: Row(
                       children: [
                         GestureDetector(
-                          onTap: () => Navigator.pop(context),
+                          onTap: () => context.pop(),
                           child: Container(
                             width: 40,
                             height: 40,
-                            decoration: BoxDecoration(
+                            decoration: const BoxDecoration(
                               shape: BoxShape.circle,
                             color: AppColors.glassPrimary,
                             ),
-                            child: Icon(
+                            child: const Icon(
                               Iconsax.arrow_left_2,
                               size: 18,
                               color: AppColors.textPrimary,

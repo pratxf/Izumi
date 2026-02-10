@@ -1,20 +1,22 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/inputs/otp_input_field.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
-import '../admin/admin_shell.dart';
-import '../employee/employee_shell.dart';
 
 /// OTP Verification Screen - Glassmorphism Design
 class OtpScreen extends StatefulWidget {
   final String phoneNumber;
   final String role;
+  final String name;
 
-  const OtpScreen({super.key, required this.phoneNumber, required this.role});
+  const OtpScreen({super.key, required this.phoneNumber, required this.role, this.name = ''});
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -24,6 +26,7 @@ class _OtpScreenState extends State<OtpScreen> {
   int _resendTimer = 45;
   Timer? _timer;
   bool _canResend = false;
+  bool _isVerifying = false;
   String _otpValue = '';
 
   @override
@@ -55,11 +58,19 @@ class _OtpScreenState extends State<OtpScreen> {
     });
   }
 
-  void _verifyOtp() {
-    if (_otpValue.length < 4) {
+  void _resendOtp() {
+    final authProvider = context.read<AuthProvider>();
+    // Strip spaces to get E.164 format for Firebase
+    final phone = widget.phoneNumber.replaceAll(' ', '');
+    authProvider.sendOTP(phone);
+    _startResendTimer();
+  }
+
+  Future<void> _verifyOtp() async {
+    if (_otpValue.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Please enter the complete OTP'),
+          content: Text('Please enter the complete 6-digit OTP'),
           backgroundColor: AppColors.critical,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -70,19 +81,27 @@ class _OtpScreenState extends State<OtpScreen> {
       return;
     }
 
-    // Navigate based on role
-    Widget destination;
-    if (widget.role == 'admin') {
-      destination = const AdminShell();
-    } else {
-      destination = EmployeeShell(isTeamLead: widget.role == 'team_lead');
-    }
+    setState(() => _isVerifying = true);
 
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => destination),
-      (route) => false,
-    );
+    final authProvider = context.read<AuthProvider>();
+    final success = await authProvider.verifyOTP(_otpValue);
+
+    if (!mounted) return;
+    setState(() => _isVerifying = false);
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.errorMessage ?? 'Verification failed'),
+          backgroundColor: AppColors.critical,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
+    // On success, auth state listener + GoRouter redirect handles navigation
   }
 
   String get _maskedPhone {
@@ -137,7 +156,7 @@ class _OtpScreenState extends State<OtpScreen> {
                     child: Row(
                       children: [
                         GestureDetector(
-                          onTap: () => Navigator.pop(context),
+                          onTap: () => context.pop(),
                           child: Container(
                             width: 40,
                             height: 40,
@@ -172,7 +191,7 @@ class _OtpScreenState extends State<OtpScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Enter the 4-digit code sent to',
+                    'Enter the 6-digit code sent to',
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -190,9 +209,9 @@ class _OtpScreenState extends State<OtpScreen> {
 
                   // OTP Inputs
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: OtpInputField(
-                      length: 4,
+                      length: 6,
                       onChanged: (value) => setState(() => _otpValue = value),
                       onCompleted: (value) =>
                           setState(() => _otpValue = value),
@@ -212,7 +231,7 @@ class _OtpScreenState extends State<OtpScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       GestureDetector(
-                        onTap: _canResend ? _startResendTimer : null,
+                        onTap: _canResend ? _resendOtp : null,
                         child: Text(
                           'Resend OTP',
                           style: AppTypography.bodyMedium.copyWith(
@@ -242,25 +261,37 @@ class _OtpScreenState extends State<OtpScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 32),
                     child: GestureDetector(
-                      onTap: _verifyOtp,
-                      child: Container(
-                        width: double.infinity,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(28),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.3),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Verify & Proceed',
-                            style: AppTypography.buttonLarge,
+                      onTap: _isVerifying ? null : _verifyOtp,
+                      child: Opacity(
+                        opacity: _isVerifying ? 0.6 : 1.0,
+                        child: Container(
+                          width: double.infinity,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(28),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withValues(alpha: 0.3),
+                                blurRadius: 20,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: _isVerifying
+                                ? SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2.5,
+                                    ),
+                                  )
+                                : Text(
+                                    'Verify & Proceed',
+                                    style: AppTypography.buttonLarge,
+                                  ),
                           ),
                         ),
                       ),

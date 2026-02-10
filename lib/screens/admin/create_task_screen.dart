@@ -1,10 +1,18 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/task_model.dart';
+import '../../models/user_model.dart';
+import '../../models/group_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/dashboard_provider.dart';
+import '../../providers/group_provider.dart';
+import '../../providers/task_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
-import '../../widgets/glass/glass_chip.dart';
 import '../../widgets/inputs/text_input_field.dart';
 import '../../widgets/navigation/app_header.dart';
 
@@ -25,44 +33,53 @@ class CreateTaskScreen extends StatefulWidget {
 }
 
 class _CreateTaskScreenState extends State<CreateTaskScreen> {
-  final _taskTitleController = TextEditingController(
-    text: 'Regional survey Q1 2026',
-  );
+  final _taskTitleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _assignedEmployeeController = TextEditingController();
-  final GlobalKey _employeeSelectorKey = GlobalKey();
-  final GlobalKey _teamLeadSelectorKey = GlobalKey();
-  final GlobalKey _groupSelectorKey = GlobalKey();
 
   String _assignType = 'individual'; // 'individual', 'team_lead', 'group'
   String _priority = 'high'; // 'high', 'medium', 'low'
   bool _sendNotification = true;
+  DateTime _dueDate = DateTime.now().add(const Duration(days: 7));
+  bool _isCreating = false;
 
-  final List<String> _employees = [
-    'Rajesh Kumar',
-    'Priya Sharma',
-    'Amit Patel',
-    'David Kim',
-  ];
-
-  final List<String> _groups = [
-    'North Zone',
-    'South Zone',
-    'Central District',
-  ];
-
-  String _selectedEmployee = 'Rajesh Kumar';
-  String _selectedGroup = 'North Zone';
-  DateTime _dueDate = DateTime(2026, 2, 15);
+  String? _selectedEmployeeId;
+  String? _selectedGroupId;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+  }
+
+  void _loadData() {
+    final authProvider = context.read<AuthProvider>();
+    final enterpriseId = authProvider.enterpriseId;
+    if (enterpriseId == null) return;
+
+    final dashboardProvider = context.read<DashboardProvider>();
+    if (dashboardProvider.employees.isEmpty) {
+      dashboardProvider.initDashboard(enterpriseId);
+    } else {
+      dashboardProvider.refreshEmployees(enterpriseId);
+    }
+
+    final groupProvider = context.read<GroupProvider>();
+    if (groupProvider.groups.isEmpty) {
+      groupProvider.loadGroups(enterpriseId);
+    } else {
+      groupProvider.loadGroups(enterpriseId);
+    }
+
+    // Pre-select employee if initialAssigneeName is provided
     if (widget.initialAssigneeName != null &&
         widget.initialAssigneeName!.isNotEmpty) {
       _assignType = 'individual';
-      _assignedEmployeeController.text = widget.initialAssigneeName!;
-      _selectedEmployee = widget.initialAssigneeName!;
+      final match = dashboardProvider.employees
+          .where((e) => e.name == widget.initialAssigneeName)
+          .toList();
+      if (match.isNotEmpty) {
+        _selectedEmployeeId = match.first.id;
+      }
     }
   }
 
@@ -70,23 +87,152 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   void dispose() {
     _taskTitleController.dispose();
     _descriptionController.dispose();
-    _assignedEmployeeController.dispose();
     super.dispose();
   }
 
-  void _createTask() {
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Task created successfully'),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-      ),
+  Future<void> _pickDueDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dueDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.primary,
+              onPrimary: AppColors.textPrimary,
+              surface: Color(0xFF1E1E2E),
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
+    if (picked != null) {
+      setState(() => _dueDate = picked);
+    }
+  }
+
+  Future<void> _createTask() async {
+    final title = _taskTitleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Please enter a task title'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final authProvider = context.read<AuthProvider>();
+    final enterpriseId = authProvider.enterpriseId;
+    final assignedBy = authProvider.currentUser?.id ?? '';
+
+    if (enterpriseId == null) return;
+
+    // Determine assignedTo based on assign type
+    String assignedTo = '';
+    String? groupId;
+
+    if (_assignType == 'individual' || _assignType == 'team_lead') {
+      if (_selectedEmployeeId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Please select an employee'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+      assignedTo = _selectedEmployeeId!;
+    } else if (_assignType == 'group') {
+      if (_selectedGroupId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Please select a group'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+      groupId = _selectedGroupId;
+      // Assign to group lead or first member
+      final groupProvider = context.read<GroupProvider>();
+      final group = groupProvider.getGroupById(_selectedGroupId!);
+      assignedTo = group?.leadId ?? '';
+    }
+
+    setState(() => _isCreating = true);
+
+    // Resolve display names for assignedBy and assignedTo
+    final assignedByName = authProvider.currentUser?.name ?? 'Admin';
+    final employees = context.read<DashboardProvider>().employees;
+    final assigneeMatch = employees.where((e) => e.id == assignedTo).toList();
+    final assignedToName = assigneeMatch.isNotEmpty ? assigneeMatch.first.name : null;
+
+    final now = DateTime.now();
+    final task = TaskModel(
+      id: '',
+      enterpriseId: enterpriseId,
+      title: title,
+      description: _descriptionController.text.trim().isNotEmpty
+          ? _descriptionController.text.trim()
+          : null,
+      type: 'task',
+      priority: _priority,
+      status: 'pending',
+      assignedTo: assignedTo,
+      assignedBy: assignedBy,
+      assignedByName: assignedByName,
+      assignedToName: assignedToName,
+      groupId: groupId,
+      dueDate: _dueDate,
+      sendNotification: _sendNotification,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    final taskId = await context.read<TaskProvider>().createTask(task);
+
+    setState(() => _isCreating = false);
+
+    if (!mounted) return;
+
+    if (taskId != null) {
+      context.pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Task created successfully'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Failed to create task'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final employees = context.watch<DashboardProvider>().employees;
+    final groups = context.watch<GroupProvider>().groups;
+
+    // Filter employees by role for team_lead assign type
+    final teamLeads =
+        employees.where((e) => e.activeRole == 'team_lead').toList();
+
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -106,13 +252,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
                   child: Column(
                     children: [
-                      if (widget.isTeamLead) ...[
-                        _buildTeamLeadForm(),
-                      ] else ...[
                       // Task Title
                       _buildInputLabel('Task Title'),
                       GlassInputField(
                         controller: _taskTitleController,
+                        hint: 'Enter task title...',
                       ),
                       const SizedBox(height: 24),
 
@@ -163,13 +307,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                               ? 'Choose Employee'
                               : 'Assigned Employee',
                         ),
-                        widget.isTeamLead
-                            ? _buildEmployeeSelector()
-                            : GlassInputField(
-                                controller: _assignedEmployeeController,
-                                enabled: false,
-                                prefixIcon: Iconsax.user,
-                              ),
+                        _buildEmployeeSelector(employees),
                         const SizedBox(height: 24),
                       ],
 
@@ -177,14 +315,14 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                       if (_assignType == 'team_lead' &&
                           !widget.isTeamLead) ...[
                         _buildInputLabel('Select Team Lead'),
-                        _buildTeamLeadSelector(),
+                        _buildEmployeeSelector(teamLeads),
                         const SizedBox(height: 24),
                       ],
 
-                      // Group Selector (team lead)
-                      if (_assignType == 'group' && widget.isTeamLead) ...[
+                      // Group Selector
+                      if (_assignType == 'group') ...[
                         _buildInputLabel('Choose Group'),
-                        _buildGroupSelector(),
+                        _buildGroupSelector(groups),
                         const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.centerLeft,
@@ -209,7 +347,6 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
 
                       // Notification Toggle
                       _buildNotificationToggle(),
-                      ],
                     ],
                   ),
                 ),
@@ -228,14 +365,14 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               borderRadius: BorderRadius.circular(32),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primary.withOpacity(0.4),
+                  color: AppColors.primary.withValues(alpha: 0.4),
                   blurRadius: 16,
                   offset: const Offset(0, 8),
                 ),
               ],
             ),
             child: ElevatedButton(
-              onPressed: _createTask,
+              onPressed: _isCreating ? null : _createTask,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 shape: RoundedRectangleBorder(
@@ -243,222 +380,31 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 ),
                 elevation: 0,
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Iconsax.task_square,
-                    color: AppColors.textPrimary,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    widget.isTeamLead ? 'Assign Task' : 'Assign Task',
-                    style: AppTypography.buttonLarge,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickDueDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _dueDate,
-      firstDate: DateTime(2024, 1, 1),
-      lastDate: DateTime(2035, 12, 31),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.dark(
-              primary: AppColors.primary,
-              onPrimary: AppColors.textPrimary,
-              surface: AppColors.glassNav,
-              onSurface: AppColors.textPrimary,
-            ),
-            dialogBackgroundColor: AppColors.glassNav,
-            visualDensity: VisualDensity.compact,
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                textStyle: AppTypography.bodySmall.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            datePickerTheme: DatePickerThemeData(
-              backgroundColor: AppColors.glassNav,
-              headerBackgroundColor: AppColors.glassStrong,
-              headerForegroundColor: AppColors.textPrimary,
-              dayForegroundColor:
-                  WidgetStateProperty.all(AppColors.textPrimary),
-              weekdayStyle: AppTypography.caption.copyWith(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-              dayStyle: AppTypography.bodySmall.copyWith(
-                color: AppColors.textPrimary,
-              ),
-              todayForegroundColor:
-                  WidgetStateProperty.all(AppColors.textPrimary),
-              todayBackgroundColor:
-                  WidgetStateProperty.all(AppColors.primary.withOpacity(0.2)),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null) {
-      setState(() => _dueDate = picked);
-    }
-  }
-
-  Widget _buildTeamLeadForm() {
-    return Column(
-      children: [
-        _buildTeamLeadCard(
-          title: 'Task Details',
-          icon: Iconsax.document,
-          child: Column(
-            children: [
-              _buildTeamLeadField(
-                label: 'Task Name',
-                child: GlassInputField(
-                  controller: _taskTitleController,
-                  hint: 'e.g. Monthly Inventory Audit',
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildTeamLeadField(
-                label: 'Description',
-                child: GlassInputField(
-                  controller: _descriptionController,
-                  hint: 'Enter task details, requirements, and instructions...',
-                  maxLines: 4,
-                  contentPadding: const EdgeInsets.all(20),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildTeamLeadCard(
-          title: 'Assignee',
-          icon: Iconsax.user_add,
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: GlassChip(
-                      label: 'Individual',
-                      selected: _assignType == 'individual',
-                      onTap: () => setState(() => _assignType = 'individual'),
+              child: _isCreating
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: AppColors.textPrimary,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Iconsax.task_square,
+                          color: AppColors.textPrimary,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Text('Assign Task', style: AppTypography.buttonLarge),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: GlassChip(
-                      label: 'Entire Group',
-                      selected: _assignType == 'group',
-                      onTap: () => setState(() => _assignType = 'group'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (_assignType == 'group')
-                _buildGroupSelector()
-              else
-                _buildEmployeeSelector(),
-            ],
+            ),
           ),
         ),
-        const SizedBox(height: 16),
-        _buildTeamLeadCard(
-          title: 'Scheduling',
-          icon: Iconsax.calendar_1,
-          child: Column(
-            children: [
-              _buildTeamLeadField(
-                label: 'Due Date',
-                child: _buildDueDateCard(),
-              ),
-              const SizedBox(height: 16),
-              _buildTeamLeadField(
-                label: 'Priority Level',
-                child: _buildPrioritySelector(),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildNotificationToggle(),
-      ],
-    );
-  }
-
-  Widget _buildTeamLeadCard({
-    required String title,
-    required IconData icon,
-    required Widget child,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.glassPrimary,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassBorder),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: AppColors.textSecondary, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                title.toUpperCase(),
-                style: AppTypography.caption.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.0,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTeamLeadField({
-    required String label,
-    required Widget child,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 8),
-        child,
-      ],
     );
   }
 
@@ -494,7 +440,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.primary.withOpacity(0.2)
+              ? AppColors.primary.withValues(alpha: 0.2)
               : AppColors.glassPrimary,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
@@ -512,9 +458,8 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 shape: BoxShape.circle,
                 color: isSelected ? AppColors.primary : Colors.transparent,
                 border: Border.all(
-                  color: isSelected
-                      ? AppColors.primary
-                      : AppColors.glassBorder,
+                  color:
+                      isSelected ? AppColors.primary : AppColors.glassBorder,
                   width: 2,
                 ),
               ),
@@ -534,19 +479,24 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             const SizedBox(width: 16),
             Icon(
               icon,
-              color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
+              color: isSelected
+                  ? AppColors.textPrimary
+                  : AppColors.textSecondary,
             ),
             const SizedBox(width: 12),
             Text(
               title,
               style: AppTypography.bodyMedium.copyWith(
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
+                color: isSelected
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
               ),
             ),
             if (isSelected) ...[
               const Spacer(),
-              const Icon(Iconsax.check, color: AppColors.primary, size: 20),
+              const Icon(Iconsax.check,
+                  color: AppColors.primary, size: 20),
             ],
           ],
         ),
@@ -555,211 +505,178 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   }
 
   Widget _buildDueDateCard() {
-    final formattedDate =
-        '${_dueDate.day.toString().padLeft(2, '0')} '
-        '${_monthLabel(_dueDate.month)} '
-        '${_dueDate.year}';
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _pickDueDate,
+    return GestureDetector(
+      onTap: _pickDueDate,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              DateFormat('dd MMM yyyy').format(_dueDate),
+              style: AppTypography.bodyMedium.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const Icon(Iconsax.calendar,
+                color: AppColors.primary, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmployeeSelector(List<UserModel> employeeList) {
+    final selectedEmployee = _selectedEmployeeId != null
+        ? employeeList
+            .where((e) => e.id == _selectedEmployeeId)
+            .toList()
+        : [];
+    final displayName = selectedEmployee.isNotEmpty
+        ? selectedEmployee.first.name
+        : (employeeList.isNotEmpty ? 'Select employee...' : 'Loading...');
+    final displayInitials = selectedEmployee.isNotEmpty
+        ? selectedEmployee.first.initials
+        : '?';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(24),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          decoration: BoxDecoration(
-            color: AppColors.glassPrimary,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassBorder),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                displayInitials,
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                formattedDate,
-                style: AppTypography.bodyMedium.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              displayName,
+              style: AppTypography.bodyMedium.copyWith(
+                fontWeight: FontWeight.bold,
+                color: selectedEmployee.isNotEmpty
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
               ),
-              const Icon(
-                Iconsax.calendar,
-                color: AppColors.primary,
-                size: 20,
-              ),
-            ],
+            ),
           ),
-        ),
+          PopupMenuButton<String>(
+            color: AppColors.glassStrong,
+            icon:
+                Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
+            onSelected: (value) =>
+                setState(() => _selectedEmployeeId = value),
+            itemBuilder: (context) {
+              return employeeList
+                  .map(
+                    (employee) => PopupMenuItem(
+                      value: employee.id,
+                      child: Text(
+                        employee.name,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList();
+            },
+          ),
+        ],
       ),
     );
   }
 
-  String _monthLabel(int month) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return months[month - 1];
-  }
+  Widget _buildGroupSelector(List<GroupModel> groupList) {
+    final selectedGroup = _selectedGroupId != null
+        ? groupList
+            .where((g) => g.id == _selectedGroupId)
+            .toList()
+        : [];
+    final displayName = selectedGroup.isNotEmpty
+        ? selectedGroup.first.name
+        : (groupList.isNotEmpty ? 'Select group...' : 'Loading...');
 
-  Widget _buildTeamLeadSelector() {
-    return GestureDetector(
-      onTap: () => _showFullWidthMenu(
-        key: _teamLeadSelectorKey,
-        items: _employees,
-        onSelected: (value) => setState(() => _selectedEmployee = value),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.glassPrimary,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.glassBorder),
       ),
-      child: Container(
-        key: _teamLeadSelectorKey,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.glassPrimary,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  'RK',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Iconsax.people,
+              size: 18,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              displayName,
+              style: AppTypography.bodyMedium.copyWith(
+                fontWeight: FontWeight.bold,
+                color: selectedGroup.isNotEmpty
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _selectedEmployee,
-                style: AppTypography.bodyMedium.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
-            Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmployeeSelector() {
-    return GestureDetector(
-      onTap: () => _showFullWidthMenu(
-        key: _employeeSelectorKey,
-        items: _employees,
-        onSelected: (value) => setState(() => _selectedEmployee = value),
-      ),
-      child: Container(
-        key: _employeeSelectorKey,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.glassPrimary,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  _selectedEmployee
-                      .split(' ')
-                      .map((e) => e[0])
-                      .take(2)
-                      .join(),
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _selectedEmployee,
-                style: AppTypography.bodyMedium.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
-            Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGroupSelector() {
-    return GestureDetector(
-      onTap: () => _showFullWidthMenu(
-        key: _groupSelectorKey,
-        items: _groups,
-        onSelected: (value) => setState(() => _selectedGroup = value),
-      ),
-      child: Container(
-        key: _groupSelectorKey,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.glassPrimary,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Iconsax.people,
-                size: 18,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _selectedGroup,
-                style: AppTypography.bodyMedium.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
-            Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
-          ],
-        ),
+          ),
+          PopupMenuButton<String>(
+            color: AppColors.glassStrong,
+            icon:
+                Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
+            onSelected: (value) =>
+                setState(() => _selectedGroupId = value),
+            itemBuilder: (context) {
+              return groupList
+                  .map(
+                    (group) => PopupMenuItem(
+                      value: group.id,
+                      child: Text(
+                        group.name,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList();
+            },
+          ),
+        ],
       ),
     );
   }
@@ -791,7 +708,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: AppColors.primary.withOpacity(0.2),
+                    color: AppColors.primary.withValues(alpha: 0.2),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -805,7 +722,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               Icon(
                 icon,
                 size: 18,
-                color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
+                color: isSelected
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
               ),
               const SizedBox(width: 8),
             ],
@@ -813,7 +732,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               label,
               style: AppTypography.bodySmall.copyWith(
                 fontWeight: FontWeight.bold,
-                color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
+                color: isSelected
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
               ),
             ),
           ],
@@ -838,7 +759,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
+                  color: AppColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -860,61 +781,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           Switch(
             value: _sendNotification,
             onChanged: (v) => setState(() => _sendNotification = v),
-            activeColor: AppColors.primary,
-            activeTrackColor: AppColors.primary.withOpacity(0.2),
+            activeThumbColor: AppColors.primary,
+            activeTrackColor: AppColors.primary.withValues(alpha: 0.2),
           ),
         ],
       ),
     );
   }
-
-  Future<void> _showFullWidthMenu({
-    required GlobalKey key,
-    required List<String> items,
-    required ValueChanged<String> onSelected,
-  }) async {
-    final RenderBox renderBox =
-        key.currentContext?.findRenderObject() as RenderBox;
-    final Offset offset = renderBox.localToGlobal(Offset.zero);
-    final Size size = renderBox.size;
-
-    final sortedItems = List<String>.from(items)
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    final selected = await showMenu<String>(
-      context: context,
-      color: AppColors.glassNav,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: AppColors.glassBorder),
-      ),
-      constraints: BoxConstraints.tightFor(width: size.width),
-      position: RelativeRect.fromLTRB(
-        offset.dx,
-        offset.dy + size.height,
-        offset.dx + size.width,
-        0,
-      ),
-      items: sortedItems
-          .map(
-            (item) => PopupMenuItem<String>(
-              value: item,
-              child: SizedBox(
-                width: size.width,
-                child: Text(
-                  item,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-            ),
-          )
-          .toList(),
-    );
-
-    if (selected != null) {
-      onSelected(selected);
-    }
-  }
 }
-

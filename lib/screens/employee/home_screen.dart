@@ -1,11 +1,16 @@
-import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/session_provider.dart';
+import '../../providers/task_provider.dart';
+import '../../models/task_model.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
+import 'package:go_router/go_router.dart';
 import 'end_of_day_screen.dart';
 import '../notifications/notifications_screen.dart';
 
@@ -22,68 +27,66 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool _isSessionActive = false;
-  DateTime? _sessionStartTime;
-  Timer? _timer;
-  Duration _sessionDuration = Duration.zero;
-  double _distance = 0.0;
-
-  final String _currentLocation = 'Hitech City, Hyderabad';
+  bool _initialized = false;
 
   @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initProviders();
+    });
   }
 
-  void _startSession() {
-    setState(() {
-      _isSessionActive = true;
-      _sessionStartTime = DateTime.now();
-      _sessionDuration = Duration.zero;
-    });
+  void _initProviders() {
+    if (_initialized) return;
+    _initialized = true;
+    final auth = context.read<AuthProvider>();
+    final userId = auth.currentUser?.id ?? '';
+    if (userId.isEmpty) return;
 
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_sessionStartTime != null) {
-        setState(() {
-          _sessionDuration = DateTime.now().difference(_sessionStartTime!);
-          _distance = (_sessionDuration.inSeconds / 60) * 0.1;
-        });
-      }
-    });
+    context.read<SessionProvider>().loadActiveSession(userId);
+    context.read<TaskProvider>().streamTasks(userId);
+  }
+
+  void _startSession() async {
+    final auth = context.read<AuthProvider>();
+    final session = context.read<SessionProvider>();
+    final userId = auth.currentUser?.id ?? '';
+    final enterpriseId = auth.enterpriseId ?? '';
+    if (userId.isEmpty || enterpriseId.isEmpty) return;
+
+    await session.startSession(
+      employeeId: userId,
+      enterpriseId: enterpriseId,
+    );
   }
 
   void _endSession() {
-    _timer?.cancel();
+    final session = context.read<SessionProvider>();
+    final taskProvider = context.read<TaskProvider>();
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => EndOfDayScreen(
-          sessionDuration: _sessionDuration,
-          distance: _distance,
-          locations: ['Rajendra Nagar', 'Gandhi Maidan', 'Patna Station'],
-          photosCount: 5,
-          tasksCompleted: 2,
-          onConfirm: () {
-            Navigator.pop(context);
-            setState(() {
-              _isSessionActive = false;
-              _sessionStartTime = null;
-              _sessionDuration = Duration.zero;
-              _distance = 0.0;
-            });
+          sessionDuration: session.sessionDuration,
+          distance: session.distance,
+          locations: session.currentLocation.isNotEmpty
+              ? [session.currentLocation]
+              : [],
+          photosCount: session.activeSession?.photosCount ?? 0,
+          tasksCompleted: taskProvider.completedCount,
+          onConfirm: () async {
+            final auth = context.read<AuthProvider>();
+            await session.endSession(
+              enterpriseId: auth.enterpriseId ?? '',
+              employeeId: auth.currentUser?.id ?? '',
+            );
+            if (mounted) Navigator.pop(context);
           },
         ),
       ),
     );
-  }
-
-  String _formatDuration(Duration duration) {
-    final hours = duration.inHours.toString().padLeft(2, '0');
-    final minutes = (duration.inMinutes % 60).toString().padLeft(2, '0');
-    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
-    return '$hours:$minutes:$seconds';
   }
 
   String _formatElapsed(Duration duration) {
@@ -94,6 +97,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final session = context.watch<SessionProvider>();
+    final taskProvider = context.watch<TaskProvider>();
+    final isActive = session.isSessionActive;
+
     return GradientBackground(
       child: SafeArea(
         bottom: false,
@@ -111,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 );
               },
-              onAvatarTap: widget.onAvatarTap,
+              onAvatarTap: widget.onAvatarTap ?? () => context.push('/employee/profile'),
             ),
 
             // Content
@@ -121,11 +128,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   children: [
                     // Status Badge
-                    _buildStatusBadge(),
+                    _buildStatusBadge(isActive),
                     const SizedBox(height: 20),
 
                     // Session Card
-                    _buildSessionCard(),
+                    _buildSessionCard(session, isActive),
                     const SizedBox(height: 16),
 
                     // Stats Grid
@@ -136,7 +143,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             icon: Iconsax.location,
                             iconColor: AppColors.success,
                             label: 'Distance',
-                            value: _distance.toStringAsFixed(1),
+                            value: session.distance.toStringAsFixed(1),
                             unit: 'km',
                           ),
                         ),
@@ -146,8 +153,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             icon: Iconsax.timer_1,
                             iconColor: AppColors.warning,
                             label: 'Elapsed',
-                            value: _isSessionActive
-                                ? _formatElapsed(_sessionDuration)
+                            value: isActive
+                                ? _formatElapsed(session.sessionDuration)
                                 : '0h 00m',
                           ),
                         ),
@@ -156,11 +163,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 16),
 
                     // Location Card
-                    _buildLocationCard(),
+                    _buildLocationCard(session),
                     const SizedBox(height: 16),
 
                     // Active Tasks Card
-                    _buildTasksCard(),
+                    _buildTasksCard(taskProvider.activeTasks),
                   ],
                 ),
               ),
@@ -171,18 +178,18 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildStatusBadge() {
+  Widget _buildStatusBadge(bool isActive) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: _isSessionActive
+        color: isActive
             ? AppColors.primary.withValues(alpha: 0.9)
             : AppColors.glassPrimary,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: AppColors.glassBorder,
         ),
-        boxShadow: _isSessionActive
+        boxShadow: isActive
             ? [
                 BoxShadow(
                   color: AppColors.primary.withValues(alpha: 0.3),
@@ -198,11 +205,11 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              color: _isSessionActive
+              color: isActive
                   ? AppColors.textPrimary
                   : AppColors.textDisabled,
               shape: BoxShape.circle,
-              boxShadow: _isSessionActive
+              boxShadow: isActive
                   ? [
                       BoxShadow(
                         color: AppColors.textPrimary.withValues(alpha: 0.6),
@@ -219,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(width: 8),
           Text(
-            _isSessionActive ? 'SESSION ACTIVE' : 'SESSION IDLE',
+            isActive ? 'SESSION ACTIVE' : 'SESSION IDLE',
             style: TextStyle(
               color: AppColors.textPrimary,
               fontSize: 10,
@@ -232,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSessionCard() {
+  Widget _buildSessionCard(SessionProvider session, bool isActive) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(40),
       child: BackdropFilter(
@@ -252,8 +259,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: Stack(
             children: [
-              // Decorative blurs removed
-              // Content
               Column(
                 children: [
                   Text(
@@ -267,17 +272,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _formatDuration(_sessionDuration),
+                    session.formattedDuration,
                     style: AppTypography.displayLarge.copyWith(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.bold,
-                      fontSize: _isSessionActive ? 52 : 44,
+                      fontSize: isActive ? 52 : 44,
                       letterSpacing: -2,
                     ),
                   ),
                   const SizedBox(height: 24),
                   GestureDetector(
-                    onTap: _isSessionActive ? _endSession : _startSession,
+                    onTap: session.isLoading
+                        ? null
+                        : (isActive ? _endSession : _startSession),
                     child: Container(
                       width: double.infinity,
                       height: 56,
@@ -292,28 +299,39 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _isSessionActive
-                                ? Iconsax.stop_circle
-                                : Iconsax.play,
-                            color: AppColors.textPrimary,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _isSessionActive ? 'END SESSION' : 'START SESSION',
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.5,
+                      child: session.isLoading
+                          ? const Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  color: AppColors.textPrimary,
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  isActive
+                                      ? Iconsax.stop_circle
+                                      : Iconsax.play,
+                                  color: AppColors.textPrimary,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  isActive ? 'END SESSION' : 'START SESSION',
+                                  style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
                     ),
                   ),
                 ],
@@ -399,7 +417,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildLocationCard() {
+  Widget _buildLocationCard(SessionProvider session) {
+    final location = session.currentLocation.isNotEmpty
+        ? session.currentLocation
+        : 'Fetching location...';
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
@@ -442,11 +464,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _currentLocation,
+                      location,
                       style: AppTypography.bodyMedium.copyWith(
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.w600,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Row(
@@ -471,17 +495,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors.glassPrimary,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Iconsax.refresh,
-                  color: AppColors.textPrimary,
-                  size: 18,
+              GestureDetector(
+                onTap: () {
+                  context.read<SessionProvider>().initializeLocation(force: true);
+                },
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.glassPrimary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Iconsax.refresh,
+                    color: AppColors.textPrimary,
+                    size: 18,
+                  ),
                 ),
               ),
             ],
@@ -491,7 +520,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTasksCard() {
+  Widget _buildTasksCard(List<TaskModel> tasks) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
@@ -520,7 +549,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         TextSpan(
-                          text: '(2)',
+                          text: '(${tasks.length})',
                           style: AppTypography.bodySmall.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -537,18 +566,40 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 16),
 
               // Task Items
-              _buildTaskItem(
-                title: 'Visit ABC Dist. (Due)',
-                subtitle: 'High Priority • 2km away',
-                priorityColor: AppColors.critical,
-                isHighPriority: true,
-              ),
-              const SizedBox(height: 10),
-              _buildTaskItem(
-                title: 'Follow up XYZ Farmer',
-                subtitle: 'Medium Priority • Call pending',
-                priorityColor: AppColors.warning,
-              ),
+              if (tasks.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    'No active tasks',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                )
+              else
+                ...tasks.take(3).map((task) {
+                  Color priorityColor;
+                  switch (task.priority) {
+                    case 'high':
+                      priorityColor = AppColors.critical;
+                      break;
+                    case 'medium':
+                      priorityColor = AppColors.warning;
+                      break;
+                    default:
+                      priorityColor = AppColors.success;
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _buildTaskItem(
+                      title: task.title,
+                      subtitle:
+                          '${task.priority.toUpperCase()} Priority',
+                      priorityColor: priorityColor,
+                      isHighPriority: task.isHighPriority,
+                    ),
+                  );
+                }),
             ],
           ),
         ),
@@ -622,4 +673,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-

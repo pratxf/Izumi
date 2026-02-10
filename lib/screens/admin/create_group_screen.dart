@@ -1,9 +1,14 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/group_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/group_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/inputs/text_input_field.dart';
 import '../../widgets/navigation/app_header.dart';
@@ -18,33 +23,37 @@ class CreateGroupScreen extends StatefulWidget {
 
 class _CreateGroupScreenState extends State<CreateGroupScreen> {
   final _groupNameController = TextEditingController();
-  final _teamLeadSearchController = TextEditingController();
+  final _taskController = TextEditingController();
   String? _selectedTeamLead;
   final List<String> _selectedMembers = [];
+  bool _isCreating = false;
 
-  final List<Map<String, String>> _employees = [
-    {'id': '1', 'name': 'Sarah Jenkins'},
-    {'id': '2', 'name': 'Marcus Chen'},
-    {'id': '3', 'name': 'Elena Rodriguez'},
-    {'id': '4', 'name': 'David Okafor'},
-    {'id': '5', 'name': 'Priya Sharma'},
-  ];
-
-  List<Map<String, String>> get _sortedEmployees {
-    final list = List<Map<String, String>>.from(_employees);
-    list.sort((a, b) => a['name']!.compareTo(b['name']!));
-    return list;
+  @override
+  void initState() {
+    super.initState();
+    // Safety net: ensure UserProvider has data even if navigated here directly
+    final userProvider = context.read<UserProvider>();
+    if (userProvider.employees.isEmpty) {
+      final authProvider = context.read<AuthProvider>();
+      final enterpriseId = authProvider.enterpriseId ?? '';
+      if (enterpriseId.isNotEmpty) {
+        userProvider.streamUsers(enterpriseId);
+      }
+    }
   }
 
   @override
   void dispose() {
     _groupNameController.dispose();
-    _teamLeadSearchController.dispose();
+    _taskController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final userProvider = context.watch<UserProvider>();
+    final employees = userProvider.employees;
+
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -87,7 +96,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Team Lead Picker
+                      // Team Lead Dropdown
                       _buildGlassCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,7 +109,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            _buildTeamLeadPicker(),
+                            _buildDropdown(employees),
                           ],
                         ),
                       ),
@@ -108,7 +117,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
                       // Add Members
                       _buildGlassCard(
-                        onTap: _showMemberSelector,
+                        onTap: () => _showMemberSelector(employees),
                         child: Row(
                           children: [
                             Container(
@@ -155,7 +164,73 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 24),
+
+                      // Initial Tasks Section
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          'Initial Tasks (Optional)',
+                          style: AppTypography.headline.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildGlassCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Assign First Task',
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            GlassInputField(
+                              controller: _taskController,
+                              hint: 'e.g., Equipment Inspection',
+                              suffixIcon: Icon(
+                                Iconsax.task_square,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.glassPrimary,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: AppColors.glassBorder,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Iconsax.info_circle,
+                                    size: 18,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'This task will be automatically assigned to all group members upon creation.',
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -183,7 +258,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
             ),
           ),
           child: GestureDetector(
-            onTap: _createGroup,
+            onTap: _isCreating ? null : _createGroup,
             child: Container(
               height: 56,
               decoration: BoxDecoration(
@@ -198,13 +273,22 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 ],
               ),
               child: Center(
-                child: Text(
-                  'Create Group',
-                  style: AppTypography.headline.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: _isCreating
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.textPrimary,
+                        ),
+                      )
+                    : Text(
+                        'Create Group',
+                        style: AppTypography.headline.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
           ),
@@ -234,7 +318,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     );
   }
 
-  Widget _buildDropdown() {
+  Widget _buildDropdown(List employees) {
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -255,17 +339,17 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               color: AppColors.textTertiary,
             ),
           ),
-          icon: const Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
+          icon: Icon(Iconsax.arrow_down_1, color: AppColors.textSecondary),
           style: AppTypography.bodyMedium.copyWith(
             color: AppColors.textPrimary,
           ),
           dropdownColor: AppColors.glassNav,
           borderRadius: BorderRadius.circular(16),
-          items: _sortedEmployees.map((emp) {
+          items: employees.map<DropdownMenuItem<String>>((emp) {
             return DropdownMenuItem(
-              value: emp['id'],
+              value: emp.id,
               child: Text(
-                emp['name']!,
+                emp.name,
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textPrimary,
                 ),
@@ -280,54 +364,16 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     );
   }
 
-  Widget _buildTeamLeadPicker() {
-    final selectedName = _selectedTeamLead == null
-        ? null
-        : _sortedEmployees
-            .firstWhere(
-              (emp) => emp['id'] == _selectedTeamLead,
-              orElse: () => _sortedEmployees.first,
-            )['name'];
-    return GestureDetector(
-      onTap: _openTeamLeadPicker,
-      child: Container(
-        height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: AppColors.glassPrimary,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                selectedName ?? 'Select an employee',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: selectedName == null
-                      ? AppColors.textTertiary
-                      : AppColors.textPrimary,
-                ),
-              ),
-            ),
-            const Icon(Iconsax.search_normal, color: AppColors.textSecondary),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showMemberSelector() {
+  void _showMemberSelector(List employees) {
     showModalBottomSheet(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Container(
           height: MediaQuery.of(context).size.height * 0.6,
-          decoration: BoxDecoration(
-            color: AppColors.glassStrong.withValues(alpha: 0.94),
+          decoration: const BoxDecoration(
+            color: AppColors.glassStrong,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -362,19 +408,15 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               ),
               Expanded(
                 child: ListView.builder(
-                  itemCount: _sortedEmployees.length,
+                  itemCount: employees.length,
                   itemBuilder: (context, index) {
-                    final emp = _sortedEmployees[index];
-                    final isSelected = _selectedMembers.contains(emp['id']);
+                    final emp = employees[index];
+                    final isSelected = _selectedMembers.contains(emp.id);
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: AppColors.glassPrimary,
+                        backgroundColor: AppColors.surfaceMuted,
                         child: Text(
-                          emp['name']!
-                              .split(' ')
-                              .map((e) => e[0])
-                              .take(2)
-                              .join(),
+                          emp.initials,
                           style: AppTypography.bodySmall.copyWith(
                             color: AppColors.primary,
                             fontWeight: FontWeight.bold,
@@ -382,7 +424,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                         ),
                       ),
                       title: Text(
-                        emp['name']!,
+                        emp.name,
                         style: AppTypography.bodyMedium.copyWith(
                           color: AppColors.textPrimary,
                         ),
@@ -395,11 +437,11 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                         ),
                         onChanged: (value) {
                           setModalState(() {
-                          if (value == true) {
-                            _selectedMembers.add(emp['id']!);
-                          } else {
-                            _selectedMembers.remove(emp['id']);
-                          }
+                            if (value == true) {
+                              _selectedMembers.add(emp.id);
+                            } else {
+                              _selectedMembers.remove(emp.id);
+                            }
                           });
                           setState(() {}); // Update parent
                         },
@@ -407,9 +449,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                       onTap: () {
                         setModalState(() {
                           if (isSelected) {
-                            _selectedMembers.remove(emp['id']);
+                            _selectedMembers.remove(emp.id);
                           } else {
-                            _selectedMembers.add(emp['id']!);
+                            _selectedMembers.add(emp.id);
                           }
                         });
                         setState(() {}); // Update parent
@@ -425,134 +467,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     );
   }
 
-  void _openTeamLeadPicker() {
-    showModalBottomSheet(
-      context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _buildSearchSheet(
-        title: 'Assign Team Lead',
-        controller: _teamLeadSearchController,
-        items: _sortedEmployees.map((emp) => emp['name']!).toList(),
-        onSelected: (value) {
-          final match = _sortedEmployees.firstWhere(
-            (emp) => emp['name'] == value,
-            orElse: () => _sortedEmployees.first,
-          );
-          setState(() => _selectedTeamLead = match['id']);
-        },
-      ),
-    );
-  }
-
-  Widget _buildSearchSheet({
-    required String title,
-    required TextEditingController controller,
-    required List<String> items,
-    required ValueChanged<String> onSelected,
-  }) {
-    return StatefulBuilder(
-      builder: (context, setModalState) => Container(
-        height: MediaQuery.of(context).size.height * 0.6,
-        decoration: BoxDecoration(
-          color: AppColors.glassNav,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(title, style: AppTypography.h3),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(
-                      'Done',
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                controller: controller,
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  prefixIcon:
-                      Icon(Iconsax.search_normal, color: AppColors.textSecondary),
-                  hintText: 'Search...',
-                  hintStyle: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                  filled: true,
-                  fillColor: AppColors.glassPrimary,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: AppColors.glassBorder),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: AppColors.glassBorder),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: AppColors.primary),
-                  ),
-                ),
-                onChanged: (_) => setModalState(() {}),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: items
-                    .where((item) => item
-                        .toLowerCase()
-                        .contains(controller.text.toLowerCase()))
-                    .map(
-                      (item) => ListTile(
-                        title: Text(
-                          item,
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        onTap: () {
-                          Navigator.pop(context);
-                          onSelected(item);
-                        },
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _createGroup() {
+  Future<void> _createGroup() async {
     if (_groupNameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -567,15 +482,49 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       return;
     }
 
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Group "${_groupNameController.text}" created!'),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
+    setState(() => _isCreating = true);
+
+    final authProvider = context.read<AuthProvider>();
+    final groupProvider = context.read<GroupProvider>();
+    final enterpriseId = authProvider.enterpriseId ?? '';
+
+    final group = GroupModel(
+      id: '',
+      enterpriseId: enterpriseId,
+      name: _groupNameController.text.trim(),
+      leadId: _selectedTeamLead ?? '',
+      color: '#6366F1',
+      memberIds: _selectedMembers,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
     );
+
+    final groupId = await groupProvider.createGroup(group);
+
+    if (!mounted) return;
+
+    if (groupId != null) {
+      context.pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Group "${_groupNameController.text}" created!'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    } else {
+      setState(() => _isCreating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(groupProvider.error ?? 'Failed to create group'),
+          backgroundColor: AppColors.critical,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
   }
 }
-

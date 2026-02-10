@@ -43,6 +43,27 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/.gradle/
+/android/.kotlin/
+/android/local.properties
+
+# iOS/macOS ephemeral
+**/ios/Flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+ios/Pods/
+macos/Pods/
+
+# Linux/Windows ephemeral symlinks
+**/linux/flutter/ephemeral/
+**/windows/flutter/ephemeral/
+
+# Firebase
+.firebase/
+functions/node_modules/
+functions/lib/
+
+# Generated Flutter plugin files
+.flutter-plugins
 
 # Local analysis outputs
 analyze_output.txt

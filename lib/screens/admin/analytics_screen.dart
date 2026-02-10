@@ -1,9 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/user_model.dart';
+import '../../providers/analytics_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 import 'employee_activity_screen.dart';
@@ -18,136 +22,33 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  String _selectedPeriod = 'This Week';
-  DateTimeRange? _customRange;
+  final List<String> _periods = ['Today', 'This Week', 'This Month'];
+  bool _initialized = false;
 
-  final List<String> _periods = ['Today', 'This Week', 'This Month', 'Custom'];
-  final List<Map<String, dynamic>> _employees = [
-    {
-      'name': 'Rahul Kumar',
-      'hours': 32,
-      'distance': 45.2,
-      'photos': 28,
-      'isTop': false,
-      'logs': [
-        {
-          'title': 'Location Update',
-          'time': '2 min ago',
-          'detail': 'Checked in at Sector 45, Gurgaon',
-          'type': 'visit',
-        },
-        {
-          'title': 'Task Started',
-          'time': '15 min ago',
-          'detail': 'Inventory Check - Warehouse A',
-          'type': 'task',
-        },
-        {
-          'title': 'Photo Captured',
-          'time': '1h ago',
-          'detail': 'Site Frontage - Evidence uploaded',
-          'type': 'photo',
-        },
-      ],
-    },
-    {
-      'name': 'Priya Singh',
-      'hours': 38,
-      'distance': 52.1,
-      'photos': 34,
-      'isTop': false,
-      'logs': [
-        {
-          'title': 'Photo Captured',
-          'time': '45 min ago',
-          'detail': 'Site Frontage - Evidence uploaded',
-          'type': 'photo',
-        },
-        {
-          'title': 'Location Update',
-          'time': '2h ago',
-          'detail': 'Checked in at Sector 9, Gurgaon',
-          'type': 'visit',
-        },
-      ],
-    },
-    {
-      'name': 'Amit Sharma',
-      'hours': 35,
-      'distance': 48.5,
-      'photos': 31,
-      'isTop': false,
-      'logs': [
-        {
-          'title': 'Commute Started',
-          'time': '1h ago',
-          'detail': 'Traveling to Sector 45',
-          'type': 'visit',
-        },
-        {
-          'title': 'Task Completed',
-          'time': '3h ago',
-          'detail': 'Warehouse A inventory verified',
-          'type': 'task',
-        },
-      ],
-    },
-    {
-      'name': 'Neha Verma',
-      'hours': 28,
-      'distance': 41.3,
-      'photos': 25,
-      'isTop': false,
-      'logs': [
-        {
-          'title': 'Task Completed',
-          'time': '2h ago',
-          'detail': 'Store Audit - West Region',
-          'type': 'task',
-        },
-        {
-          'title': 'Photo Captured',
-          'time': '4h ago',
-          'detail': 'Shelf compliance snapshot',
-          'type': 'photo',
-        },
-      ],
-    },
-    {
-      'name': 'Suresh Patel',
-      'hours': 23,
-      'distance': 38.0,
-      'photos': 18,
-      'isTop': false,
-      'logs': [
-        {
-          'title': 'Break',
-          'time': '3h ago',
-          'detail': 'Paused for lunch',
-          'type': 'task',
-        },
-        {
-          'title': 'Location Update',
-          'time': '5h ago',
-          'detail': 'Checked in at Warehouse B',
-          'type': 'visit',
-        },
-      ],
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initProvider();
+    });
+  }
 
-  List<Map<String, dynamic>> get _sortedEmployees {
-    final sorted = List<Map<String, dynamic>>.from(_employees);
-    sorted.sort(
-      (a, b) => (a['name'] as String)
-          .toLowerCase()
-          .compareTo((b['name'] as String).toLowerCase()),
-    );
-    return sorted;
+  void _initProvider() {
+    if (_initialized) return;
+    _initialized = true;
+    final auth = context.read<AuthProvider>();
+    final enterpriseId = auth.enterpriseId ?? '';
+    if (enterpriseId.isEmpty) return;
+    context.read<AnalyticsProvider>().loadAnalytics(enterpriseId);
   }
 
   @override
   Widget build(BuildContext context) {
+    final analytics = context.watch<AnalyticsProvider>();
+    final employees = analytics.employees;
+    final sortedEmployees = List<UserModel>.from(employees)
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
     return GradientBackground(
       child: SafeArea(
         bottom: false,
@@ -158,14 +59,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               type: AppHeaderType.primary,
               showAvatar: false,
               showLeading: false,
-              actions: [_buildPeriodSelector()],
+              actions: [_buildPeriodSelector(analytics)],
             ),
             const SizedBox(height: 16),
 
             // Summary Stats
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _buildSummaryCard(),
+              child: _buildSummaryCard(analytics),
             ),
             const SizedBox(height: 24),
 
@@ -189,66 +90,127 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     left: BorderSide(color: AppColors.glassBorder),
                     right: BorderSide(color: AppColors.glassBorder),
                   ),
-                  boxShadow: AppShadows.glass, // Soft glass shadow
+                  boxShadow: AppShadows.glass,
                 ),
                 child: ClipRRect(
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(32),
                   ),
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.only(
-                      left: 20,
-                      right: 20,
-                      top: 24,
-                      bottom: 120,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Section Header
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Employee Logs',
-                              style: AppTypography.h3.copyWith(
-                                color: AppColors.textPrimary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Employee Performance Cards (open detail screen)
-                        ..._sortedEmployees.map((emp) {
-                          return _buildEmployeeCard(
-                            name: emp['name'],
-                            hours: emp['hours'],
-                            distance: emp['distance'],
-                            photos: emp['photos'],
-                            isTop: emp['isTop'] == true,
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => EmployeeActivityScreen(
-                                    employeeName: emp['name'],
-                                    periodLabel: _selectedPeriod,
-                                    activities:
-                                        List<Map<String, String>>.from(
-                                          emp['logs'],
-                                        ),
+                  child: analytics.isLoading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          padding: EdgeInsets.only(
+                            left: 20,
+                            right: 20,
+                            top: 24,
+                            bottom: 120,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Section Header
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Employee Logs',
+                                    style: AppTypography.h3.copyWith(
+                                      color: AppColors.textPrimary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
-                          );
-                        }),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surfaceMuted,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: AppColors.glassBorder,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Iconsax.sort,
+                                          size: 14,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Sort',
+                                          style: AppTypography.caption.copyWith(
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
 
-                      ],
-                    ),
-                  ),
+                              if (sortedEmployees.isEmpty)
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(top: 32),
+                                    child: Text(
+                                      'No employee data',
+                                      style: AppTypography.bodyMedium.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else
+                                // Employee Performance Cards
+                                ...sortedEmployees.map((emp) {
+                                  final stats = analytics.getEmployeeStats(emp.id);
+                                  final hours = stats['hours'] as int;
+                                  final distance = stats['distance'] as double;
+                                  final photos = stats['photos'] as int;
+
+                                  return _buildEmployeeCard(
+                                    name: emp.name,
+                                    hours: hours,
+                                    distance: distance,
+                                    photos: photos,
+                                    isTop: false,
+                                    onTap: () {
+                                      final logs = analytics.getLogsForEmployee(emp.id);
+                                      final activities = logs
+                                          .map((log) => <String, String>{
+                                                'title': log.title,
+                                                'time': log.timeAgo,
+                                                'detail': log.detail,
+                                                'type': log.type,
+                                              })
+                                          .toList();
+
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => EmployeeActivityScreen(
+                                            employeeName: emp.name,
+                                            periodLabel: analytics.selectedPeriod,
+                                            activities: activities,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  );
+                                }),
+                            ],
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -258,9 +220,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildPeriodSelector() {
+  Widget _buildPeriodSelector(AnalyticsProvider analytics) {
     return GestureDetector(
-      onTap: () => _showPeriodPicker(),
+      onTap: () => _showPeriodPicker(analytics),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
@@ -274,11 +236,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             Icon(Iconsax.calendar_1, size: 18, color: AppColors.textPrimary),
             const SizedBox(width: 8),
             Text(
-              _selectedPeriod,
+              analytics.selectedPeriod,
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.textOnGradient,
                 fontWeight: FontWeight.w600,
               ),
+            ),
+            Icon(
+              Iconsax.arrow_down_1,
+              size: 18,
+              color: AppColors.textPrimary,
             ),
           ],
         ),
@@ -286,14 +253,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  void _showPeriodPicker() {
+  void _showPeriodPicker(AnalyticsProvider analytics) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: AppColors.surface, // glassStrong
+          color: AppColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           border: Border.all(color: AppColors.glassBorder),
         ),
@@ -305,19 +272,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ..._periods.map(
               (period) => ListTile(
                 title: Text(period),
-                trailing: _selectedPeriod == period
-                    ? Icon(Iconsax.check, color: AppColors.primary)
+                trailing: analytics.selectedPeriod == period
+                    ? Icon(Iconsax.tick_circle, color: AppColors.primary)
                     : null,
                 onTap: () {
+                  final auth = context.read<AuthProvider>();
+                  final enterpriseId = auth.enterpriseId ?? '';
+                  analytics.loadAnalytics(enterpriseId, period: period);
                   Navigator.pop(context);
-                  if (period == 'Custom') {
-                    _pickCustomRange();
-                  } else {
-                    setState(() {
-                      _selectedPeriod = period;
-                      _customRange = null;
-                    });
-                  }
                 },
               ),
             ),
@@ -327,66 +289,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Future<void> _pickCustomRange() async {
-    final now = DateTime.now();
-    final initialRange = _customRange ??
-        DateTimeRange(start: now.subtract(const Duration(days: 6)), end: now);
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2024, 1, 1),
-      lastDate: DateTime(2035, 12, 31),
-      initialDateRange: initialRange,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.dark(
-              primary: AppColors.primary,
-              onPrimary: AppColors.textPrimary,
-              surface: AppColors.glassNav,
-              onSurface: AppColors.textPrimary,
-            ),
-            dialogBackgroundColor: AppColors.glassNav,
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                textStyle: AppTypography.bodySmall.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null) {
-      setState(() {
-        _customRange = picked;
-        _selectedPeriod = '${_formatDate(picked.start)} - ${_formatDate(picked.end)}';
-      });
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${date.day} ${months[date.month - 1]}';
-  }
-
-  Widget _buildSummaryCard() {
+  Widget _buildSummaryCard(AnalyticsProvider analytics) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
@@ -419,25 +322,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 children: [
                   _buildSummaryItem(
                     icon: Iconsax.people,
-                    value: '5',
+                    value: '${analytics.employees.length}',
                     label: 'Active',
                     color: AppColors.iconBlue,
                   ),
                   _buildSummaryItem(
                     icon: Iconsax.timer_1,
-                    value: '156h',
+                    value: '${analytics.totalHours}h',
                     label: 'Hours',
                     color: AppColors.iconOrange,
                   ),
                   _buildSummaryItem(
                     icon: Iconsax.routing_2,
-                    value: '234',
+                    value: analytics.totalDistance.toStringAsFixed(0),
                     label: 'km',
                     color: AppColors.iconTeal,
                   ),
                   _buildSummaryItem(
                     icon: Iconsax.gallery,
-                    value: '156',
+                    value: '${analytics.totalPhotos}',
                     label: 'Photos',
                     color: AppColors.iconAmber,
                   ),
@@ -505,7 +408,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         decoration: BoxDecoration(
           color: AppColors.glassPrimary,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.glassBorder),
+          border: Border.all(
+            color: isTop
+                ? AppColors.primary.withValues(alpha: 0.5)
+                : AppColors.glassBorder,
+          ),
           boxShadow: AppShadows.glass,
         ),
         child: Row(
@@ -515,14 +422,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: AppColors.surfaceMuted,
+                color: isTop
+                    ? AppColors.primary.withValues(alpha: 0.1)
+                    : AppColors.surfaceMuted,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Center(
                 child: Text(
                   initials,
                   style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textSecondary,
+                    color: isTop ? AppColors.primary : AppColors.textSecondary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -536,12 +445,36 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    name,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        name,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (isTop) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Top',
+                            style: AppTypography.overline.copyWith(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -598,4 +531,3 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 }
-

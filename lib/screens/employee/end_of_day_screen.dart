@@ -1,8 +1,12 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/session_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/inputs/text_input_field.dart';
 import '../../widgets/navigation/app_header.dart';
@@ -33,11 +37,55 @@ class EndOfDayScreen extends StatefulWidget {
 
 class _EndOfDayScreenState extends State<EndOfDayScreen> {
   final _notesController = TextEditingController();
+  bool _isEnding = false;
 
   @override
   void dispose() {
     _notesController.dispose();
     super.dispose();
+  }
+
+  Future<void> _confirmEndSession() async {
+    setState(() => _isEnding = true);
+
+    final authProvider = context.read<AuthProvider>();
+    final sessionProvider = context.read<SessionProvider>();
+    final userId = authProvider.currentUser?.id ?? '';
+    final enterpriseId = authProvider.enterpriseId ?? '';
+
+    final result = await sessionProvider.endSession(
+      notes: _notesController.text.isNotEmpty ? _notesController.text : null,
+      enterpriseId: enterpriseId,
+      employeeId: userId,
+    );
+
+    if (!mounted) return;
+
+    if (result != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Session ended successfully'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+      context.go('/employee/home');
+    } else {
+      setState(() => _isEnding = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(sessionProvider.error ?? 'Failed to end session'),
+          backgroundColor: AppColors.critical,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
   }
 
   String _formatDuration(Duration duration) {
@@ -193,7 +241,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
 
                               // Buttons
                               GestureDetector(
-                                onTap: widget.onConfirm,
+                                onTap: _isEnding ? null : _confirmEndSession,
                                 child: Container(
                                   height: 56,
                                   decoration: BoxDecoration(
@@ -210,20 +258,30 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                                     ],
                                   ),
                                   child: Center(
-                                    child: Text(
-                                      'Confirm & End Session',
-                                      style: AppTypography.bodyMedium.copyWith(
-                                        color: AppColors.textPrimary,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
+                                    child: _isEnding
+                                        ? const SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: AppColors.textPrimary,
+                                            ),
+                                          )
+                                        : Text(
+                                            'Confirm & End Session',
+                                            style: AppTypography.bodyMedium
+                                                .copyWith(
+                                              color: AppColors.textPrimary,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 12),
                               GestureDetector(
-                                onTap: () => Navigator.pop(context),
+                                onTap: () => context.pop(),
                                 child: Container(
                                   height: 56,
                                   decoration: BoxDecoration(
@@ -307,4 +365,3 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
     );
   }
 }
-

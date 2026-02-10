@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
@@ -266,14 +266,14 @@ class TeamLeadEmployeeDetailScreen extends StatelessWidget {
         const SizedBox(height: 10),
         _buildStatusItem(
           title: 'Inventory Check',
-          subtitle: 'Assigned • Due 2:00 PM',
+          subtitle: 'Assigned \u2022 Due 2:00 PM',
           status: 'Pending',
           completed: false,
         ),
         const SizedBox(height: 10),
         _buildStatusItem(
           title: 'Shift Report',
-          subtitle: 'Assigned • Due 5:00 PM',
+          subtitle: 'Assigned \u2022 Due 5:00 PM',
           status: 'Pending',
           completed: false,
         ),
@@ -286,28 +286,28 @@ class TeamLeadEmployeeDetailScreen extends StatelessWidget {
       children: [
         _buildStatusItem(
           title: 'Fresh Mart',
-          subtitle: 'Ticket #209 • Closed',
+          subtitle: 'Ticket #209 \u2022 Closed',
           status: 'Completed',
           completed: true,
         ),
         const SizedBox(height: 10),
         _buildStatusItem(
           title: 'Urban Clothiers',
-          subtitle: 'Ticket #211 • Closed',
+          subtitle: 'Ticket #211 \u2022 Closed',
           status: 'Completed',
           completed: true,
         ),
         const SizedBox(height: 10),
         _buildStatusItem(
           title: 'Daily Dairy',
-          subtitle: 'Ticket #215 • Awaiting Reply',
+          subtitle: 'Ticket #215 \u2022 Awaiting Reply',
           status: 'Pending',
           completed: false,
         ),
         const SizedBox(height: 10),
         _buildStatusItem(
           title: 'Tech Hub Zone',
-          subtitle: 'Ticket #220 • Scheduled',
+          subtitle: 'Ticket #220 \u2022 Scheduled',
           status: 'Pending',
           completed: false,
         ),
@@ -390,5 +390,3 @@ class TeamLeadEmployeeDetailScreen extends StatelessWidget {
     );
   }
 }
-
-
