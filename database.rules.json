@@ -1,0 +1,43 @@
+{
+  "rules": {
+    "presence": {
+      "$enterpriseId": {
+        ".read": "auth != null && auth.token.enterpriseId == $enterpriseId",
+        "$userId": {
+          ".write": "auth != null && auth.uid == $userId"
+        }
+      }
+    },
+    "liveLocations": {
+      "$enterpriseId": {
+        ".read": "auth != null && auth.token.enterpriseId == $enterpriseId && (auth.token.role == 'admin' || auth.token.role == 'team_lead')",
+        "$userId": {
+          ".read": "auth != null && (auth.uid == $userId || ((auth.token.role == 'admin' || auth.token.role == 'team_lead') && auth.token.enterpriseId == $enterpriseId))",
+          ".write": "auth != null && auth.uid == $userId"
+        }
+      }
+    },
+    "activeStats": {
+      "$enterpriseId": {
+        ".read": "auth != null && auth.token.enterpriseId == $enterpriseId",
+        "$userId": {
+          ".write": "auth != null && auth.uid == $userId"
+        }
+      }
+    },
+    "sessionHeartbeat": {
+      "$enterpriseId": {
+        ".read": "auth != null && auth.token.enterpriseId == $enterpriseId",
+        "$userId": {
+          ".write": "auth != null && auth.uid == $userId"
+        }
+      }
+    },
+    "deviceSessions": {
+      "$userId": {
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": "auth != null && auth.uid == $userId"
+      }
+    }
+  }
+}

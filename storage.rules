@@ -1,0 +1,92 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // =============================================
+    // Helper Functions
+    // =============================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the user is an admin
+    function isAdmin() {
+      return request.auth.token.role == 'admin';
+    }
+
+    // Check if the user belongs to the given enterprise
+    function belongsToEnterprise(enterpriseId) {
+      return request.auth.token.enterpriseId == enterpriseId;
+    }
+
+    // Check if the authenticated user is the owner
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // =============================================
+    // Enterprise Photos
+    // =============================================
+    // Path: /enterprises/{enterpriseId}/photos/{userId}/{date}/{photoId}.jpg
+    match /enterprises/{enterpriseId}/photos/{userId}/{allPaths=**} {
+      // Read: Own photos OR admin in same enterprise
+      allow read: if isAuthenticated() &&
+        (isOwner(userId) ||
+         (isAdmin() && belongsToEnterprise(enterpriseId)));
+
+      // Write: Own photos only, with size limit (10MB) and image content type
+      allow write: if isAuthenticated() &&
+        isOwner(userId) &&
+        belongsToEnterprise(enterpriseId) &&
+        request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    // =============================================
+    // Profile Images
+    // =============================================
+    // Path: /enterprises/{enterpriseId}/profiles/{userId}/avatar.jpg
+    match /enterprises/{enterpriseId}/profiles/{userId}/{fileName} {
+      // Read: Any authenticated user in the same enterprise
+      allow read: if isAuthenticated() &&
+        belongsToEnterprise(enterpriseId);
+
+      // Write: Own profile image only
+      allow write: if isAuthenticated() &&
+        isOwner(userId) &&
+        belongsToEnterprise(enterpriseId);
+    }
+
+    // =============================================
+    // Chat Images
+    // =============================================
+    // Path: /enterprises/{enterpriseId}/chat/{groupId}/{fileName}
+    match /enterprises/{enterpriseId}/chat/{groupId}/{fileName} {
+      // Read: Any authenticated user in the same enterprise
+      allow read: if isAuthenticated() &&
+        belongsToEnterprise(enterpriseId);
+
+      // Write: Authenticated user in same enterprise, image only, 10MB limit
+      allow write: if isAuthenticated() &&
+        belongsToEnterprise(enterpriseId) &&
+        request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    // =============================================
+    // Exports (Admin Read Only, Cloud Functions Write)
+    // =============================================
+    // Path: /enterprises/{enterpriseId}/exports/{fileName}
+    match /enterprises/{enterpriseId}/exports/{fileName} {
+      // Read: Admin only in same enterprise
+      allow read: if isAuthenticated() &&
+        isAdmin() &&
+        belongsToEnterprise(enterpriseId);
+
+      // Write: Only Cloud Functions (no client writes allowed)
+      allow write: if false;
+    }
+  }
+}

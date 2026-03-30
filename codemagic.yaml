@@ -1,0 +1,87 @@
+workflows:
+  android-apk:
+    name: Android APK
+    max_build_duration: 120
+    instance_type: linux_x2
+    environment:
+      flutter: 3.38.9
+    scripts:
+      - name: Show Flutter version
+        script: flutter --version
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Build Android APK
+        script: |
+          BUILD_NAME=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          BUILD_NUMBER=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f2)
+          flutter build apk --release \
+            --build-name=$BUILD_NAME \
+            --build-number=$BUILD_NUMBER
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+      - flutter_drive.log
+
+  android-app-bundle:
+    name: Android App Bundle
+    max_build_duration: 120
+    instance_type: linux_x2
+    environment:
+      flutter: 3.38.9
+    scripts:
+      - name: Show Flutter version
+        script: flutter --version
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Build Android app bundle
+        script: |
+          BUILD_NAME=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          BUILD_NUMBER=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f2)
+          flutter build appbundle --release \
+            --build-name=$BUILD_NAME \
+            --build-number=$BUILD_NUMBER
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+      - flutter_drive.log
+
+  ios-app-store-update:
+    name: iOS App Store Update
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    integrations:
+      # Create this key name in Codemagic Team integrations > Developer Portal.
+      app_store_connect: CODEMAGIC
+    environment:
+      flutter: 3.38.9
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.amanrana.izumi
+      vars:
+        APP_STORE_APPLE_ID: "6760296934"
+    scripts:
+      - name: Show Flutter version
+        script: flutter --version
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Install CocoaPods
+        script: find . -name "Podfile" -execdir pod install \;
+      - name: Set up code signing settings on Xcode project
+        script: xcode-project use-profiles
+      - name: Build signed IPA
+        script: |
+          BUILD_NAME=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          BUILD_NUMBER=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f2)
+          flutter build ipa --release \
+            --build-name=$BUILD_NAME \
+            --build-number=$BUILD_NUMBER \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        expire_build_submitted_for_review: true

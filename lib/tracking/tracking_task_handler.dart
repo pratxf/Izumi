@@ -1,0 +1,732 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_activity_recognition/flutter_activity_recognition.dart'
+    as ar;
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+
+import '../firebase_options.dart';
+import 'pending_location_store.dart';
+import 'sync_manager.dart';
+
+const String _enterpriseIdKey = 'tracking.enterpriseId';
+const String _employeeIdKey = 'tracking.employeeId';
+const String _sessionIdKey = 'tracking.sessionId';
+const String _startedAtKey = 'tracking.startedAtMs';
+const String _employeeNameKey = 'tracking.employeeName';
+
+@pragma('vm:entry-point')
+void startTrackingCallback() {
+  FlutterForegroundTask.setTaskHandler(SessionTrackingTaskHandler());
+}
+
+class SessionTrackingTaskHandler extends TaskHandler {
+  final PendingLocationStore _pendingLocationStore =
+      PendingLocationStore.instance;
+  late final FirebaseFirestore _firestore;
+  late final FirebaseDatabase _database;
+  late final SyncManager _syncManager;
+
+  StreamSubscription<ar.Activity>? _activitySubscription;
+  Timer? _heartbeatTimer;
+  Timer? _activityTimeoutTimer;
+
+  String? _enterpriseId;
+  String? _employeeId;
+  String? _sessionId;
+  String? _employeeName;
+  int? _startedAtMs;
+
+  Position? _lastPosition;
+  double _totalDistanceKm = 0;
+  Duration _pollInterval = const Duration(minutes: 1);
+  LocationAccuracy _accuracy = LocationAccuracy.medium;
+  String _activityType = 'WALKING';
+  int _activityConfidence = 0;
+  bool _pollInFlight = false;
+
+  // Quality filter constants per spec
+  static const double _maxAccuracyMeters = 30.0;
+  static const double _minMovementMeters = 15.0;
+  static const double _maxSpeedMps = 100.0; // ~360 km/h — impossible spike
+
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    await _ensureFirebase();
+    _firestore = FirebaseFirestore.instance;
+    _database = FirebaseDatabase.instance;
+    _syncManager = SyncManager(
+      pendingLocationStore: _pendingLocationStore,
+      firestore: _firestore,
+      realtimeDatabase: _database,
+      onEvent: _sendGenericEvent,
+    );
+    await _loadContext();
+    await _restoreSessionState();
+    await _startSyncManager();
+    await _startActivityRecognition();
+    await _sendHeartbeat();
+    // Heartbeat every 25 minutes per spec
+    _heartbeatTimer = Timer.periodic(
+      const Duration(minutes: 25),
+      (_) => unawaited(_sendHeartbeat()),
+    );
+    await _pollLocation(reason: 'service_start');
+  }
+
+  @override
+  void onRepeatEvent(DateTime timestamp) {
+    unawaited(_pollLocation(reason: 'scheduled_poll'));
+  }
+
+  @override
+  void onReceiveData(Object data) {
+    if (data is! Map) return;
+
+    final type = data['type']?.toString();
+    switch (type) {
+      case 'refresh_context':
+        _enterpriseId = data['enterpriseId']?.toString() ?? _enterpriseId;
+        _employeeId = data['employeeId']?.toString() ?? _employeeId;
+        _sessionId = data['sessionId']?.toString() ?? _sessionId;
+        _employeeName = data['employeeName']?.toString() ?? _employeeName;
+        final enterpriseId = _enterpriseId;
+        final employeeId = _employeeId;
+        final sessionId = _sessionId;
+        if (enterpriseId != null && employeeId != null && sessionId != null) {
+          unawaited(
+            _syncManager.updateContext(
+              enterpriseId: enterpriseId,
+              employeeId: employeeId,
+              sessionId: sessionId,
+            ),
+          );
+        }
+        break;
+      case 'heartbeat':
+        unawaited(_sendHeartbeat());
+        break;
+      case 'poll_now':
+        unawaited(_pollLocation(reason: 'manual_poll'));
+        break;
+      case 'flush_now':
+        unawaited(
+          _runFlushCommand(
+            requestId: data['requestId']?.toString(),
+            reason: 'manual_flush',
+          ),
+        );
+        break;
+      case 'final_flush':
+        unawaited(
+          _runFlushCommand(
+            requestId: data['requestId']?.toString(),
+            reason: 'final_flush',
+          ),
+        );
+        break;
+    }
+  }
+
+  @override
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    await _activitySubscription?.cancel();
+    _heartbeatTimer?.cancel();
+    _activityTimeoutTimer?.cancel();
+
+    // Auto-end on app removal from recents: flush buffer + end session
+    final sessionId = _sessionId;
+    final enterpriseId = _enterpriseId;
+    final employeeId = _employeeId;
+
+    if (sessionId != null && enterpriseId != null && employeeId != null) {
+      // Flush remaining location buffer
+      try {
+        await _syncManager.flushPendingLocations(
+          reason: 'app_removed_flush',
+          allowOfflineQueue: true,
+        );
+      } catch (_) {}
+
+      // Write session end to Firestore
+      try {
+        final now = DateTime.now();
+        final durationSecs = _sessionDurationSeconds();
+        await _firestore.collection('sessions').doc(sessionId).update({
+          'endTime': Timestamp.fromDate(now),
+          'status': 'auto_ended',
+          'totalDuration': durationSecs,
+          'totalDistance': _totalDistanceKm,
+          'autoEndReason': 'app_removed',
+          'autoEndSource': 'foreground_task_onDestroy',
+        });
+
+        // Write activityLog for session end
+        await _firestore.collection('activityLogs').doc('session_auto_ended_$sessionId').set({
+          'enterpriseId': enterpriseId,
+          'employeeId': employeeId,
+          'sessionId': sessionId,
+          'orgId': enterpriseId,
+          'type': 'session_end',
+          'title': 'Session Auto-Ended',
+          'detail': 'Session ended because the app was closed',
+          'timestamp': FieldValue.serverTimestamp(),
+          'date': _todayDateString(),
+          'payload': {
+            'endTime': Timestamp.fromDate(now),
+            'durationSeconds': durationSecs,
+            'distanceKm': _totalDistanceKm,
+            'endReason': 'app_removed',
+          },
+        }, SetOptions(merge: true));
+      } catch (_) {}
+
+      // Set RTDB presence to signal_lost
+      try {
+        await _database.ref('presence/$enterpriseId/$employeeId').update({
+          'status': 'signal_lost',
+          'signalLostAt': ServerValue.timestamp,
+          'lastSeen': ServerValue.timestamp,
+        });
+      } catch (_) {}
+
+      // Send local push notification to employee
+      try {
+        final duration = Duration(seconds: _sessionDurationSeconds());
+        final hours = duration.inHours;
+        final minutes = duration.inMinutes.remainder(60);
+        final durationText = hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
+
+        final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+        await flutterLocalNotificationsPlugin.initialize(
+          const InitializationSettings(
+            android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+            iOS: DarwinInitializationSettings(),
+          ),
+        );
+        await flutterLocalNotificationsPlugin.show(
+          9901,
+          'Session Ended',
+          'Your tracking session has ended because the app was closed. Duration: $durationText.',
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'izumi_session_alerts',
+              'Session Alerts',
+              channelDescription: 'Notifications about session lifecycle events',
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+            iOS: DarwinNotificationDetails(),
+          ),
+        );
+      } catch (_) {}
+
+      // Clear session state from SQLite
+      try {
+        await _pendingLocationStore.markSessionEnding();
+      } catch (_) {}
+    }
+
+    await _syncManager.dispose();
+  }
+
+  // ── Firebase init ──
+
+  Future<void> _ensureFirebase() async {
+    if (Firebase.apps.isNotEmpty) return;
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+
+  // ── Context loading ──
+
+  Future<void> _loadContext() async {
+    _enterpriseId = await FlutterForegroundTask.getData<String>(
+      key: _enterpriseIdKey,
+    );
+    _employeeId = await FlutterForegroundTask.getData<String>(
+      key: _employeeIdKey,
+    );
+    _sessionId = await FlutterForegroundTask.getData<String>(
+      key: _sessionIdKey,
+    );
+    _startedAtMs = await FlutterForegroundTask.getData<int>(key: _startedAtKey);
+    _employeeName = await FlutterForegroundTask.getData<String>(
+      key: _employeeNameKey,
+    );
+  }
+
+  // ── Session state crash recovery ──
+
+  Future<void> _restoreSessionState() async {
+    // First try restoring from SQLite session_state table
+    final state = await _pendingLocationStore.getSessionState();
+    if (state != null && state['status'] == 'active') {
+      _sessionId ??= state['session_id'] as String?;
+      _employeeId ??= state['employee_id'] as String?;
+      _enterpriseId ??= state['enterprise_id'] as String?;
+      _startedAtMs ??= (state['start_time_ms'] as num?)?.toInt();
+      _totalDistanceKm =
+          ((state['total_distance_km'] as num?) ?? 0).toDouble();
+
+      final lastLat = state['last_lat'] as double?;
+      final lastLng = state['last_lng'] as double?;
+      if (lastLat != null && lastLng != null) {
+        _lastPosition = Position(
+          latitude: lastLat,
+          longitude: lastLng,
+          timestamp: DateTime.fromMillisecondsSinceEpoch(
+            (state['last_synced_at_ms'] as num?)?.toInt() ??
+                DateTime.now().millisecondsSinceEpoch,
+          ),
+          accuracy: 0,
+          altitude: 0,
+          altitudeAccuracy: 0,
+          heading: 0,
+          headingAccuracy: 0,
+          speed: 0,
+          speedAccuracy: 0,
+          isMocked: false,
+        );
+      }
+      return;
+    }
+
+    // Fallback: restore from pending_locations table
+    if (_sessionId == null) return;
+
+    final latestPoint =
+        await _pendingLocationStore.getLatestPointForSession(_sessionId!);
+    if (latestPoint == null) return;
+
+    _lastPosition = Position(
+      longitude: (latestPoint['longitude'] as num).toDouble(),
+      latitude: (latestPoint['latitude'] as num).toDouble(),
+      timestamp: DateTime.fromMillisecondsSinceEpoch(
+        latestPoint['captured_at_ms'] as int,
+      ),
+      accuracy: ((latestPoint['accuracy'] as num?) ?? 0).toDouble(),
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: ((latestPoint['heading'] as num?) ?? 0).toDouble(),
+      headingAccuracy: 0,
+      floor: null,
+      speed: ((latestPoint['speed'] as num?) ?? 0).toDouble(),
+      speedAccuracy: 0,
+      isMocked: false,
+    );
+    _totalDistanceKm =
+        ((latestPoint['cumulative_distance_km'] as num?) ?? 0).toDouble();
+  }
+
+  // ── Sync manager ──
+
+  Future<void> _startSyncManager() async {
+    final enterpriseId = _enterpriseId;
+    final employeeId = _employeeId;
+    final sessionId = _sessionId;
+    if (enterpriseId == null || employeeId == null || sessionId == null) return;
+
+    await _syncManager.start(
+      enterpriseId: enterpriseId,
+      employeeId: employeeId,
+      sessionId: sessionId,
+    );
+
+    // Save initial session state for crash recovery
+    await _pendingLocationStore.saveSessionState(
+      sessionId: sessionId,
+      employeeId: employeeId,
+      enterpriseId: enterpriseId,
+      startTimeMs: _startedAtMs ?? DateTime.now().millisecondsSinceEpoch,
+      totalDistanceKm: _totalDistanceKm,
+    );
+  }
+
+  // ── Activity recognition ──
+
+  Future<void> _startActivityRecognition() async {
+    try {
+      _activitySubscription = ar
+          .FlutterActivityRecognition.instance.activityStream
+          .listen(_handleActivityChange);
+
+      // If no activity emitted within 30 seconds, default to WALKING
+      _activityTimeoutTimer = Timer(const Duration(seconds: 30), () {
+        if (_activityType == 'WALKING' && _activityConfidence == 0) {
+          // Still on defaults — activity recognition never emitted
+          unawaited(_setTrackingProfile(
+            activityType: 'WALKING',
+            confidence: 0,
+          ));
+        }
+      });
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[SessionTrackingTaskHandler] activity stream unavailable: $error\n$stackTrace',
+      );
+      await _setTrackingProfile(activityType: 'WALKING', confidence: 0);
+    }
+  }
+
+  void _handleActivityChange(ar.Activity activity) {
+    _activityTimeoutTimer?.cancel();
+    unawaited(_setTrackingProfile(
+      activityType: activity.type.name.toUpperCase(),
+      confidence: _confidenceScore(activity.confidence),
+    ));
+  }
+
+  Future<void> _setTrackingProfile({
+    required String activityType,
+    required int confidence,
+  }) async {
+    final previousInterval = _pollInterval;
+
+    _activityType = activityType;
+    _activityConfidence = confidence;
+
+    // Spec intervals:
+    // STILL → 5 min, medium accuracy
+    // WALKING / ON_FOOT / unknown → 60s, medium accuracy
+    // IN_VEHICLE / ON_BICYCLE → 20s, high accuracy
+    if (activityType == 'STILL') {
+      _pollInterval = const Duration(minutes: 5);
+      _accuracy = LocationAccuracy.medium;
+    } else if (activityType == 'IN_VEHICLE' || activityType == 'ON_BICYCLE') {
+      _pollInterval = const Duration(seconds: 20);
+      _accuracy = LocationAccuracy.high;
+    } else {
+      // WALKING, ON_FOOT, RUNNING, unknown
+      _pollInterval = const Duration(seconds: 60);
+      _accuracy = LocationAccuracy.medium;
+    }
+
+    if (previousInterval != _pollInterval) {
+      await FlutterForegroundTask.updateService(
+        foregroundTaskOptions: ForegroundTaskOptions(
+          eventAction:
+              ForegroundTaskEventAction.repeat(_pollInterval.inMilliseconds),
+          autoRunOnBoot: false,
+          autoRunOnMyPackageReplaced: true,
+          allowWakeLock: true,
+          allowWifiLock: true,
+        ),
+        notificationTitle: _buildNotificationTitle(),
+        notificationText: _buildNotificationText(),
+      );
+    }
+
+    _sendStateToMain();
+  }
+
+  // ── GPS polling ──
+
+  Future<void> _pollLocation({required String reason}) async {
+    if (_pollInFlight ||
+        _sessionId == null ||
+        _employeeId == null ||
+        _enterpriseId == null) {
+      return;
+    }
+
+    _pollInFlight = true;
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: _buildLocationSettings(),
+      ).timeout(const Duration(seconds: 30));
+
+      if (!_isUsableFix(position)) return;
+
+      // Distance and movement filter
+      if (_lastPosition != null) {
+        final meters = Geolocator.distanceBetween(
+          _lastPosition!.latitude,
+          _lastPosition!.longitude,
+          position.latitude,
+          position.longitude,
+        );
+
+        // Discard if movement less than 15m from last accepted point
+        if (meters < _minMovementMeters) return;
+
+        // Impossible speed spike detection
+        final timeDiffSecs = position.timestamp
+            .difference(_lastPosition!.timestamp)
+            .inSeconds
+            .abs();
+        if (timeDiffSecs > 0) {
+          final speedMps = meters / timeDiffSecs;
+          if (speedMps > _maxSpeedMps) return;
+        }
+
+        _totalDistanceKm += meters / 1000;
+      }
+
+      _lastPosition = position;
+
+      await _pendingLocationStore.insertPendingLocation(
+        sessionId: _sessionId!,
+        enterpriseId: _enterpriseId!,
+        employeeId: _employeeId!,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        accuracy: position.accuracy,
+        speed: position.speed,
+        heading: position.heading,
+        activityType: _activityType,
+        activityConfidence: _activityConfidence,
+        cumulativeDistanceKm: _totalDistanceKm,
+        capturedAtMs: position.timestamp.millisecondsSinceEpoch,
+      );
+
+      // Persist distance to session state for crash recovery
+      unawaited(_pendingLocationStore.updateSessionDistance(_totalDistanceKm));
+
+      final pendingCount =
+          await _pendingLocationStore.getPendingCountForSession(_sessionId!);
+
+      await _updateLiveRealtimePosition(position);
+      await _syncManager.maybeFlushWhenThresholdReached();
+
+      await FlutterForegroundTask.updateService(
+        notificationTitle: _buildNotificationTitle(),
+        notificationText: _buildNotificationText(),
+      );
+
+      _sendStateToMain(
+        position: position,
+        pendingCount: pendingCount,
+        reason: reason,
+      );
+    } on TimeoutException {
+      // Spec: timeout = silent skip
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[SessionTrackingTaskHandler] location poll failed: $error\n$stackTrace',
+      );
+      _sendStateToMain(error: error.toString(), reason: reason);
+    } finally {
+      _pollInFlight = false;
+    }
+  }
+
+  LocationSettings _buildLocationSettings() {
+    if (Platform.isAndroid) {
+      return AndroidSettings(
+        accuracy: _accuracy,
+        distanceFilter: 0,
+        intervalDuration: _pollInterval,
+        timeLimit: const Duration(seconds: 10),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'Izumi session active',
+          notificationText: 'Collecting field session updates',
+          enableWakeLock: true,
+        ),
+      );
+    }
+
+    return AppleSettings(
+      accuracy: _accuracy,
+      activityType: ActivityType.fitness,
+      distanceFilter: 0,
+      timeLimit: const Duration(seconds: 10),
+      pauseLocationUpdatesAutomatically: true,
+      showBackgroundLocationIndicator: true,
+      allowBackgroundLocationUpdates: true,
+    );
+  }
+
+  int _confidenceScore(ar.ActivityConfidence confidence) {
+    switch (confidence) {
+      case ar.ActivityConfidence.HIGH:
+        return 100;
+      case ar.ActivityConfidence.MEDIUM:
+        return 70;
+      case ar.ActivityConfidence.LOW:
+        return 30;
+    }
+  }
+
+  bool _isUsableFix(Position position) {
+    // Spec: accuracy worse than 30m → discard
+    return position.accuracy > 0 && position.accuracy <= _maxAccuracyMeters;
+  }
+
+  // ── Heartbeat (every 25 min) ──
+
+  Future<void> _sendHeartbeat() async {
+    if (_enterpriseId == null || _employeeId == null || _sessionId == null) {
+      return;
+    }
+
+    await Future.wait([
+      _database.ref('sessionHeartbeat/$_enterpriseId/$_employeeId').set({
+        'sessionId': _sessionId,
+        'lastSeen': ServerValue.timestamp,
+      }),
+      _database.ref('presence/$_enterpriseId/$_employeeId').update({
+        'status': 'active',
+        'signalLostAt': null,
+        'currentSessionId': _sessionId,
+        'lastSeen': ServerValue.timestamp,
+      }),
+    ]);
+
+    _sendStateToMain(reason: 'heartbeat');
+  }
+
+  // ── RTDB live position ──
+
+  Future<void> _updateLiveRealtimePosition(Position position) async {
+    if (_enterpriseId == null || _employeeId == null) return;
+
+    final address = await _reverseGeocode(position.latitude, position.longitude);
+
+    await Future.wait([
+      _database.ref('liveLocations/$_enterpriseId/$_employeeId').set({
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'address': address,
+        'updatedAt': ServerValue.timestamp,
+        'accuracy': position.accuracy,
+      }),
+      _database.ref('activeStats/$_enterpriseId/$_employeeId').update({
+        'distance': _totalDistanceKm,
+        'sessionDuration': _sessionDurationSeconds(),
+        'sessionStartTimeMs': _startedAtMs,
+      }),
+    ]);
+  }
+
+  static Future<String> _reverseGeocode(double lat, double lng) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(lat, lng)
+          .timeout(const Duration(seconds: 5));
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+        final parts = <String>[];
+        // Include street/thoroughfare for pin-point accuracy
+        if (place.street?.isNotEmpty == true &&
+            place.street != place.locality &&
+            place.street != place.subLocality) {
+          parts.add(place.street!);
+        } else if (place.thoroughfare?.isNotEmpty == true) {
+          parts.add(place.thoroughfare!);
+        } else if (place.name?.isNotEmpty == true &&
+            place.name != place.locality &&
+            place.name != place.subLocality) {
+          parts.add(place.name!);
+        }
+        if (place.subLocality?.isNotEmpty == true) parts.add(place.subLocality!);
+        if (place.locality?.isNotEmpty == true) parts.add(place.locality!);
+        if (parts.isNotEmpty) return parts.join(', ');
+      }
+    } catch (e) {
+      debugPrint('[TrackingTaskHandler] reverse geocode failed: $e');
+    }
+    return 'Lat: ${lat.toStringAsFixed(4)}, Lng: ${lng.toStringAsFixed(4)}';
+  }
+
+  // ── Flush commands ──
+
+  Future<void> _runFlushCommand({
+    required String? requestId,
+    required String reason,
+  }) async {
+    if (reason == 'final_flush') {
+      await _pollLocation(reason: 'final_flush_snapshot');
+    }
+
+    final result = await _syncManager.flushPendingLocations(
+      reason: reason,
+      allowOfflineQueue: reason == 'final_flush',
+    );
+
+    // Update last sync time in session state
+    unawaited(
+      _pendingLocationStore
+          .updateSessionLastSync(DateTime.now().millisecondsSinceEpoch),
+    );
+
+    _sendGenericEvent({
+      'type': 'command_result',
+      'command': reason,
+      'requestId': requestId,
+      ...result,
+      'distanceKm': result['distanceKm'] ?? _totalDistanceKm,
+      'sessionDurationSeconds': _sessionDurationSeconds(),
+      'lastLocationUpdateMs': _lastPosition?.timestamp.millisecondsSinceEpoch,
+      'latitude': _lastPosition?.latitude,
+      'longitude': _lastPosition?.longitude,
+    });
+  }
+
+  // ── Notification formatting ──
+
+  String _buildNotificationTitle() {
+    return 'Tracking active';
+  }
+
+  String _buildNotificationText() {
+    final name = _employeeName ?? 'Employee';
+    final duration = Duration(seconds: _sessionDurationSeconds());
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final durationText = '${hours}h ${minutes.toString().padLeft(2, '0')}m';
+    final distanceText = '${_totalDistanceKm.toStringAsFixed(1)} km';
+    return '$name \u00b7 $durationText \u00b7 $distanceText';
+  }
+
+  // ── Helpers ──
+
+  int _sessionDurationSeconds() {
+    final startedAtMs = _startedAtMs;
+    if (startedAtMs == null) return 0;
+    return Duration(
+      milliseconds: DateTime.now().millisecondsSinceEpoch - startedAtMs,
+    ).inSeconds;
+  }
+
+  String _todayDateString() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  void _sendGenericEvent(Map<String, dynamic> payload) {
+    FlutterForegroundTask.sendDataToMain(payload);
+  }
+
+  void _sendStateToMain({
+    Position? position,
+    int? pendingCount,
+    String? error,
+    String? reason,
+  }) {
+    FlutterForegroundTask.sendDataToMain({
+      'type': 'tracking_state',
+      'reason': reason,
+      'error': error,
+      'sessionId': _sessionId,
+      'employeeId': _employeeId,
+      'enterpriseId': _enterpriseId,
+      'activityType': _activityType,
+      'activityConfidence': _activityConfidence,
+      'distanceKm': _totalDistanceKm,
+      'pendingCount': pendingCount,
+      'latitude': position?.latitude ?? _lastPosition?.latitude,
+      'longitude': position?.longitude ?? _lastPosition?.longitude,
+      'accuracy': position?.accuracy ?? _lastPosition?.accuracy,
+      'lastLocationUpdateMs':
+          (position ?? _lastPosition)?.timestamp.millisecondsSinceEpoch,
+    });
+  }
+}

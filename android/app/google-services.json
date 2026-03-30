@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "865459903803",
+    "firebase_url": "https://izumi-6e087-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "izumi-6e087",
+    "storage_bucket": "izumi-6e087.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:865459903803:android:e7405cf66641400785eb1e",
+        "android_client_info": {
+          "package_name": "com.izumi.izumi"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "865459903803-d72jmcthutq1bqd149o7lrgv89fn79o1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.izumi.izumi",
+            "certificate_hash": "0927eccb38ee4efaa7978843029fa51dc12b8abe"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA1PvodTpaM5j3J1TKCRaZ89l9SIQ6nssU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
