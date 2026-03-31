@@ -13,7 +13,7 @@ import { onValueWritten } from "firebase-functions/v2/database";
 import * as admin from "firebase-admin";
 import { logger } from "firebase-functions/v2";
 
-const HEARTBEAT_STALE_MS = 4 * 60 * 60 * 1000;
+const HEARTBEAT_STALE_MS = 60 * 60 * 1000;
 
 type PresenceRecord = {
   status?: string;

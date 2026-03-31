@@ -106,22 +106,34 @@ class TrackingForegroundService {
     }
 
     final isRunning = await FlutterForegroundTask.isRunningService;
-    final result = isRunning
-        ? await FlutterForegroundTask.restartService()
-        : await FlutterForegroundTask.startService(
-            serviceId: _serviceId,
-            serviceTypes: const [
-              ForegroundServiceTypes.location,
-              ForegroundServiceTypes.dataSync,
-            ],
-            notificationTitle: 'Izumi session active',
-            notificationText: 'Optimizing GPS based on movement',
-            notificationIcon: const NotificationIcon(
-              metaDataName: _notificationIconMetaData,
-              backgroundColor: AppColors.primary,
-            ),
-            callback: startTrackingCallback,
-          );
+    if (isRunning) {
+      // Service is already running — update context without restarting.
+      // restartService() would fire onDestroy on the current handler, which
+      // auto-ends the active session. Instead, just refresh the context.
+      FlutterForegroundTask.sendDataToTask({
+        'type': 'refresh_context',
+        'enterpriseId': enterpriseId,
+        'employeeId': employeeId,
+        'sessionId': sessionId,
+        'employeeName': employeeName,
+      });
+      return;
+    }
+
+    final result = await FlutterForegroundTask.startService(
+      serviceId: _serviceId,
+      serviceTypes: const [
+        ForegroundServiceTypes.location,
+        ForegroundServiceTypes.dataSync,
+      ],
+      notificationTitle: 'Izumi session active',
+      notificationText: 'Optimizing GPS based on movement',
+      notificationIcon: const NotificationIcon(
+        metaDataName: _notificationIconMetaData,
+        backgroundColor: AppColors.primary,
+      ),
+      callback: startTrackingCallback,
+    );
 
     if (result is ServiceRequestFailure) {
       throw Exception(result.error);

@@ -147,6 +147,21 @@ class SessionTrackingTaskHandler extends TaskHandler {
     final employeeId = _employeeId;
 
     if (sessionId != null && enterpriseId != null && employeeId != null) {
+      // Safety: don't auto-end sessions that just started (< 30s ago).
+      // This prevents a race where restartService() fires onDestroy on a
+      // handler that already loaded the new session context.
+      final startMs = _startedAtMs;
+      if (startMs != null) {
+        final elapsed = DateTime.now().millisecondsSinceEpoch - startMs;
+        if (elapsed < 30000) {
+          debugPrint(
+            '[TrackingTaskHandler] onDestroy: session only ${elapsed}ms old, '
+            'skipping auto-end (likely a restart).',
+          );
+          return;
+        }
+      }
+
       // Flush remaining location buffer
       try {
         await _syncManager.flushPendingLocations(
