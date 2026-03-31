@@ -222,7 +222,7 @@ class SessionTrackingTaskHandler extends TaskHandler {
         final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
         await flutterLocalNotificationsPlugin.initialize(
           const InitializationSettings(
-            android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+            android: AndroidInitializationSettings('ic_stat_izumi'),
             iOS: DarwinInitializationSettings(),
           ),
         );
@@ -237,6 +237,7 @@ class SessionTrackingTaskHandler extends TaskHandler {
               channelDescription: 'Notifications about session lifecycle events',
               importance: Importance.high,
               priority: Priority.high,
+              icon: 'ic_stat_izumi',
             ),
             iOS: DarwinNotificationDetails(),
           ),

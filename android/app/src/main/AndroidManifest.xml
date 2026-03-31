@@ -35,6 +35,13 @@
         <meta-data
             android:name="izumi_foreground_notification_icon"
             android:resource="@drawable/ic_stat_izumi" />
+        <!-- Default icon for FCM push notifications -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_izumi" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_color" />
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="location|dataSync"

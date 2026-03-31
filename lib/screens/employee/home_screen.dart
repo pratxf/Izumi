@@ -16,6 +16,7 @@ import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../services/permission_service.dart';
+import '../../offline_queue/offline_queue_manager.dart';
 
 /// Employee Home Screen - Glassmorphism Design
 /// Shows IDLE or ACTIVE state based on session status
@@ -26,7 +27,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _initialized = false;
   bool _hasUnread = false;
   StreamSubscription? _unreadSub;
@@ -34,10 +35,19 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initProviders();
       _listenUnread();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Force-retry any stuck uploads when app comes to foreground
+      OfflineQueueManager.instance.retryAllNow();
+    }
   }
 
   void _listenUnread() {
@@ -57,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _unreadSub?.cancel();
     super.dispose();
   }

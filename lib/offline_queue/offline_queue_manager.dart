@@ -121,6 +121,26 @@ class OfflineQueueManager {
     }
   }
 
+  /// Reset backoff on all errored jobs and process immediately.
+  Future<void> retryAllNow() async {
+    final jobs = await _jobStore.getJobsByStatuses(
+      const [OfflineJobStatus.error],
+    );
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    for (final job in jobs) {
+      await _jobStore.upsertJob(
+        job.copyWith(
+          status: OfflineJobStatus.pending,
+          nextAttemptAtMs: nowMs,
+          clearLastAttemptAtMs: true,
+        ),
+      );
+    }
+    if (jobs.isNotEmpty) {
+      await processQueue(reason: 'retry_all');
+    }
+  }
+
   Future<void> retryJob(String jobId) async {
     final job = await _jobStore.getJobById(jobId);
     if (job == null) {
