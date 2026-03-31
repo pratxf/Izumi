@@ -12,6 +12,9 @@ import '../../models/upload_status.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/photo_provider.dart';
 import '../../providers/team_provider.dart';
+import 'dart:async';
+import '../../offline_queue/offline_job.dart';
+import '../../offline_queue/offline_queue_manager.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 import '../../widgets/inputs/text_input_field.dart';
@@ -30,6 +33,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   String _searchQuery = '';
   DateTime? _selectedDate; // null = all dates
   bool _isTeamLead = false;
+  StreamSubscription<OfflineQueueJobEvent>? _queueEventsSub;
 
   @override
   void initState() {
@@ -41,6 +45,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
       setState(() {
         _searchQuery = _searchController.text;
       });
+    });
+    // Listen for upload errors to show in UI
+    _queueEventsSub =
+        OfflineQueueManager.instance.events.listen((event) {
+      if (event.type == OfflineJobType.photo &&
+          event.status == UploadStatus.error &&
+          mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Upload failed: ${event.error}'),
+            duration: const Duration(seconds: 5),
+            backgroundColor: AppColors.critical,
+          ),
+        );
+      }
     });
   }
 
@@ -61,6 +80,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
     final teamProvider = context.read<TeamProvider>();
     final photoProvider = context.read<PhotoProvider>();
+
+    // Retry any stuck uploads when gallery is opened
+    OfflineQueueManager.instance.retryAllNow();
 
     if (isTeamLead) {
       // Ensure team data is loaded
@@ -88,6 +110,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   void dispose() {
+    _queueEventsSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -448,6 +471,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
         }
         if (photo.uploadStatus == UploadStatus.error &&
             photo.clientRequestId != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Retrying upload...'),
+              duration: Duration(seconds: 2),
+            ),
+          );
           context.read<PhotoProvider>().retryUpload(photo.clientRequestId!);
           return;
         }
@@ -530,11 +559,19 @@ class _GalleryScreenState extends State<GalleryScreen> {
               if (photo.uploadStatus == UploadStatus.error)
                 Container(
                   color: Colors.black.withValues(alpha: 0.22),
-                  child: const Center(
-                    child: Icon(
-                      AppIcons.refresh_circle,
-                      color: AppColors.critical,
-                      size: 30,
+                  child: Center(
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: 1),
+                      duration: const Duration(seconds: 2),
+                      builder: (context, value, child) => Transform.rotate(
+                        angle: value * 2 * 3.14159,
+                        child: child,
+                      ),
+                      child: const Icon(
+                        AppIcons.refresh_circle,
+                        color: AppColors.critical,
+                        size: 30,
+                      ),
                     ),
                   ),
                 ),

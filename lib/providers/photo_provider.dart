@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
@@ -12,6 +14,7 @@ import '../offline_queue/offline_job_store.dart';
 import '../offline_queue/offline_queue_manager.dart';
 import '../offline_queue/persistent_media_file_manager.dart';
 import '../repositories/photo_repository.dart';
+import '../services/storage_service.dart';
 
 class PhotoProvider extends ChangeNotifier {
   final PhotoRepository _photoRepo = PhotoRepository();
@@ -158,6 +161,9 @@ class PhotoProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  final StorageService _storageService = StorageService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   Future<PhotoModel?> uploadPhoto({
     required File imageFile,
     required String enterpriseId,
@@ -179,35 +185,85 @@ class PhotoProvider extends ChangeNotifier {
     String? shareSenderName,
     Map<String, dynamic>? followUpTask,
   }) async {
-    debugPrint(
-      '[PhotoProvider] uploadPhoto: enterprise=$enterpriseId, employee=$employeeId, session=$sessionId',
-    );
-
     _error = null;
     final now = DateTime.now();
     final clientRequestId = _nextClientRequestId();
-    try {
-      final persistentFile =
-          await PersistentMediaFileManager.instance.persistCapturedPhoto(
-        imageFile,
-        clientRequestId: clientRequestId,
-      );
-      final geotagData = {
-        'date': DateFormat('dd MMM yyyy').format(now),
-        'time': DateFormat('HH:mm:ss a').format(now),
-        'coordinates':
-            'Lat: ${latitude.toStringAsFixed(4)} N | Long: ${longitude.toStringAsFixed(4)} E',
-      };
+    final geotagData = {
+      'date': DateFormat('dd MMM yyyy').format(now),
+      'time': DateFormat('HH:mm:ss a').format(now),
+      'coordinates':
+          'Lat: ${latitude.toStringAsFixed(4)} N | Long: ${longitude.toStringAsFixed(4)} E',
+    };
 
-      final localPhoto = PhotoModel(
-        id: 'local-$clientRequestId',
+    // Show local preview immediately
+    final localPhoto = PhotoModel(
+      id: 'local-$clientRequestId',
+      clientRequestId: clientRequestId,
+      enterpriseId: enterpriseId,
+      employeeId: employeeId,
+      sessionId: sessionId,
+      imageUrl: imageFile.path,
+      thumbnailUrl: imageFile.path,
+      localFilePath: imageFile.path,
+      timestamp: now,
+      location: location,
+      latitude: latitude,
+      longitude: longitude,
+      geotagData: geotagData,
+      category: category,
+      customerType: customerType,
+      customerName: customerName,
+      customerPhone: customerPhone,
+      notes: notes,
+      groupId: groupId,
+      hasFollowUp: hasFollowUp,
+      createdAt: now,
+      uploadStatus: UploadStatus.pending,
+    );
+
+    _optimisticPhotosByRequestId[clientRequestId] = localPhoto;
+    _uploadCompleters[clientRequestId] = Completer<PhotoModel?>();
+    _mergeCurrentPhotos();
+    notifyListeners();
+
+    // Direct upload — no offline queue, no compression, just like chat camera
+    try {
+      final bytes = await imageFile.readAsBytes();
+      final dateStr = DateFormat('yyyy-MM-dd').format(now);
+
+      // Upload full image + thumbnail (same bytes) in parallel
+      final uploadResults = await Future.wait([
+        _storageService.uploadPhotoBytes(
+          enterpriseId: enterpriseId,
+          userId: employeeId,
+          date: dateStr,
+          bytes: bytes,
+          fileNameBase: clientRequestId,
+        ),
+        _storageService
+            .uploadThumbnailBytes(
+              enterpriseId: enterpriseId,
+              userId: employeeId,
+              date: dateStr,
+              bytes: bytes,
+              fileNameBase: clientRequestId,
+            )
+            .catchError((_) => ''),
+      ]);
+      final imageUrl = uploadResults[0];
+      final thumbnailUrl = uploadResults[1];
+
+      // Write Firestore doc
+      final photoDocRef = _firestore.collection('photos').doc(clientRequestId);
+      final photo = PhotoModel(
+        id: photoDocRef.id,
         clientRequestId: clientRequestId,
         enterpriseId: enterpriseId,
         employeeId: employeeId,
         sessionId: sessionId,
-        imageUrl: persistentFile.path,
-        thumbnailUrl: persistentFile.path,
-        localFilePath: persistentFile.path,
+        imageUrl: imageUrl,
+        thumbnailUrl: thumbnailUrl,
+        localFilePath: imageFile.path,
         timestamp: now,
         location: location,
         latitude: latitude,
@@ -221,61 +277,58 @@ class PhotoProvider extends ChangeNotifier {
         groupId: groupId,
         hasFollowUp: hasFollowUp,
         createdAt: now,
-        uploadStatus: UploadStatus.pending,
+        uploadStatus: UploadStatus.success,
       );
 
-      _optimisticPhotosByRequestId[clientRequestId] = localPhoto;
-      _uploadCompleters[clientRequestId] = Completer<PhotoModel?>();
+      final batch = _firestore.batch();
+      batch.set(photoDocRef, photo.toFirestore());
+
+      // Share to chat groups if requested
+      for (final chatGroupId in shareToGroupIds) {
+        final messageRef = _firestore
+            .collection('chatGroups')
+            .doc(chatGroupId)
+            .collection('messages')
+            .doc('photo_share_$clientRequestId');
+        batch.set(messageRef, {
+          'senderId': shareSenderId ?? employeeId,
+          'senderName': shareSenderName ?? '',
+          'type': 'image',
+          'imageUrl': imageUrl,
+          if (thumbnailUrl.isNotEmpty) 'thumbnailUrl': thumbnailUrl,
+          if (shareCaption != null) 'caption': shareCaption,
+          'createdAt': Timestamp.fromDate(now),
+        });
+      }
+
+      await batch.commit();
+
+      // Update RTDB photo count
+      try {
+        await FirebaseDatabase.instance
+            .ref('activeStats/$enterpriseId/$employeeId/photosToday')
+            .set(ServerValue.increment(1));
+      } catch (_) {}
+
+      // Update optimistic photo with uploaded URLs
+      _optimisticPhotosByRequestId[clientRequestId] = photo;
       _mergeCurrentPhotos();
       notifyListeners();
 
-      await _offlineJobStore.insertIfAbsent(
-        OfflineJob(
-          id: clientRequestId,
-          type: OfflineJobType.photo,
-          payload: {
-            'enterpriseId': enterpriseId,
-            'employeeId': employeeId,
-            'sessionId': sessionId,
-            'location': location,
-            'latitude': latitude,
-            'longitude': longitude,
-            'geotagData': geotagData,
-            'category': category,
-            'customerType': customerType,
-            'customerName': customerName,
-            'customerPhone': customerPhone,
-            'notes': notes,
-            'groupId': groupId,
-            'hasFollowUp': hasFollowUp,
-            'shareToGroupIds': shareToGroupIds,
-            if (shareCaption != null) 'shareCaption': shareCaption,
-            if (shareSenderId != null) 'shareSenderId': shareSenderId,
-            if (shareSenderName != null) 'shareSenderName': shareSenderName,
-            if (followUpTask != null) 'followUpTask': followUpTask,
-            'createdAtMs': now.millisecondsSinceEpoch,
-            'timestampMs': now.millisecondsSinceEpoch,
-          },
-          localFilePath: persistentFile.path,
-          status: OfflineJobStatus.pending,
-          retryCount: 0,
-          createdAtMs: now.millisecondsSinceEpoch,
-          idempotencyKey: 'photo_$clientRequestId',
-        ),
-      );
-      unawaited(_offlineQueueManager.processQueue(reason: 'photo_upload'));
-      return localPhoto;
+      final completer = _uploadCompleters[clientRequestId];
+      if (completer != null && !completer.isCompleted) {
+        completer.complete(photo);
+      }
+
+      return photo;
     } catch (e) {
       _error = e.toString();
-      final existing = _optimisticPhotosByRequestId[clientRequestId];
-      if (existing != null) {
-        _optimisticPhotosByRequestId[clientRequestId] = existing.copyWith(
-          uploadStatus: UploadStatus.error,
-        );
-        _mergeCurrentPhotos();
-        notifyListeners();
-      }
-      return existing;
+      _optimisticPhotosByRequestId[clientRequestId] = localPhoto.copyWith(
+        uploadStatus: UploadStatus.error,
+      );
+      _mergeCurrentPhotos();
+      notifyListeners();
+      return localPhoto;
     }
   }
 

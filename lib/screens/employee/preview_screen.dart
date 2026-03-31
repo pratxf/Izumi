@@ -13,6 +13,7 @@ import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
 import '../../models/customer_suggestion_model.dart';
+import '../../models/upload_status.dart';
 import '../../models/chat_group_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/chat_provider.dart';
@@ -600,18 +601,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
       if (!mounted) return;
 
-      if (photo != null) {
-        final selectedChatGroupIds =
-            share ? _selectedGroupIds.toList() : const <String>[];
-
-        final groupCount = selectedChatGroupIds.length;
-        final successMsg = groupCount > 0
-            ? 'Photo queued. It will share to $groupCount group${groupCount > 1 ? 's' : ''} after upload.'
-            : 'Photo upload started.';
-
+      if (photo != null && photo.uploadStatus == UploadStatus.success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(successMsg),
+            content: const Text('Photo uploaded successfully!'),
             backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -621,11 +614,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
         );
         await _cleanupPreparedImageIfNeeded();
       } else {
+        final errorMsg = photoProvider.error ?? 'Upload failed';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(photoProvider.error ?? 'Failed to save photo'),
+            content: Text('Upload failed: $errorMsg'),
             backgroundColor: AppColors.critical,
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 8),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),

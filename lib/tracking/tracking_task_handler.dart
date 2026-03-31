@@ -147,9 +147,20 @@ class SessionTrackingTaskHandler extends TaskHandler {
     final employeeId = _employeeId;
 
     if (sessionId != null && enterpriseId != null && employeeId != null) {
+      // If context was cleared from shared storage, this is a normal session
+      // end (not an app kill). Skip auto-end to avoid duplicate notifications.
+      final storedSessionId = await FlutterForegroundTask.getData<String>(
+        key: _sessionIdKey,
+      );
+      if (storedSessionId == null || storedSessionId.isEmpty) {
+        debugPrint(
+          '[TrackingTaskHandler] onDestroy: context cleared, '
+          'skipping auto-end (normal session end).',
+        );
+        return;
+      }
+
       // Safety: don't auto-end sessions that just started (< 30s ago).
-      // This prevents a race where restartService() fires onDestroy on a
-      // handler that already loaded the new session context.
       final startMs = _startedAtMs;
       if (startMs != null) {
         final elapsed = DateTime.now().millisecondsSinceEpoch - startMs;

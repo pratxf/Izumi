@@ -43,7 +43,7 @@ class OfflineQueueManager {
 
   static const Duration _baseRetryDelay = Duration(seconds: 30);
   static const int _maxRetryExponent = 6;
-  static const Duration _staleProcessingTimeout = Duration(minutes: 10);
+  static const Duration _staleProcessingTimeout = Duration(minutes: 1);
 
   final OfflineJobStore _jobStore = OfflineJobStore.instance;
   final ChatRepository _chatRepository = ChatRepository();
@@ -57,6 +57,7 @@ class OfflineQueueManager {
   bool _isProcessing = false;
   bool _processAgain = false;
   bool _isOnline = true;
+  int? _lastProcessingStartMs;
 
   Stream<OfflineQueueJobEvent> get events => _eventsController.stream;
 
@@ -89,8 +90,16 @@ class OfflineQueueManager {
     await start();
 
     if (_isProcessing) {
-      _processAgain = true;
-      return;
+      // Force-break if processing has been stuck for > 2 minutes
+      final startMs = _lastProcessingStartMs;
+      if (startMs != null &&
+          DateTime.now().millisecondsSinceEpoch - startMs > 120000) {
+        _isProcessing = false;
+        _lastProcessingStartMs = null;
+      } else {
+        _processAgain = true;
+        return;
+      }
     }
 
     if (!_isOnline) {
@@ -102,6 +111,7 @@ class OfflineQueueManager {
     await _recoverStaleProcessingJobs();
 
     _isProcessing = true;
+    _lastProcessingStartMs = DateTime.now().millisecondsSinceEpoch;
     try {
       do {
         _processAgain = false;
@@ -111,30 +121,59 @@ class OfflineQueueManager {
         }
 
         await _markJobProcessing(job);
-        await _processJob(job);
+        // Timeout entire job processing at 60s to prevent permanent hang
+        try {
+          await _processJob(job).timeout(const Duration(seconds: 60));
+        } on TimeoutException {
+          final failedJob = await _jobStore.getJobById(job.id) ?? job;
+          await _jobStore.upsertJob(
+            failedJob.copyWith(
+              status: OfflineJobStatus.error,
+              retryCount: failedJob.retryCount + 1,
+              lastAttemptAtMs: DateTime.now().millisecondsSinceEpoch,
+              nextAttemptAtMs:
+                  DateTime.now().add(const Duration(seconds: 30)).millisecondsSinceEpoch,
+            ),
+          );
+          _emitEvent(
+            OfflineQueueJobEvent(
+              jobId: job.id,
+              type: job.type,
+              status: UploadStatus.error,
+              error: 'Upload timed out after 60 seconds',
+            ),
+          );
+        }
       } while (_isOnline);
     } finally {
       _isProcessing = false;
+      _lastProcessingStartMs = null;
       if (_processAgain && _isOnline) {
         unawaited(processQueue(reason: 'rerun_requested'));
       }
     }
   }
 
-  /// Reset backoff on all errored jobs and process immediately.
+  /// Reset backoff on all errored/stuck jobs and process immediately.
   Future<void> retryAllNow() async {
     final jobs = await _jobStore.getJobsByStatuses(
-      const [OfflineJobStatus.error],
+      const [OfflineJobStatus.error, OfflineJobStatus.processing],
     );
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     for (final job in jobs) {
-      await _jobStore.upsertJob(
-        job.copyWith(
-          status: OfflineJobStatus.pending,
-          nextAttemptAtMs: nowMs,
-          clearLastAttemptAtMs: true,
-        ),
-      );
+      // Reset stuck processing jobs and errored jobs
+      final isStaleProcessing = job.status == OfflineJobStatus.processing &&
+          (job.lastAttemptAtMs == null ||
+              nowMs - job.lastAttemptAtMs! > 60000);
+      if (job.status == OfflineJobStatus.error || isStaleProcessing) {
+        await _jobStore.upsertJob(
+          job.copyWith(
+            status: OfflineJobStatus.pending,
+            nextAttemptAtMs: nowMs,
+            clearLastAttemptAtMs: true,
+          ),
+        );
+      }
     }
     if (jobs.isNotEmpty) {
       await processQueue(reason: 'retry_all');
@@ -270,7 +309,10 @@ class OfflineQueueManager {
           );
           break;
       }
-    } catch (error) {
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[OfflineQueueManager] Job ${job.id} (${job.type.name}) FAILED: $error\n$stackTrace',
+      );
       final failedJob = await _jobStore.getJobById(job.id) ?? job;
       final updatedRetryCount = failedJob.retryCount + 1;
       final backoffDelay = _backoffDuration(updatedRetryCount);
@@ -331,12 +373,20 @@ class OfflineQueueManager {
     }
 
     final payload = job.payload;
-    final processedImage = await ImageProcessingService.preparePhotoForUpload(
-      file,
-    );
-    final fullImageBytes =
-        processedImage.imageBytes ?? await file.readAsBytes();
-    final thumbnailBytes = processedImage.thumbnailBytes ?? fullImageBytes;
+    final rawBytes = await file.readAsBytes();
+    Uint8List fullImageBytes = rawBytes;
+    Uint8List thumbnailBytes = rawBytes;
+
+    // Try compression but don't block upload if it fails or hangs
+    try {
+      final processedImage = await ImageProcessingService.preparePhotoForUpload(
+        file,
+      ).timeout(const Duration(seconds: 20));
+      fullImageBytes = processedImage.imageBytes ?? rawBytes;
+      thumbnailBytes = processedImage.thumbnailBytes ?? fullImageBytes;
+    } catch (_) {
+      // Compression failed/timed out — upload raw bytes instead
+    }
     final enterpriseId = payload['enterpriseId']?.toString() ?? '';
     final employeeId = payload['employeeId']?.toString() ?? '';
     final sessionId = payload['sessionId']?.toString() ?? '';
