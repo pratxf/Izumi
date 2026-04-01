@@ -527,23 +527,6 @@ class OfflineQueueManager {
       batch.set(taskDocRef, taskData);
     }
 
-    final now = DateTime.now();
-    final summaryDocId =
-        '${employeeId}_${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    final summaryRef =
-        _firestore.collection('dailySummaries').doc(summaryDocId);
-    batch.set(
-      summaryRef,
-      {
-        'employeeId': employeeId,
-        'enterpriseId': enterpriseId,
-        'date': Timestamp.fromDate(DateTime(now.year, now.month, now.day)),
-        'photosCount': FieldValue.increment(1),
-        'isOffDuty': false,
-      },
-      SetOptions(merge: true),
-    );
-
     await batch.commit();
 
     try {

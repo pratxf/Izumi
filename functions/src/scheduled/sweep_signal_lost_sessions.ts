@@ -58,25 +58,53 @@ export const sweepSignalLostSessions = onSchedule(
       )) {
         inspectedCount++;
 
-        if (presence?.status !== "signal_lost" || !presence.signalLostAt) {
+        const status = presence?.status;
+
+        // Skip offline/irrelevant statuses
+        if (!status || status === "offline") {
           continue;
         }
 
-        const signalLostAt = presence.signalLostAt;
-        const signalLostAgeMs = now - signalLostAt;
-        if (signalLostAgeMs < SIGNAL_LOST_MAX_AGE_MS) {
+        // For signal_lost: check signalLostAt age
+        // For active/break: check lastSeen (heartbeat) staleness
+        let isStale = false;
+        let effectiveStaleTime = now;
+
+        if (status === "signal_lost" && presence.signalLostAt) {
+          const signalLostAgeMs = now - presence.signalLostAt;
+          if (signalLostAgeMs >= SIGNAL_LOST_MAX_AGE_MS) {
+            isStale = true;
+            effectiveStaleTime = presence.signalLostAt;
+          }
+        } else if (status === "active" || status === "break") {
+          // Stale heartbeat: lastSeen > 1 hour ago means service is dead
+          const lastSeen = presence.lastSeen ?? 0;
+          const lastSeenAgeMs = now - lastSeen;
+          if (lastSeen > 0 && lastSeenAgeMs >= SIGNAL_LOST_MAX_AGE_MS) {
+            isStale = true;
+            effectiveStaleTime = lastSeen;
+          }
+        }
+
+        if (!isStale) {
           continue;
         }
 
+        // Re-check latest presence to avoid race conditions
         const latestPresenceSnap = await rtdb
           .ref(`presence/${enterpriseId}/${userId}`)
           .get();
         const latestPresence = latestPresenceSnap.val() as PresenceNode | null;
-        if (
-          !latestPresence ||
-          latestPresence.status !== "signal_lost" ||
-          latestPresence.signalLostAt !== signalLostAt
-        ) {
+        if (!latestPresence) {
+          continue;
+        }
+        // If status changed since we read, skip
+        if (latestPresence.status === "offline") {
+          continue;
+        }
+        // Revalidate staleness with latest data
+        const latestLastSeen = latestPresence.lastSeen ?? 0;
+        if (latestLastSeen > 0 && now - latestLastSeen < SIGNAL_LOST_MAX_AGE_MS) {
           continue;
         }
 
@@ -113,7 +141,7 @@ export const sweepSignalLostSessions = onSchedule(
             return null;
           }
 
-          const effectiveSignalLostAt = signalLostAt;
+          const effectiveSignalLostAt = effectiveStaleTime;
           const startTimeMs =
             session.startTime?.toMillis() ?? effectiveSignalLostAt;
           const totalDurationSecs = Math.max(
@@ -167,7 +195,7 @@ export const sweepSignalLostSessions = onSchedule(
               reason: "signal_lost",
               source: "signal_lost_sweeper",
               signalLostAt: effectiveSignalLostAt,
-              signalLostAgeMs,
+              staleAgeMs: now - effectiveStaleTime,
             },
           }, { merge: true });
 
@@ -210,8 +238,9 @@ export const sweepSignalLostSessions = onSchedule(
           enterpriseId,
           userId,
           sessionId: autoEnded.sessionId,
-          signalLostAt,
-          signalLostAgeMs,
+          presenceStatus: status,
+          effectiveStaleTime: effectiveStaleTime,
+          staleAgeMs: now - effectiveStaleTime,
         });
       }
     }

@@ -120,7 +120,7 @@ class SessionTaskRemovalService : Service() {
                 ),
             )
 
-            val activityRef = firestore.collection("activityLogs").document()
+            val activityRef = firestore.collection("activityLogs").document("session_auto_ended_$sessionId")
             batch.set(
                 activityRef,
                 mapOf(
