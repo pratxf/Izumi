@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../repositories/user_repository.dart';
@@ -53,12 +54,15 @@ class UserProvider extends ChangeNotifier {
 
   Future<bool> deleteUser(String userId) async {
     try {
-      await _userRepo.deleteUser(userId);
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('deleteUser');
+      await callable.call({'targetUserId': userId});
       _users.removeWhere((u) => u.id == userId);
       notifyListeners();
       return true;
     } catch (e) {
       _error = e.toString();
+      debugPrint('[UserProvider] deleteUser failed: $e');
       notifyListeners();
       return false;
     }

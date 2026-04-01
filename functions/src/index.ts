@@ -51,3 +51,4 @@ export { resolveUserOnLogin } from "./callable/resolve_user_on_login";
 export { ensureClaims } from "./callable/ensure_claims";
 export { updateUserRole } from "./callable/update_user_role";
 export { syncLinkedChatGroups } from "./callable/sync_linked_chat_groups";
+export { deleteUser } from "./callable/delete_user";
