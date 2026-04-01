@@ -148,15 +148,34 @@ class UserManagementContent extends StatelessWidget {
           TextButton(
             onPressed: () async {
               Navigator.of(ctx).pop();
-              final success = await context.read<UserProvider>().deleteUser(user.id);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      success ? '${user.name} removed' : 'Failed to delete user',
-                    ),
-                  ),
-                );
+              try {
+                final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+                    .httpsCallable('deleteUser');
+                await callable.call({'targetUserId': user.id});
+                // Also delete Auth by phone as fallback
+                try {
+                  final cleanup = FirebaseFunctions.instanceFor(region: 'asia-south1')
+                      .httpsCallable('adminCleanup');
+                  await cleanup.call({
+                    'phone': user.phone,
+                    'deleteOnly': true,
+                  });
+                } catch (_) {}
+                if (context.mounted) {
+                  // Refresh user list
+                  final auth = context.read<AuthProvider>();
+                  final eid = auth.enterpriseId ?? '';
+                  if (eid.isNotEmpty) context.read<UserProvider>().loadUsers(eid);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('${user.name} removed')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to delete: $e')),
+                  );
+                }
               }
             },
             child: Text(

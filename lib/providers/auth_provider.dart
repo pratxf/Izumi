@@ -606,13 +606,29 @@ class AuthProvider extends ChangeNotifier {
       needsClaimsWait = true;
     }
 
-    // Wait for Cloud Function to set custom claims before navigating
+    // Wait for Cloud Function to set custom claims before navigating.
+    // Preserve the role from Firestore doc — claims may have stale data
+    // from a previous login if Auth wasn't fully deleted.
+    final firestoreRole = _activeRole;
     if (needsClaimsWait) {
       debugPrint('[AuthProvider] Waiting for custom claims from Cloud Function...');
       try {
         await _waitForClaims();
       } catch (e) {
         debugPrint('[AuthProvider] _waitForClaims failed: $e');
+      }
+      // If Firestore doc had a role and claims overwrote it with a different
+      // one, trust the Firestore doc (it was set by resolveUserOnLogin).
+      if (firestoreRole != null &&
+          _activeRole != firestoreRole &&
+          _currentUser != null &&
+          _currentUser!.activeRole == firestoreRole) {
+        debugPrint(
+          '[AuthProvider] Claims returned stale role=$_activeRole, '
+          'reverting to Firestore role=$firestoreRole',
+        );
+        _activeRole = firestoreRole;
+        _roles = _currentUser!.roles;
       }
     }
 

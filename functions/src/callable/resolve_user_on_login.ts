@@ -436,11 +436,33 @@ export const resolveUserOnLogin = onCall(
     }
 
     // 2. Query by phone number (admin SDK bypasses security rules)
-    const phoneLookup = await db
+    let phoneLookup = await db
       .collection("users")
       .where("phone", "==", phoneNumber)
       .limit(1)
       .get();
+
+    // Fallback: docs may have spaces/dashes in phone field
+    if (phoneLookup.empty) {
+      const normalizedPhone = phoneNumber.replace(/[\s\-()]/g, "");
+      const allUsers = await db.collection("users").get();
+      const match = allUsers.docs.find((doc) => {
+        const docPhone = (doc.data().phone as string || "").replace(/[\s\-()]/g, "");
+        return docPhone === normalizedPhone;
+      });
+
+      if (match) {
+        logger.info("resolveUserOnLogin: Found doc via normalized phone.", {
+          uid, docId: match.id, storedPhone: match.data().phone,
+        });
+        await match.ref.update({ phone: phoneNumber });
+        phoneLookup = await db
+          .collection("users")
+          .where("phone", "==", phoneNumber)
+          .limit(1)
+          .get();
+      }
+    }
 
     if (phoneLookup.empty) {
       logger.info(

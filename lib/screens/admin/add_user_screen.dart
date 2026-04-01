@@ -41,7 +41,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
   Future<void> _addUser() async {
     final name = _nameController.text.trim();
-    final phone = _phoneController.text.trim();
+    final phone = _phoneController.text.replaceAll(RegExp(r'[\s\-\(\)]'), '').trim();
 
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

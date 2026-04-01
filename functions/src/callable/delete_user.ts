@@ -120,20 +120,51 @@ export const deleteUser = onCall(
     }
 
     // 5. Delete Firebase Auth user (frees the phone number)
+    // The targetUserId may be a random Firestore doc ID (pre-migration),
+    // not the Firebase Auth UID. Try by ID first, then by phone number.
+    let authDeleted = false;
     try {
       await admin.auth().deleteUser(targetUserId);
-      logger.info("deleteUser: Firebase Auth user deleted.", { targetUserId });
+      authDeleted = true;
+      logger.info("deleteUser: Firebase Auth user deleted by UID.", { targetUserId });
     } catch (e: unknown) {
       const code = (e as { code?: string })?.code;
-      if (code === "auth/user-not-found") {
-        logger.info("deleteUser: Auth user not found (pre-migration ID), skipping.", {
-          targetUserId,
-        });
-      } else {
-        logger.error("deleteUser: Failed to delete Auth user.", {
+      if (code !== "auth/user-not-found") {
+        logger.error("deleteUser: Failed to delete Auth user by UID.", {
           targetUserId,
           error: e instanceof Error ? e.message : String(e),
         });
+      }
+    }
+
+    // If UID-based delete failed, try looking up by phone number
+    if (!authDeleted && userDoc.exists) {
+      const phone = userDoc.data()?.phone as string | undefined;
+      if (phone) {
+        try {
+          const authUser = await admin.auth().getUserByPhoneNumber(phone);
+          await admin.auth().deleteUser(authUser.uid);
+          authDeleted = true;
+          logger.info("deleteUser: Firebase Auth user deleted by phone lookup.", {
+            targetUserId,
+            phone,
+            authUid: authUser.uid,
+          });
+        } catch (e: unknown) {
+          const code = (e as { code?: string })?.code;
+          if (code === "auth/user-not-found") {
+            logger.info("deleteUser: No Auth user found for phone either.", {
+              targetUserId,
+              phone,
+            });
+          } else {
+            logger.error("deleteUser: Failed to delete Auth user by phone.", {
+              targetUserId,
+              phone,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        }
       }
     }
 
