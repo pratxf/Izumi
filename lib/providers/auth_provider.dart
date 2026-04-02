@@ -57,7 +57,8 @@ class AuthProvider extends ChangeNotifier {
   String? get pendingOtpPhoneNumber => _pendingOtpPhoneNumber;
   String? get pendingOtpRole => _pendingOtpRole;
   String? get pendingOtpName => _pendingOtpName;
-  bool get hasPendingOtp => _verificationId != null && (_pendingOtpPhoneNumber?.isNotEmpty ?? false);
+  bool get hasPendingOtp =>
+      _verificationId != null && (_pendingOtpPhoneNumber?.isNotEmpty ?? false);
   bool get isAuthenticated => _status == AuthStatus.authenticated;
   bool get isLoading => _status == AuthStatus.loading;
   bool get isAdmin => _roles?.contains('admin') ?? false;
@@ -84,7 +85,8 @@ class AuthProvider extends ChangeNotifier {
     if (_authService.currentUser != null) {
       _status = AuthStatus.loading;
     }
-    _authSubscription = _authService.authStateChanges.listen(_onAuthStateChanged);
+    _authSubscription =
+        _authService.authStateChanges.listen(_onAuthStateChanged);
     // Lightweight APNs registration for iOS phone auth (no permission dialog).
     // Full notification init is deferred until after auth resolves.
     unawaited(_notificationService.registerForAPNs());
@@ -108,11 +110,13 @@ class AuthProvider extends ChangeNotifier {
       // session on cold start. If no auth resolution has completed yet,
       // wait briefly and re-check.
       if (_status == AuthStatus.initial || _status == AuthStatus.loading) {
-        debugPrint('[AuthProvider] Null event during $_status — checking for spurious emission');
+        debugPrint(
+            '[AuthProvider] Null event during $_status — checking for spurious emission');
         await Future.delayed(const Duration(milliseconds: 500));
         final retryUser = _authService.currentUser;
         if (retryUser != null) {
-          debugPrint('[AuthProvider] Spurious null detected, retrying with restored user');
+          debugPrint(
+              '[AuthProvider] Spurious null detected, retrying with restored user');
           return _onAuthStateChanged(retryUser);
         }
       }
@@ -150,7 +154,8 @@ class AuthProvider extends ChangeNotifier {
   /// Returns true if authenticated successfully (no network needed).
   Future<bool> _tryFastPath(User firebaseUser) async {
     try {
-      final cachedClaims = await _authService.getUserClaims(forceRefresh: false)
+      final cachedClaims = await _authService
+          .getUserClaims(forceRefresh: false)
           .timeout(const Duration(seconds: 2));
       if (cachedClaims != null &&
           cachedClaims['roles'] != null &&
@@ -213,7 +218,7 @@ class AuthProvider extends ChangeNotifier {
       debugPrint('[AuthProvider] Background FCM token save failed: $e');
     }
 
-    // Request all runtime permissions upfront (camera, location, notification)
+    // Request shared runtime permissions upfront. Camera stays deferred on iOS.
     try {
       await _permissionService.requestAllPermissions();
     } catch (e) {
@@ -247,7 +252,8 @@ class AuthProvider extends ChangeNotifier {
 
     // Concurrency guard — if already registering, skip this call.
     if (_registeringDeviceSession) {
-      debugPrint('[AuthProvider] _registerDeviceSession already in progress, skipping');
+      debugPrint(
+          '[AuthProvider] _registerDeviceSession already in progress, skipping');
       return;
     }
     _registeringDeviceSession = true;
@@ -276,7 +282,8 @@ class AuthProvider extends ChangeNotifier {
         // Only sign out if the remote token is a DIFFERENT device's token.
         // If remote is null/empty (cleared by onDisconnect/app kill), just
         // reclaim the session — this is the same device restarting.
-        debugPrint('[AuthProvider] Existing device session belongs to another device. '
+        debugPrint(
+            '[AuthProvider] Existing device session belongs to another device. '
             'local=$_localDeviceToken, remote=$remoteToken. Signing out this device.');
         _registeringDeviceSession = false;
         unawaited(_forceSignOutDueToNewDevice());
@@ -350,20 +357,21 @@ class AuthProvider extends ChangeNotifier {
     // Set error message BEFORE signOut so it is available when the router
     // redirects to WelcomeScreen (signOut triggers _onAuthStateChanged(null)
     // which calls notifyListeners, causing the router redirect).
-    _errorMessage = 'You have been logged out because your account was signed in on another device.';
+    _errorMessage =
+        'You have been logged out because your account was signed in on another device.';
 
-      _currentUser = null;
-      _roles = null;
-      _activeRole = null;
-      _enterpriseId = null;
-      _verificationId = null;
-      _resendToken = null;
-      _pendingOtpPhoneNumber = null;
-      _pendingOtpRole = null;
-      _pendingOtpName = null;
-      _pendingName = null;
-      _pendingPhone = null;
-      _pendingRole = null;
+    _currentUser = null;
+    _roles = null;
+    _activeRole = null;
+    _enterpriseId = null;
+    _verificationId = null;
+    _resendToken = null;
+    _pendingOtpPhoneNumber = null;
+    _pendingOtpRole = null;
+    _pendingOtpName = null;
+    _pendingName = null;
+    _pendingPhone = null;
+    _pendingRole = null;
     _status = AuthStatus.unauthenticated;
     notifyListeners();
 
@@ -379,7 +387,8 @@ class AuthProvider extends ChangeNotifier {
     bool claimsMismatchDetected = false;
 
     // 1. Fetch claims and user doc in PARALLEL
-    final claimsFuture = _authService.getUserClaims(forceRefresh: true)
+    final claimsFuture = _authService
+        .getUserClaims(forceRefresh: true)
         .timeout(const Duration(seconds: 8))
         .catchError((e) {
       debugPrint('[AuthProvider] Failed to fetch custom claims: $e');
@@ -394,7 +403,8 @@ class AuthProvider extends ChangeNotifier {
 
     // Process claims
     if (claims != null) {
-      debugPrint('[AuthProvider] Token claims: roles=${claims['roles']}, role=${claims['role']}, activeRole=${claims['activeRole']}, enterpriseId=${claims['enterpriseId']}');
+      debugPrint(
+          '[AuthProvider] Token claims: roles=${claims['roles']}, role=${claims['role']}, activeRole=${claims['activeRole']}, enterpriseId=${claims['enterpriseId']}');
       if (claims['roles'] != null) {
         _roles = List<String>.from(claims['roles']);
         _activeRole = claims['activeRole'] as String? ?? _roles!.first;
@@ -416,11 +426,13 @@ class AuthProvider extends ChangeNotifier {
       _roles ??= _currentUser!.roles;
       _activeRole ??= _currentUser!.activeRole;
       _enterpriseId ??= _currentUser!.enterpriseId;
-      debugPrint('[AuthProvider] User doc loaded: roles=$_roles, activeRole=$_activeRole, enterpriseId=$_enterpriseId');
+      debugPrint(
+          '[AuthProvider] User doc loaded: roles=$_roles, activeRole=$_activeRole, enterpriseId=$_enterpriseId');
 
       // If enterprise is placeholder, call resolveUserOnLogin to merge admin-created doc
       if (_enterpriseId == null || _enterpriseId == 'default_enterprise') {
-        debugPrint('[AuthProvider] Placeholder enterprise detected, calling resolveUserOnLogin...');
+        debugPrint(
+            '[AuthProvider] Placeholder enterprise detected, calling resolveUserOnLogin...');
         try {
           await firebaseUser.getIdToken(true);
           final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
@@ -431,8 +443,10 @@ class AuthProvider extends ChangeNotifier {
           if (data != null && data['found'] == true && data['user'] != null) {
             final userData = Map<String, dynamic>.from(data['user']);
             final resolvedEnterprise = userData['enterpriseId'] as String?;
-            if (resolvedEnterprise != null && resolvedEnterprise != 'default_enterprise') {
-              debugPrint('[AuthProvider] Enterprise resolved: $resolvedEnterprise');
+            if (resolvedEnterprise != null &&
+                resolvedEnterprise != 'default_enterprise') {
+              debugPrint(
+                  '[AuthProvider] Enterprise resolved: $resolvedEnterprise');
               final newDoc = await FirebaseFirestore.instance
                   .collection('users')
                   .doc(firebaseUser.uid)
@@ -452,7 +466,8 @@ class AuthProvider extends ChangeNotifier {
       }
     } else if (userDoc != null) {
       // User doc doesn't exist — try resolveUserOnLogin
-      debugPrint('[AuthProvider] No user doc at UID, calling resolveUserOnLogin...');
+      debugPrint(
+          '[AuthProvider] No user doc at UID, calling resolveUserOnLogin...');
       try {
         await firebaseUser.getIdToken(true);
         final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
@@ -462,7 +477,8 @@ class AuthProvider extends ChangeNotifier {
 
         if (data != null && data['found'] == true && data['user'] != null) {
           final userData = Map<String, dynamic>.from(data['user']);
-          debugPrint('[AuthProvider] resolveUserOnLogin found user, loading...');
+          debugPrint(
+              '[AuthProvider] resolveUserOnLogin found user, loading...');
 
           final newDoc = await FirebaseFirestore.instance
               .collection('users')
@@ -477,7 +493,9 @@ class AuthProvider extends ChangeNotifier {
             _roles = userData['roles'] != null
                 ? List<String>.from(userData['roles'])
                 : [userData['role'] ?? 'employee'];
-            _activeRole = userData['activeRole'] as String? ?? userData['role'] as String? ?? 'employee';
+            _activeRole = userData['activeRole'] as String? ??
+                userData['role'] as String? ??
+                'employee';
             _enterpriseId = userData['enterpriseId'] as String?;
           }
           needsClaimsWait = true;
@@ -492,7 +510,8 @@ class AuthProvider extends ChangeNotifier {
       final hasPendingRegistrationName =
           (_pendingName?.trim().isNotEmpty ?? false);
       if (_currentUser == null && hasPendingRegistrationName) {
-        debugPrint('[AuthProvider] No user doc found, creating from pending registration...');
+        debugPrint(
+            '[AuthProvider] No user doc found, creating from pending registration...');
         final now = DateTime.now();
         final pendingRole = _pendingRole ?? 'employee';
         final userModel = UserModel(
@@ -515,16 +534,18 @@ class AuthProvider extends ChangeNotifier {
         _roles = userModel.roles;
         _activeRole = userModel.activeRole;
         _enterpriseId = userModel.enterpriseId;
-        debugPrint('[AuthProvider] User doc created: roles=$_roles, activeRole=$_activeRole');
+        debugPrint(
+            '[AuthProvider] User doc created: roles=$_roles, activeRole=$_activeRole');
         needsClaimsWait = true;
       } else if (_currentUser == null && firebaseUser.email != null) {
         // Enterprise admin (email auth) — auto-create Firestore user doc
-        debugPrint('[AuthProvider] Enterprise admin has no user doc, creating...');
+        debugPrint(
+            '[AuthProvider] Enterprise admin has no user doc, creating...');
         final now = DateTime.now();
         final userModel = UserModel(
           id: firebaseUser.uid,
-          name: firebaseUser.displayName ??
-              firebaseUser.email!.split('@').first,
+          name:
+              firebaseUser.displayName ?? firebaseUser.email!.split('@').first,
           phone: firebaseUser.phoneNumber ?? '',
           email: firebaseUser.email,
           roles: ['admin'],
@@ -543,10 +564,12 @@ class AuthProvider extends ChangeNotifier {
         _roles = ['admin'];
         _activeRole = 'admin';
         _enterpriseId = userModel.enterpriseId;
-        debugPrint('[AuthProvider] Enterprise admin doc created: enterpriseId=$_enterpriseId');
+        debugPrint(
+            '[AuthProvider] Enterprise admin doc created: enterpriseId=$_enterpriseId');
         needsClaimsWait = true;
       } else if (_currentUser == null) {
-        debugPrint('[AuthProvider] No resolved user doc and no valid self-registration payload');
+        debugPrint(
+            '[AuthProvider] No resolved user doc and no valid self-registration payload');
         if (_enterpriseId == null) {
           Future.delayed(const Duration(seconds: 2), () {
             if (!_disposed) _retryFetchUserDoc(firebaseUser);
@@ -568,7 +591,9 @@ class AuthProvider extends ChangeNotifier {
 
     // Save FCM token (fire-and-forget — not blocking auth flow)
     unawaited(
-      _notificationService.saveTokenToFirestore(firebaseUser.uid).catchError((e) {
+      _notificationService
+          .saveTokenToFirestore(firebaseUser.uid)
+          .catchError((e) {
         debugPrint('[AuthProvider] FCM token save failed: $e');
       }),
     );
@@ -581,29 +606,34 @@ class AuthProvider extends ChangeNotifier {
       final docRoles = [..._currentUser!.roles];
       tokenRoles.sort();
       docRoles.sort();
-      final rolesMatch =
-          tokenRoles.length == docRoles.length &&
+      final rolesMatch = tokenRoles.length == docRoles.length &&
           tokenRoles.asMap().entries.every((e) => e.value == docRoles[e.key]);
-      final tokenActiveRole = claims['activeRole'] as String? ?? claims['role'] as String?;
+      final tokenActiveRole =
+          claims['activeRole'] as String? ?? claims['role'] as String?;
       final activeRoleMatch = tokenActiveRole == _currentUser!.activeRole;
       final tokenEnterprise = claims['enterpriseId'] as String?;
       final enterpriseMatch = tokenEnterprise == _currentUser!.enterpriseId;
 
-      claimsMismatchDetected = !(rolesMatch && activeRoleMatch && enterpriseMatch);
+      claimsMismatchDetected =
+          !(rolesMatch && activeRoleMatch && enterpriseMatch);
       if (claimsMismatchDetected) {
-        debugPrint('[AuthProvider] Claims mismatch detected, scheduling ensureClaims sync.');
+        debugPrint(
+            '[AuthProvider] Claims mismatch detected, scheduling ensureClaims sync.');
       }
     }
 
     // If claims are missing or stale, call ensureClaims
-    if ((!claimsFoundInToken || claimsMismatchDetected) && _currentUser != null) {
-      debugPrint('[AuthProvider] Claims missing/stale, calling ensureClaims...');
+    if ((!claimsFoundInToken || claimsMismatchDetected) &&
+        _currentUser != null) {
+      debugPrint(
+          '[AuthProvider] Claims missing/stale, calling ensureClaims...');
       try {
         await firebaseUser.getIdToken(true);
         final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
             .httpsCallable('ensureClaims');
         await callable.call();
-        debugPrint('[AuthProvider] ensureClaims succeeded, refreshing token...');
+        debugPrint(
+            '[AuthProvider] ensureClaims succeeded, refreshing token...');
       } catch (e) {
         debugPrint('[AuthProvider] ensureClaims failed: $e');
       }
@@ -615,7 +645,8 @@ class AuthProvider extends ChangeNotifier {
     // from a previous login if Auth wasn't fully deleted.
     final firestoreRole = _activeRole;
     if (needsClaimsWait) {
-      debugPrint('[AuthProvider] Waiting for custom claims from Cloud Function...');
+      debugPrint(
+          '[AuthProvider] Waiting for custom claims from Cloud Function...');
       try {
         await _waitForClaims();
       } catch (e) {
@@ -642,7 +673,7 @@ class AuthProvider extends ChangeNotifier {
     // Single-device enforcement (non-blocking)
     unawaited(_registerDeviceSession(firebaseUser.uid));
 
-    // Request all permissions upfront, then init notifications
+    // Request shared runtime permissions upfront, then init notifications.
     unawaited(Future(() async {
       try {
         await _permissionService.requestAllPermissions();
@@ -658,7 +689,8 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Fetch user doc with server-first, cache-fallback strategy.
-  Future<DocumentSnapshot<Map<String, dynamic>>?> _fetchUserDoc(String uid) async {
+  Future<DocumentSnapshot<Map<String, dynamic>>?> _fetchUserDoc(
+      String uid) async {
     try {
       try {
         return await FirebaseFirestore.instance
@@ -702,7 +734,8 @@ class AuthProvider extends ChangeNotifier {
           await FirebaseAuth.instance.signInWithCredential(credential);
         },
         onVerificationFailed: (error) {
-          debugPrint('[AuthProvider] Verification failed: ${error.code} - ${error.message}');
+          debugPrint(
+              '[AuthProvider] Verification failed: ${error.code} - ${error.message}');
           _errorMessage = error.message ?? 'Verification failed';
           _verificationId = null;
           _resendToken = null;
@@ -881,20 +914,24 @@ class AuthProvider extends ChangeNotifier {
           _roles = List<String>.from(claims['roles']);
           _activeRole = claims['activeRole'] as String? ?? _roles!.first;
           _enterpriseId = claims['enterpriseId'] as String;
-          debugPrint('[AuthProvider] Claims ready (multi-role) after ${i + 1} attempt(s): roles=$_roles, activeRole=$_activeRole');
+          debugPrint(
+              '[AuthProvider] Claims ready (multi-role) after ${i + 1} attempt(s): roles=$_roles, activeRole=$_activeRole');
           return true;
         } else if (claims['role'] != null && claims['enterpriseId'] != null) {
           _roles = [claims['role'] as String];
           _activeRole = claims['role'] as String;
           _enterpriseId = claims['enterpriseId'] as String;
-          debugPrint('[AuthProvider] Claims ready (legacy) after ${i + 1} attempt(s): role=$_activeRole');
+          debugPrint(
+              '[AuthProvider] Claims ready (legacy) after ${i + 1} attempt(s): role=$_activeRole');
           return true;
         }
       }
-      debugPrint('[AuthProvider] Waiting for claims... attempt ${i + 1}/$maxAttempts (delay: ${delayMs}ms)');
+      debugPrint(
+          '[AuthProvider] Waiting for claims... attempt ${i + 1}/$maxAttempts (delay: ${delayMs}ms)');
       delayMs = (delayMs * 1.5).round();
     }
-    debugPrint('[AuthProvider] Claims not available after $maxAttempts attempts');
+    debugPrint(
+        '[AuthProvider] Claims not available after $maxAttempts attempts');
     return false;
   }
 
@@ -929,7 +966,8 @@ class AuthProvider extends ChangeNotifier {
         _roles ??= _currentUser!.roles;
         _activeRole ??= _currentUser!.activeRole;
         _enterpriseId ??= _currentUser!.enterpriseId;
-        debugPrint('[AuthProvider] Retry succeeded: roles=$_roles, activeRole=$_activeRole');
+        debugPrint(
+            '[AuthProvider] Retry succeeded: roles=$_roles, activeRole=$_activeRole');
         notifyListeners();
       }
     } catch (e) {
@@ -956,14 +994,15 @@ class AuthProvider extends ChangeNotifier {
         FirebaseFirestore.instance
             .collection('users')
             .doc(userId)
-            .update({'fcmToken': FieldValue.delete()})
-            .catchError((_) {}),
+            .update({'fcmToken': FieldValue.delete()}).catchError((_) {}),
         FirebaseMessaging.instance.deleteToken().catchError((_) {}),
         if (_localDeviceToken != null)
-          _rtdb.clearDeviceSessionIfMatches(
-            userId: userId,
-            token: _localDeviceToken!,
-          ).catchError((_) {}),
+          _rtdb
+              .clearDeviceSessionIfMatches(
+                userId: userId,
+                token: _localDeviceToken!,
+              )
+              .catchError((_) {}),
       ]);
     }
     _notificationService.resetForLogout();
@@ -973,15 +1012,15 @@ class AuthProvider extends ChangeNotifier {
     _currentUser = null;
     _roles = null;
     _activeRole = null;
-      _enterpriseId = null;
-      _verificationId = null;
-      _resendToken = null;
-      _pendingOtpPhoneNumber = null;
-      _pendingOtpRole = null;
-      _pendingOtpName = null;
-      _pendingName = null;
-      _pendingPhone = null;
-      _pendingRole = null;
+    _enterpriseId = null;
+    _verificationId = null;
+    _resendToken = null;
+    _pendingOtpPhoneNumber = null;
+    _pendingOtpRole = null;
+    _pendingOtpName = null;
+    _pendingName = null;
+    _pendingPhone = null;
+    _pendingRole = null;
     _status = AuthStatus.unauthenticated;
     notifyListeners();
   }

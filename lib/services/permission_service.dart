@@ -17,7 +17,7 @@ class PermissionService {
   /// later by [ensurePermission] when a feature actually needs the permission.
   Future<void> requestAllPermissions() async {
     final permissions = <Permission>[
-      Permission.camera,
+      if (!Platform.isIOS) Permission.camera,
       Permission.location,
       Permission.notification,
       if (Platform.isAndroid) ...[
@@ -42,6 +42,16 @@ class PermissionService {
     var status = await permission.status;
     if (!context.mounted) return false;
     if (_isUsable(status)) return true;
+
+    if (_usesIosDeferredSettingsFlow(permission)) {
+      return _ensureIosPermission(
+        context: context,
+        permission: permission,
+        title: title,
+        message: message,
+        status: status,
+      );
+    }
 
     if (status.isPermanentlyDenied) {
       final opened = await _showSettingsDialog(
@@ -77,6 +87,53 @@ class PermissionService {
         context: context,
         title: title,
         message: '$message\n\nPlease enable it in app settings.',
+      );
+      if (!context.mounted) return false;
+      if (opened) {
+        status = await permission.status;
+        if (!context.mounted) return false;
+        return _isUsable(status);
+      }
+    }
+
+    return false;
+  }
+
+  Future<bool> _ensureIosPermission({
+    required BuildContext context,
+    required Permission permission,
+    required String title,
+    required String message,
+    required PermissionStatus status,
+  }) async {
+    if (status.isRestricted || status.isPermanentlyDenied) {
+      final opened = await _showSettingsDialog(
+        context: context,
+        title: title,
+        message: message,
+        dismissLabel: 'Not Now',
+      );
+      if (!context.mounted) return false;
+      if (opened) {
+        status = await permission.status;
+        if (!context.mounted) return false;
+        return _isUsable(status);
+      }
+      return false;
+    }
+
+    if (!status.isDenied) return false;
+
+    status = await permission.request();
+    if (!context.mounted) return false;
+    if (_isUsable(status)) return true;
+
+    if (status.isDenied || status.isRestricted || status.isPermanentlyDenied) {
+      final opened = await _showSettingsDialog(
+        context: context,
+        title: title,
+        message: message,
+        dismissLabel: 'Not Now',
       );
       if (!context.mounted) return false;
       if (opened) {
@@ -242,6 +299,14 @@ class PermissionService {
 
   bool _isUsable(PermissionStatus status) {
     return status.isGranted || status.isLimited;
+  }
+
+  bool _usesIosDeferredSettingsFlow(Permission permission) {
+    if (!Platform.isIOS) return false;
+
+    return permission == Permission.camera ||
+        permission == Permission.photos ||
+        permission == Permission.photosAddOnly;
   }
 
   Future<bool> _ensurePermissions({
@@ -428,6 +493,7 @@ class PermissionService {
     required BuildContext context,
     required String title,
     required String message,
+    String dismissLabel = 'Cancel',
   }) async {
     final result = await showDialog<bool>(
       context: context,
@@ -453,7 +519,7 @@ class PermissionService {
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: Text(
-                'Cancel',
+                dismissLabel,
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textSecondary,
                 ),
