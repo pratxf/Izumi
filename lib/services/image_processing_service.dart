@@ -28,6 +28,8 @@ class ImageProcessingService {
         minWidth: 1024,
         minHeight: 1024,
         quality: 70,
+        autoCorrectionAngle: true,
+        keepExif: false, // Bakes EXIF rotation into pixel data
       ).timeout(const Duration(seconds: 15));
     } catch (e) {
       debugPrint('[ImageProcessingService] Full compression failed: $e');
@@ -39,6 +41,8 @@ class ImageProcessingService {
         minWidth: 200,
         minHeight: 200,
         quality: 70,
+        autoCorrectionAngle: true,
+        keepExif: false,
       ).timeout(const Duration(seconds: 10));
     } catch (e) {
       debugPrint('[ImageProcessingService] Thumbnail compression failed: $e');

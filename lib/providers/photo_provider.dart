@@ -14,6 +14,7 @@ import '../offline_queue/offline_job_store.dart';
 import '../offline_queue/offline_queue_manager.dart';
 import '../offline_queue/persistent_media_file_manager.dart';
 import '../repositories/photo_repository.dart';
+import '../services/image_processing_service.dart';
 import '../services/storage_service.dart';
 
 class PhotoProvider extends ChangeNotifier {
@@ -228,16 +229,30 @@ class PhotoProvider extends ChangeNotifier {
 
     // Direct upload — no offline queue, no compression, just like chat camera
     try {
-      final bytes = await imageFile.readAsBytes();
+      final rawBytes = await imageFile.readAsBytes();
+      Uint8List fullImageBytes = rawBytes;
+      Uint8List thumbnailBytes = rawBytes;
+
+      // Try compression to fix EXIF rotation and reduce size
+      try {
+        final processed = await ImageProcessingService.preparePhotoForUpload(
+          imageFile,
+        ).timeout(const Duration(seconds: 20));
+        fullImageBytes = processed.imageBytes ?? rawBytes;
+        thumbnailBytes = processed.thumbnailBytes ?? fullImageBytes;
+      } catch (_) {
+        // Compression failed/timed out — upload raw bytes
+      }
+
       final dateStr = DateFormat('yyyy-MM-dd').format(now);
 
-      // Upload full image + thumbnail (same bytes) in parallel
+      // Upload full image + thumbnail in parallel
       final uploadResults = await Future.wait([
         _storageService.uploadPhotoBytes(
           enterpriseId: enterpriseId,
           userId: employeeId,
           date: dateStr,
-          bytes: bytes,
+          bytes: fullImageBytes,
           fileNameBase: clientRequestId,
         ),
         _storageService
@@ -245,7 +260,7 @@ class PhotoProvider extends ChangeNotifier {
               enterpriseId: enterpriseId,
               userId: employeeId,
               date: dateStr,
-              bytes: bytes,
+              bytes: thumbnailBytes,
               fileNameBase: clientRequestId,
             )
             .catchError((_) => ''),

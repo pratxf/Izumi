@@ -57,19 +57,18 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       final id = GoRouterState.of(context).pathParameters['id'];
       if (id != null) {
         _employeeId = id;
-        // Ensure DashboardProvider is initialized even if Dashboard was never visited
+        // Always ensure DashboardProvider is initialized before loading feed.
+        // The feed depends on the employees list for migration ID resolution.
         final dashboard = context.read<DashboardProvider>();
-        if (dashboard.employees.isEmpty) {
-          final enterpriseId =
-              context.read<AuthProvider>().enterpriseId ?? '';
-          if (enterpriseId.isNotEmpty) {
-            dashboard.initDashboard(enterpriseId).then((_) {
-              if (mounted) _startRecentFeed(id);
-            });
-            return;
-          }
+        final enterpriseId =
+            context.read<AuthProvider>().enterpriseId ?? '';
+        if (enterpriseId.isNotEmpty && dashboard.employees.isEmpty) {
+          dashboard.initDashboard(enterpriseId).then((_) {
+            if (mounted) _startRecentFeed(id);
+          });
+        } else {
+          _startRecentFeed(id);
         }
-        _startRecentFeed(id);
       }
     });
   }
