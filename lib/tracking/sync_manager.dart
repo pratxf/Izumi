@@ -305,14 +305,16 @@ class SyncManager {
       return;
     }
 
+    // Restore presence only — do NOT flush here. Location data will be
+    // flushed at the next 20-minute periodic timer to keep feed intervals
+    // consistent. Flushing on every connectivity toggle caused sub-20-minute
+    // gaps in the admin feed.
     await _realtimeDatabase.ref('presence/$enterpriseId/$employeeId').update({
       'status': 'active',
       'signalLostAt': null,
       'currentSessionId': sessionId,
       'lastSeen': ServerValue.timestamp,
     });
-
-    await flushPendingLocations(reason: reason);
   }
 
   bool _hasNetwork(List<ConnectivityResult> results) {
