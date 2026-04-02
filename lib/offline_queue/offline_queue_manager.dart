@@ -43,6 +43,7 @@ class OfflineQueueManager {
 
   static const Duration _baseRetryDelay = Duration(seconds: 30);
   static const int _maxRetryExponent = 6;
+  static const int _maxRetryAttempts = 10;
   static const Duration _staleProcessingTimeout = Duration(minutes: 1);
 
   final OfflineJobStore _jobStore = OfflineJobStore.instance;
@@ -308,6 +309,15 @@ class OfflineQueueManager {
             ),
           );
           break;
+        case OfflineJobType.locationSync:
+        case OfflineJobType.activityLog:
+        case OfflineJobType.sessionEvent:
+        case OfflineJobType.taskEvent:
+          await _processGenericFirestoreJob(job);
+          await _jobStore.upsertJob(
+            job.copyWith(status: OfflineJobStatus.done),
+          );
+          break;
       }
     } catch (error, stackTrace) {
       debugPrint(
@@ -315,16 +325,28 @@ class OfflineQueueManager {
       );
       final failedJob = await _jobStore.getJobById(job.id) ?? job;
       final updatedRetryCount = failedJob.retryCount + 1;
-      final backoffDelay = _backoffDuration(updatedRetryCount);
-      await _jobStore.upsertJob(
-        failedJob.copyWith(
-          status: OfflineJobStatus.error,
-          retryCount: updatedRetryCount,
-          lastAttemptAtMs: DateTime.now().millisecondsSinceEpoch,
-          nextAttemptAtMs:
-              DateTime.now().add(backoffDelay).millisecondsSinceEpoch,
-        ),
-      );
+
+      // After max retries, mark as permanently failed and move on
+      if (updatedRetryCount >= _maxRetryAttempts) {
+        await _jobStore.upsertJob(
+          failedJob.copyWith(
+            status: OfflineJobStatus.failed,
+            retryCount: updatedRetryCount,
+            lastAttemptAtMs: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+      } else {
+        final backoffDelay = _backoffDuration(updatedRetryCount);
+        await _jobStore.upsertJob(
+          failedJob.copyWith(
+            status: OfflineJobStatus.error,
+            retryCount: updatedRetryCount,
+            lastAttemptAtMs: DateTime.now().millisecondsSinceEpoch,
+            nextAttemptAtMs:
+                DateTime.now().add(backoffDelay).millisecondsSinceEpoch,
+          ),
+        );
+      }
 
       _emitEvent(
         OfflineQueueJobEvent(
@@ -356,6 +378,33 @@ class OfflineQueueManager {
     final message = _chatMessageFromPayload(job);
     await _chatRepository.sendMessage(groupId, message, documentId: job.id);
     return message.copyWith(uploadStatus: UploadStatus.success);
+  }
+
+  /// Generic Firestore write handler for location syncs, activity logs,
+  /// session events, and task events. The payload contains:
+  /// - `collection`: Firestore collection path
+  /// - `docId`: optional document ID (auto-generated if absent)
+  /// - `data`: the document data to write
+  /// - `merge`: whether to merge (default true)
+  Future<void> _processGenericFirestoreJob(OfflineJob job) async {
+    final payload = job.payload;
+    final collection = payload['collection'] as String?;
+    final docId = payload['docId'] as String?;
+    final data = (payload['data'] as Map?)?.map(
+          (k, v) => MapEntry(k.toString(), v),
+        ) ??
+        {};
+    final merge = payload['merge'] != false;
+
+    if (collection == null || collection.isEmpty || data.isEmpty) {
+      throw StateError('Generic job missing collection or data');
+    }
+
+    final ref = docId != null && docId.isNotEmpty
+        ? _firestore.collection(collection).doc(docId)
+        : _firestore.collection(collection).doc();
+
+    await ref.set(data, SetOptions(merge: merge));
   }
 
   Future<PhotoModel> _processPhotoJob(OfflineJob job) async {
@@ -609,7 +658,8 @@ class OfflineQueueManager {
   Duration _backoffDuration(int retryCount) {
     final exponent = retryCount.clamp(0, _maxRetryExponent);
     final multiplier = 1 << exponent;
-    return Duration(seconds: _baseRetryDelay.inSeconds * multiplier);
+    final seconds = (_baseRetryDelay.inSeconds * multiplier).clamp(0, 1800);
+    return Duration(seconds: seconds);
   }
 
   bool _hasNetwork(List<ConnectivityResult> results) {

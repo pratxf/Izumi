@@ -110,8 +110,8 @@ class _TeamScreenState extends State<TeamScreen> {
                           _buildTeamHeader(teamProvider),
                           const SizedBox(height: 20),
 
-                          // Task Summary
-                          _buildTaskSummary(teamProvider),
+                          // Task Summary with active count
+                          _buildTaskSummary(teamProvider, dashboardProvider),
                           const SizedBox(height: 20),
 
                           // Team Members
@@ -151,6 +151,29 @@ class _TeamScreenState extends State<TeamScreen> {
         ),
       ),
     );
+  }
+
+  String _lastSeenText(DashboardProvider dashboard, String userId) {
+    final location = dashboard.getEmployeeLocation(userId);
+    final updatedAt = location?['updatedAt'];
+    if (updatedAt is int && updatedAt > 0) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(updatedAt);
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Last seen just now';
+      if (diff.inMinutes < 60) return 'Last seen ${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return 'Last seen ${diff.inHours}h ago';
+      return 'Last seen ${diff.inDays}d ago';
+    }
+    return 'Last seen unknown';
+  }
+
+  int _activeAgentCount(TeamProvider teamProvider, DashboardProvider dashboard) {
+    return teamProvider.teamMembers
+        .where((m) {
+          final s = dashboard.getEmployeeStatus(m.id);
+          return s == 'active' || s == 'break';
+        })
+        .length;
   }
 
   Widget _buildTeamHeader(TeamProvider teamProvider) {
@@ -224,15 +247,17 @@ class _TeamScreenState extends State<TeamScreen> {
     );
   }
 
-  Widget _buildTaskSummary(TeamProvider teamProvider) {
+  Widget _buildTaskSummary(
+      TeamProvider teamProvider, DashboardProvider dashboard) {
+    final activeCount = _activeAgentCount(teamProvider, dashboard);
     return Row(
       children: [
         Expanded(
           child: _buildStatCard(
-            'Total Tasks',
-            teamProvider.totalTasks.toString(),
-            AppColors.primary,
-            AppIcons.task_square,
+            'Active',
+            activeCount.toString(),
+            AppColors.success,
+            AppIcons.people,
           ),
         ),
         const SizedBox(width: 12),
@@ -316,6 +341,9 @@ class _TeamScreenState extends State<TeamScreen> {
     final hours = durationSec ~/ 3600;
     final minutes = (durationSec % 3600) ~/ 60;
     final durationStr = hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
+    final distance = (stats?['distance'] as num?)?.toDouble() ?? 0.0;
+    final photos = (stats?['photosToday'] as num?)?.toInt() ?? 0;
+    final profileUrl = member.profileImageUrl;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -330,7 +358,7 @@ class _TeamScreenState extends State<TeamScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // Avatar with status ring
+              // Avatar with status ring and profile image
               Stack(
                 children: [
                   Container(
@@ -343,13 +371,18 @@ class _TeamScreenState extends State<TeamScreen> {
                       radius: 22,
                       backgroundColor:
                           AppColors.primary.withValues(alpha: 0.15),
-                      child: Text(
-                        member.initials,
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      backgroundImage: profileUrl != null && profileUrl.isNotEmpty
+                          ? NetworkImage(profileUrl)
+                          : null,
+                      child: profileUrl == null || profileUrl.isEmpty
+                          ? Text(
+                              member.initials,
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
+                          : null,
                     ),
                   ),
                   Positioned(
@@ -444,6 +477,50 @@ class _TeamScreenState extends State<TeamScreen> {
                         ],
                       ],
                     ),
+                    if (isOnClock) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(AppIcons.location,
+                              size: 12, color: AppColors.textTertiary),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${distance.toStringAsFixed(1)} km',
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Icon(AppIcons.camera,
+                              size: 12, color: AppColors.textTertiary),
+                          const SizedBox(width: 3),
+                          Text(
+                            '$photos photos',
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(AppIcons.clock,
+                              size: 12, color: AppColors.textTertiary),
+                          const SizedBox(width: 3),
+                          Text(
+                            _lastSeenText(dashboardProvider, member.id),
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.textTertiary,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

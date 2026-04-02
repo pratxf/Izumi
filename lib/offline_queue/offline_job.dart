@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-enum OfflineJobType { chat, photo }
+enum OfflineJobType { chat, photo, locationSync, activityLog, sessionEvent, taskEvent }
 
-enum OfflineJobStatus { pending, processing, error }
+enum OfflineJobStatus { pending, processing, error, done, failed }
 
 class OfflineJob {
   const OfflineJob({

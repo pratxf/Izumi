@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:izumi/core/ui/app_icons.dart';
 import 'package:intl/intl.dart';
@@ -5,12 +6,17 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/activity_log_model.dart';
+import '../../models/photo_model.dart';
 import '../../models/task_model.dart';
+import '../../providers/dashboard_provider.dart';
 import '../../providers/team_provider.dart';
+import '../../services/admin_activity_feed_service.dart';
+import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 
-/// Team Lead Employee Detail Screen - Work Status Detail
+/// Team Lead Employee Detail Screen — Enhanced with summary, photos, feed
 class TeamLeadEmployeeDetailScreen extends StatefulWidget {
   final String name;
   final String initials;
@@ -32,12 +38,67 @@ class TeamLeadEmployeeDetailScreen extends StatefulWidget {
 
 class _TeamLeadEmployeeDetailScreenState
     extends State<TeamLeadEmployeeDetailScreen> {
+  final AdminActivityFeedService _feedService = AdminActivityFeedService();
+  StreamSubscription? _feedSubscription;
+  Timer? _refreshTimer;
+
+  List<ActivityLogModel> _activities = [];
+  List<PhotoModel> _photos = [];
+  bool _feedLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadFeed();
+    });
+    // Auto-refresh every 60 seconds
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      _loadFeed();
+    });
+  }
+
+  @override
+  void dispose() {
+    _feedSubscription?.cancel();
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _loadFeed() {
+    if (widget.employeeId == null) return;
+    _feedSubscription?.cancel();
+
+    final dashboard = context.read<DashboardProvider>();
+    final linkedIds = _feedService.resolveLinkedEmployeeIds(
+      widget.employeeId!,
+      dashboard.employees,
+    );
+
+    _feedSubscription = _feedService
+        .streamRecentFeed(
+          linkedEmployeeIds: linkedIds,
+          window: const Duration(hours: 24),
+          photoLimit: 20,
+        )
+        .listen((feed) {
+      if (!mounted) return;
+      setState(() {
+        _activities = feed.activities;
+        _photos = feed.photos;
+        _feedLoading = false;
+      });
+    }, onError: (_) {
+      if (!mounted) return;
+      setState(() => _feedLoading = false);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final teamProvider = context.watch<TeamProvider>();
+    final dashboardProvider = context.watch<DashboardProvider>();
 
-    // Filter tasks for this employee from team tasks
     final employeeTasks = widget.employeeId != null
         ? teamProvider.teamTasks
             .where((t) => t.assignedTo == widget.employeeId)
@@ -47,9 +108,29 @@ class _TeamLeadEmployeeDetailScreenState
     final tasks = employeeTasks.where((t) => t.isTask).toList();
     final followUps = employeeTasks.where((t) => t.isFollowup).toList();
     final completedTaskCount = tasks.where((t) => t.isCompleted).length;
-    final completedFollowUpCount = followUps.where((t) => t.isCompleted).length;
+    final completedFollowUpCount =
+        followUps.where((t) => t.isCompleted).length;
     final pendingTasks = tasks.length - completedTaskCount;
     final pendingFollowUps = followUps.length - completedFollowUpCount;
+
+    // Live stats from dashboard
+    final stats = widget.employeeId != null
+        ? dashboardProvider.getEmployeeStats(widget.employeeId!)
+        : null;
+    final status = widget.employeeId != null
+        ? dashboardProvider.getEmployeeStatus(widget.employeeId!)
+        : 'offline';
+    final location = widget.employeeId != null
+        ? dashboardProvider.getEmployeeLocation(widget.employeeId!)
+        : null;
+
+    final durationSec = (stats?['sessionDuration'] as int?) ?? 0;
+    final distanceKm = (stats?['distance'] as num?)?.toDouble() ?? 0.0;
+    final photosToday = (stats?['photosToday'] as num?)?.toInt() ?? 0;
+    final tasksToday = (stats?['tasksToday'] as num?)?.toInt() ?? 0;
+    final address = location?['address'] as String? ?? 'Unknown';
+
+    final isActive = status == 'active' || status == 'break';
 
     return GradientBackground(
       child: Scaffold(
@@ -67,29 +148,49 @@ class _TeamLeadEmployeeDetailScreenState
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
                   children: [
-                    _buildHeaderStatus(context),
+                    // 1. Header with status
+                    _buildHeader(status, address, isActive),
                     const SizedBox(height: 16),
-                    _buildSectionTitle('Work Summary'),
-                    const SizedBox(height: 12),
+
+                    // 2. Today's summary
+                    _buildTodaySummary(
+                        durationSec, distanceKm, photosToday, tasksToday),
+                    const SizedBox(height: 20),
+
+                    // 3. Tasks & Follow-ups
+                    _buildSectionTitle('Tasks'),
+                    const SizedBox(height: 8),
                     _buildSummaryCard(
                       title: 'Tasks',
-                      accent: AppColors.primary,
                       completed: completedTaskCount,
                       total: tasks.length,
                       pendingLabel: '$pendingTasks Pending',
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     _buildTaskList(tasks),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     _buildSummaryCard(
                       title: 'Follow-ups',
-                      accent: AppColors.primary,
                       completed: completedFollowUpCount,
                       total: followUps.length,
                       pendingLabel: '$pendingFollowUps Pending',
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     _buildTaskList(followUps),
+                    const SizedBox(height: 20),
+
+                    // 4. Photos
+                    if (_photos.isNotEmpty) ...[
+                      _buildSectionTitle('Photos (${_photos.length})'),
+                      const SizedBox(height: 8),
+                      _buildPhotoGrid(),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // 5. Activity feed
+                    _buildSectionTitle('Activity Feed'),
+                    const SizedBox(height: 8),
+                    _buildActivityFeed(),
                   ],
                 ),
               ),
@@ -100,7 +201,26 @@ class _TeamLeadEmployeeDetailScreenState
     );
   }
 
-  Widget _buildHeaderStatus(BuildContext context) {
+  // ── Header ──
+
+  Widget _buildHeader(String status, String address, bool isActive) {
+    Color statusColor;
+    String statusLabel;
+    switch (status) {
+      case 'active':
+        statusColor = AppColors.success;
+        statusLabel = 'Active';
+      case 'break':
+        statusColor = AppColors.warning;
+        statusLabel = 'On Break';
+      case 'signal_lost':
+        statusColor = AppColors.warningDark;
+        statusLabel = 'Signal Lost';
+      default:
+        statusColor = AppColors.textTertiary;
+        statusLabel = 'Offline';
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -112,12 +232,12 @@ class _TeamLeadEmployeeDetailScreenState
       child: Row(
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
               color: AppColors.glassHover,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppColors.glassBorder),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: statusColor, width: 2),
             ),
             child: Center(
               child: Text(
@@ -134,37 +254,41 @@ class _TeamLeadEmployeeDetailScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  widget.name,
-                  style: AppTypography.h3.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 6),
+                Text(widget.name,
+                    style: AppTypography.h3
+                        .copyWith(color: AppColors.textPrimary)),
+                const SizedBox(height: 4),
                 Row(
                   children: [
                     Container(
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: widget.isOnline
-                            ? AppColors.success
-                            : AppColors.textTertiary,
-                        shape: BoxShape.circle,
-                      ),
+                          color: statusColor, shape: BoxShape.circle),
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      widget.isOnline ? 'Online' : 'Offline',
-                      style: AppTypography.caption.copyWith(
-                        color: widget.isOnline
-                            ? AppColors.success
-                            : AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    Text(statusLabel,
+                        style: AppTypography.caption.copyWith(
+                            color: statusColor, fontWeight: FontWeight.w600)),
                   ],
                 ),
+                if (isActive) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(AppIcons.location,
+                          size: 12, color: AppColors.textTertiary),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(address,
+                            style: AppTypography.caption
+                                .copyWith(color: AppColors.textSecondary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -173,32 +297,205 @@ class _TeamLeadEmployeeDetailScreenState
     );
   }
 
-  Widget _buildSectionTitle(String label) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Text(
-        label,
-        style: AppTypography.bodyMedium.copyWith(
-          color: AppColors.textPrimary,
-          fontWeight: FontWeight.bold,
+  // ── Today's Summary ──
+
+  Widget _buildTodaySummary(
+      int durationSec, double distanceKm, int photos, int tasks) {
+    final h = durationSec ~/ 3600;
+    final m = (durationSec % 3600) ~/ 60;
+    final durationStr = h > 0 ? '${h}h ${m}m' : '${m}m';
+
+    return Row(
+      children: [
+        _buildMiniStat(AppIcons.clock, durationStr, 'Duration'),
+        const SizedBox(width: 8),
+        _buildMiniStat(
+            AppIcons.location, '${distanceKm.toStringAsFixed(1)} km', 'Distance'),
+        const SizedBox(width: 8),
+        _buildMiniStat(AppIcons.camera, '$photos', 'Photos'),
+        const SizedBox(width: 8),
+        _buildMiniStat(AppIcons.task_square, '$tasks', 'Tasks'),
+      ],
+    );
+  }
+
+  Widget _buildMiniStat(IconData icon, String value, String label) {
+    return Expanded(
+      child: GlassPanel(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+        child: Column(
+          children: [
+            Icon(icon, size: 18, color: AppColors.primary),
+            const SizedBox(height: 6),
+            Text(value,
+                style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 2),
+            Text(label,
+                style: AppTypography.caption
+                    .copyWith(color: AppColors.textSecondary, fontSize: 10)),
+          ],
         ),
       ),
     );
   }
 
+  // ── Photos ──
+
+  Widget _buildPhotoGrid() {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+      ),
+      itemCount: _photos.length > 6 ? 6 : _photos.length,
+      itemBuilder: (context, index) {
+        final photo = _photos[index];
+        final isLocal = photo.imageUrl.startsWith('/');
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: isLocal
+              ? const ColoredBox(
+                  color: AppColors.glassPrimary,
+                  child: Center(
+                      child: Icon(AppIcons.camera,
+                          color: AppColors.textTertiary)))
+              : Image.network(
+                  photo.thumbnailUrl.isNotEmpty
+                      ? photo.thumbnailUrl
+                      : photo.imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const ColoredBox(
+                    color: AppColors.glassPrimary,
+                    child: Center(
+                        child: Icon(AppIcons.camera,
+                            color: AppColors.textTertiary)),
+                  ),
+                ),
+        );
+      },
+    );
+  }
+
+  // ── Activity Feed ──
+
+  Widget _buildActivityFeed() {
+    if (_feedLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+
+    if (_activities.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Text('No activity in the last 24 hours',
+              style: AppTypography.bodySmall
+                  .copyWith(color: AppColors.textTertiary)),
+        ),
+      );
+    }
+
+    return Column(
+      children: _activities.take(20).map((log) {
+        final time = DateFormat('h:mm a').format(log.timestamp);
+        IconData icon;
+        Color color;
+        switch (log.type) {
+          case 'session_start':
+            icon = AppIcons.play;
+            color = AppColors.success;
+          case 'session_end':
+          case 'session_auto_ended':
+            icon = AppIcons.stop_circle;
+            color = AppColors.critical;
+          case 'photo_captured':
+            icon = AppIcons.camera;
+            color = AppColors.primary;
+          case 'task_completed':
+            icon = AppIcons.tick_circle;
+            color = AppColors.success;
+          case 'location_update':
+            icon = AppIcons.location;
+            color = AppColors.textSecondary;
+          default:
+            icon = AppIcons.note;
+            color = AppColors.textSecondary;
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: GlassPanel(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, size: 16, color: color),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(log.title,
+                          style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w600)),
+                      if (log.detail.isNotEmpty)
+                        Text(log.detail,
+                            style: AppTypography.caption
+                                .copyWith(color: AppColors.textSecondary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+                Text(time,
+                    style: AppTypography.caption
+                        .copyWith(color: AppColors.textTertiary, fontSize: 11)),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // ── Tasks ──
+
+  Widget _buildSectionTitle(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(label,
+          style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+    );
+  }
+
   Widget _buildSummaryCard({
     required String title,
-    required Color accent,
     required int completed,
     required int total,
     required String pendingLabel,
   }) {
-    final double progress = total == 0 ? 0 : completed / total;
+    final progress = total == 0 ? 0.0 : completed / total;
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.glassPrimary,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.glassBorder),
       ),
       child: Column(
@@ -206,75 +503,35 @@ class _TeamLeadEmployeeDetailScreenState
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: accent.withValues(alpha: 0.3)),
-                    ),
-                    child: const Icon(
-                      AppIcons.task_square,
-                      color: AppColors.textPrimary,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    title,
-                    style: AppTypography.h3.copyWith(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.glassHover,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.glassBorder),
-                ),
-                child: Text(
-                  pendingLabel,
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              Text(title,
+                  style:
+                      AppTypography.h3.copyWith(color: AppColors.textPrimary)),
+              Text(pendingLabel,
+                  style: AppTypography.caption
+                      .copyWith(color: AppColors.textSecondary)),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Row(
             children: [
-              Text(
-                '$completed',
-                style: AppTypography.displayLarge.copyWith(
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '/ $total Completed',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
+              Text('$completed',
+                  style: AppTypography.displayLarge
+                      .copyWith(color: AppColors.textPrimary)),
+              const SizedBox(width: 6),
+              Text('/ $total',
+                  style: AppTypography.bodySmall
+                      .copyWith(color: AppColors.textSecondary)),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
-              minHeight: 8,
+              minHeight: 6,
               value: progress,
               backgroundColor: AppColors.glassBorder,
-              valueColor: AlwaysStoppedAnimation<Color>(accent),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(AppColors.primary),
             ),
           ),
         ],
@@ -285,14 +542,11 @@ class _TeamLeadEmployeeDetailScreenState
   Widget _buildTaskList(List<TaskModel> tasks) {
     if (tasks.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Center(
-          child: Text(
-            'No items assigned',
-            style: AppTypography.caption.copyWith(
-              color: AppColors.textTertiary,
-            ),
-          ),
+          child: Text('No items',
+              style: AppTypography.caption
+                  .copyWith(color: AppColors.textTertiary)),
         ),
       );
     }
@@ -305,28 +559,23 @@ class _TeamLeadEmployeeDetailScreenState
         if (completed && task.completedAt != null) {
           subtitle = 'Completed at ${timeFormat.format(task.completedAt!)}';
         } else if (task.isDueToday) {
-          subtitle = 'Assigned \u2022 Due ${timeFormat.format(task.dueDate)}';
+          subtitle = 'Due ${timeFormat.format(task.dueDate)}';
         } else {
-          final dueStr = DateFormat('MMM d, h:mm a').format(task.dueDate);
-          subtitle = 'Assigned \u2022 Due $dueStr';
+          subtitle =
+              'Due ${DateFormat('MMM d, h:mm a').format(task.dueDate)}';
         }
 
-        // Determine icon & color based on task state
         IconData icon;
         Color accent;
         String statusLabel;
         if (completed) {
           icon = AppIcons.tick_circle;
           accent = AppColors.success;
-          statusLabel = 'Completed';
+          statusLabel = 'Done';
         } else if (task.isHighPriority) {
           icon = AppIcons.warning_2;
           accent = AppColors.error;
-          statusLabel = 'High Priority';
-        } else if (task.isDueToday) {
-          icon = AppIcons.clock;
-          accent = AppColors.warning;
-          statusLabel = 'Due Today';
+          statusLabel = 'High';
         } else {
           icon = task.isFollowup ? AppIcons.call : AppIcons.task_square;
           accent = AppColors.primary;
@@ -334,98 +583,60 @@ class _TeamLeadEmployeeDetailScreenState
         }
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: _buildStatusItem(
-            icon: icon,
-            accent: accent,
-            title: task.title,
-            subtitle: subtitle,
-            status: statusLabel,
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildStatusItem({
-    required IconData icon,
-    required Color accent,
-    required String title,
-    required String subtitle,
-    required String status,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.glassPrimary,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.glassBorder),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.glassPrimary,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.glassBorder),
+            ),
             child: Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 28,
+                  height: 28,
                   decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: accent.withValues(alpha: 0.3)),
+                    color: accent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(
-                    icon,
-                    size: 16,
-                    color: accent,
-                  ),
+                  child: Icon(icon, size: 14, color: accent),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        title,
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: AppTypography.small.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
+                      Text(task.title,
+                          style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      Text(subtitle,
+                          style: AppTypography.caption
+                              .copyWith(color: AppColors.textSecondary)),
                     ],
                   ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(statusLabel,
+                      style: AppTypography.caption.copyWith(
+                          color: accent,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 10)),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: accent.withValues(alpha: 0.25)),
-            ),
-            child: Text(
-              status,
-              style: AppTypography.caption.copyWith(
-                color: accent,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      }).toList(),
     );
   }
 }
