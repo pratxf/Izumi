@@ -563,8 +563,16 @@ class _TodoScreenState extends State<TodoScreen> {
     final dashboardProvider = context.watch<DashboardProvider>();
     final teamProvider = context.watch<TeamProvider>();
 
+    final groupActiveCount = isTeam
+        ? teamProvider.teamMembers
+            .where((m) {
+              final s = dashboardProvider.getEmployeeStatus(m.id);
+              return s == 'active' || s == 'break';
+            })
+            .length
+        : 0;
     final String leftValue = isTeam
-        ? '${dashboardProvider.activeCount}/${teamProvider.teamMembers.length}'
+        ? '$groupActiveCount/${teamProvider.teamMembers.length}'
         : '$pendingCount';
     final String rightValue =
         isTeam ? '${teamProvider.totalTasks}' : '$completedCount';

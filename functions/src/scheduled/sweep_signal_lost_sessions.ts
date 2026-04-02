@@ -78,12 +78,36 @@ export const sweepSignalLostSessions = onSchedule(
             effectiveStaleTime = presence.signalLostAt;
           }
         } else if (status === "active" || status === "break") {
-          // Stale heartbeat: lastSeen > 1 hour ago means service is dead
-          const lastSeen = presence.lastSeen ?? 0;
-          const lastSeenAgeMs = now - lastSeen;
-          if (lastSeen > 0 && lastSeenAgeMs >= SIGNAL_LOST_MAX_AGE_MS) {
+          // Check multiple staleness signals — if ALL are stale, end the session
+          const presenceLastSeen = presence.lastSeen ?? 0;
+
+          // Also check sessionHeartbeat and liveLocations for freshness
+          let heartbeatLastSeen = 0;
+          let liveLocationUpdatedAt = 0;
+          try {
+            const hbSnap = await rtdb
+              .ref(`sessionHeartbeat/${enterpriseId}/${userId}/lastSeen`)
+              .get();
+            heartbeatLastSeen = (hbSnap.val() as number) ?? 0;
+          } catch (_) {}
+          try {
+            const llSnap = await rtdb
+              .ref(`liveLocations/${enterpriseId}/${userId}/updatedAt`)
+              .get();
+            liveLocationUpdatedAt = (llSnap.val() as number) ?? 0;
+          } catch (_) {}
+
+          // Use the most recent signal from any source
+          const mostRecent = Math.max(
+            presenceLastSeen,
+            heartbeatLastSeen,
+            liveLocationUpdatedAt,
+          );
+          const mostRecentAgeMs = now - mostRecent;
+
+          if (mostRecent > 0 && mostRecentAgeMs >= SIGNAL_LOST_MAX_AGE_MS) {
             isStale = true;
-            effectiveStaleTime = lastSeen;
+            effectiveStaleTime = mostRecent;
           }
         }
 
@@ -103,9 +127,23 @@ export const sweepSignalLostSessions = onSchedule(
         if (latestPresence.status === "offline") {
           continue;
         }
-        // Revalidate staleness with latest data
-        const latestLastSeen = latestPresence.lastSeen ?? 0;
-        if (latestLastSeen > 0 && now - latestLastSeen < SIGNAL_LOST_MAX_AGE_MS) {
+        // Revalidate: check all freshness signals with latest data
+        let latestMostRecent = latestPresence.lastSeen ?? 0;
+        try {
+          const hbSnap2 = await rtdb
+            .ref(`sessionHeartbeat/${enterpriseId}/${userId}/lastSeen`)
+            .get();
+          const hb2 = (hbSnap2.val() as number) ?? 0;
+          if (hb2 > latestMostRecent) latestMostRecent = hb2;
+        } catch (_) {}
+        try {
+          const llSnap2 = await rtdb
+            .ref(`liveLocations/${enterpriseId}/${userId}/updatedAt`)
+            .get();
+          const ll2 = (llSnap2.val() as number) ?? 0;
+          if (ll2 > latestMostRecent) latestMostRecent = ll2;
+        } catch (_) {}
+        if (latestMostRecent > 0 && now - latestMostRecent < SIGNAL_LOST_MAX_AGE_MS) {
           continue;
         }
 
