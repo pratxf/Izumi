@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 import { sendNotification } from "../utils/send_notification";
 
 const SIGNAL_LOST_MAX_AGE_MS = 60 * 60 * 1000;
+const MAX_SESSION_DURATION_MS = 16 * 60 * 60 * 1000; // 16 hours
 
 type PresenceNode = {
   status?: string;
@@ -245,9 +246,82 @@ export const sweepSignalLostSessions = onSchedule(
       }
     }
 
+    // ── Force-end sessions exceeding 16 hours ──
+    let forceEndedCount = 0;
+    const maxDurationCutoff = admin.firestore.Timestamp.fromMillis(
+      now - MAX_SESSION_DURATION_MS,
+    );
+    const staleActiveSessions = await db
+      .collection("sessions")
+      .where("status", "==", "active")
+      .where("startTime", "<", maxDurationCutoff)
+      .get();
+
+    for (const sessionDoc of staleActiveSessions.docs) {
+      const session = sessionDoc.data() as SessionDoc;
+      const startTimeMs = session.startTime?.toMillis() ?? now;
+      const totalDurationSecs = Math.max(
+        0,
+        Math.floor((now - startTimeMs) / 1000),
+      );
+
+      await sessionDoc.ref.update({
+        endTime: admin.firestore.FieldValue.serverTimestamp(),
+        status: "auto_ended",
+        totalDuration: totalDurationSecs,
+        totalDistance: session.totalDistance ?? 0,
+        photosCount: session.photosCount ?? 0,
+        tasksCompleted: session.tasksCompleted ?? 0,
+        notes: "Auto-ended: exceeded maximum session duration (16 hours).",
+        autoEndReason: "exceeded_max_duration",
+        autoEndSource: "signal_lost_sweeper",
+      });
+
+      const activityRef = db.collection("activityLogs").doc(
+        `session_auto_ended_${sessionDoc.id}`,
+      );
+      await activityRef.set({
+        enterpriseId: session.enterpriseId,
+        employeeId: session.employeeId,
+        sessionId: sessionDoc.id,
+        orgId: session.enterpriseId,
+        type: "session_end",
+        title: "Session Auto-Ended",
+        detail: "Session exceeded maximum duration (16 hours).",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        metadata: {
+          reason: "exceeded_max_duration",
+          source: "signal_lost_sweeper",
+        },
+      }, { merge: true });
+
+      // Clean up RTDB
+      if (session.enterpriseId && session.employeeId) {
+        await Promise.all([
+          rtdb.ref(`presence/${session.enterpriseId}/${session.employeeId}`).set({
+            status: "offline",
+            lastSeen: admin.database.ServerValue.TIMESTAMP,
+            currentSessionId: null,
+          }),
+          rtdb.ref(`activeStats/${session.enterpriseId}/${session.employeeId}`).remove(),
+          rtdb.ref(`sessionHeartbeat/${session.enterpriseId}/${session.employeeId}`).remove(),
+          rtdb.ref(`liveLocations/${session.enterpriseId}/${session.employeeId}`).remove(),
+        ]);
+      }
+
+      forceEndedCount++;
+      logger.info("sweepSignalLostSessions: Force-ended stale session.", {
+        sessionId: sessionDoc.id,
+        employeeId: session.employeeId,
+        enterpriseId: session.enterpriseId,
+        durationHours: (totalDurationSecs / 3600).toFixed(1),
+      });
+    }
+
     logger.info("sweepSignalLostSessions: Completed run.", {
       inspectedCount,
       autoEndedCount,
+      forceEndedCount,
     });
   },
 );

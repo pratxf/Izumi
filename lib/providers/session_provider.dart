@@ -28,6 +28,7 @@ class SessionProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   bool _locationInitializing = false;
+  DateTime? _lastSessionStartAttempt;
 
   SessionProvider() {
     TrackingForegroundService.addTaskDataCallback(_onTaskData);
@@ -172,6 +173,16 @@ class SessionProvider extends ChangeNotifier {
     required String employeeId,
     required String enterpriseId,
   }) async {
+    // Debounce: prevent rapid session start after recent auto-end
+    final now = DateTime.now();
+    if (_lastSessionStartAttempt != null &&
+        now.difference(_lastSessionStartAttempt!).inSeconds < 60) {
+      _error = 'Please wait before starting a new session. A recent session was just ended.';
+      notifyListeners();
+      return false;
+    }
+    _lastSessionStartAttempt = now;
+
     _isLoading = true;
     _error = null;
     notifyListeners();

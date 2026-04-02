@@ -66,15 +66,18 @@ class AnalyticsProvider extends ChangeNotifier {
     return '${m}m';
   }
 
+  static const int _maxSessionDurationSecs = 16 * 3600; // 16 hours cap
+
   int _resolveLiveDurationSecs(Map<String, dynamic> stats) {
     final sessionStartTimeMs = (stats['sessionStartTimeMs'] as num?)?.toInt();
     if (sessionStartTimeMs != null) {
       final startedAt =
           DateTime.fromMillisecondsSinceEpoch(sessionStartTimeMs).toLocal();
       final elapsed = DateTime.now().difference(startedAt).inSeconds;
-      if (elapsed >= 0) return elapsed;
+      if (elapsed >= 0) return elapsed.clamp(0, _maxSessionDurationSecs);
     }
-    return (stats['sessionDuration'] as num?)?.toInt() ?? 0;
+    final raw = (stats['sessionDuration'] as num?)?.toInt() ?? 0;
+    return raw.clamp(0, _maxSessionDurationSecs);
   }
 
   void _refreshLiveClockIfNeeded() {
@@ -223,7 +226,7 @@ class AnalyticsProvider extends ChangeNotifier {
     // Completed sessions from Firestore dailySummaries
     for (final summaries in _employeeSummaries.values) {
       for (final s in summaries) {
-        _totalDurationSecs += s.totalDuration;
+        _totalDurationSecs += s.totalDuration.clamp(0, _maxSessionDurationSecs);
         _totalDistance += _sanitizeDistance(s.totalDistance);
         _totalPhotos += s.photosCount;
         _totalTasks += s.tasksCompleted;
@@ -302,7 +305,7 @@ class AnalyticsProvider extends ChangeNotifier {
     int tasks = 0;
 
     for (final s in summaries) {
-      durationSecs += s.totalDuration;
+      durationSecs += s.totalDuration.clamp(0, _maxSessionDurationSecs);
       distance += _sanitizeDistance(s.totalDistance);
       photos += s.photosCount;
       tasks += s.tasksCompleted;

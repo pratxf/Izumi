@@ -271,7 +271,11 @@ class AuthProvider extends ChangeNotifier {
       final remoteToken = existingSession?['token'] as String?;
       if (persistedToken != null &&
           remoteToken != null &&
+          remoteToken.isNotEmpty &&
           remoteToken != _localDeviceToken) {
+        // Only sign out if the remote token is a DIFFERENT device's token.
+        // If remote is null/empty (cleared by onDisconnect/app kill), just
+        // reclaim the session — this is the same device restarting.
         debugPrint('[AuthProvider] Existing device session belongs to another device. '
             'local=$_localDeviceToken, remote=$remoteToken. Signing out this device.');
         _registeringDeviceSession = false;

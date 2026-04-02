@@ -107,7 +107,7 @@ class AdminActivityFeedService {
         normalizedIds,
         startDate: rangeStart,
         endDate: rangeEnd,
-        limit: 300,
+        limit: 1000,
       );
     } catch (e) {
       debugPrint('[FeedService] sessions filtered query failed: $e');
@@ -264,14 +264,14 @@ class AdminActivityFeedService {
         employeeIds,
         startDate: rangeStart,
         endDate: rangeEnd,
-        limit: 200,
+        limit: 1000,
       );
     } catch (_) {}
     if (logsByEmployee.isEmpty) {
       try {
         logsByEmployee = (await _logRepo.getLogsByEmployeeIdsUnfiltered(
           employeeIds,
-          limit: 500,
+          limit: 1000,
         )).where((log) => _isInRange(log.timestamp, rangeStart, rangeEnd)).toList();
       } catch (_) {}
     }
@@ -283,14 +283,14 @@ class AdminActivityFeedService {
           sessionIds,
           startDate: rangeStart,
           endDate: rangeEnd,
-          limit: 300,
+          limit: 1000,
         );
       } catch (_) {}
       if (logsBySession.isEmpty) {
         try {
           logsBySession = (await _logRepo.getLogsBySessionIdsUnfiltered(
             sessionIds,
-            limit: 500,
+            limit: 1000,
           )).where((log) => _isInRange(log.timestamp, rangeStart, rangeEnd)).toList();
         } catch (_) {}
       }
@@ -414,7 +414,7 @@ class AdminActivityFeedService {
           .streamLogsBySessionIdsSince(
             sessionIds,
             since: since,
-            limit: 300,
+            limit: 1000,
           )
           .listen((logs) {
         sessionLogs = logs;
@@ -442,7 +442,7 @@ class AdminActivityFeedService {
         .streamLogsByEmployeeIdsSince(
           normalizedIds,
           since: since,
-          limit: 300,
+          limit: 1000,
         )
         .listen((logs) {
       employeeLogs = logs;
