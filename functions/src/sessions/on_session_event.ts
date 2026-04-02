@@ -78,27 +78,42 @@ export const onSessionStarted = onDocumentCreated(
       employeeId,
     });
 
-    const employeeName = await getEmployeeName(employeeId);
-    await upsertActivityLog(admin.firestore(), {
-      id: `session_started_${sessionId}`,
-      enterpriseId: sessionData.enterpriseId,
-      employeeId,
-      sessionId,
-      orgId: sessionData.enterpriseId,
-      type: "session_start",
-      title: "Session Started",
-      detail: `${employeeName} started a field session`,
-      timestamp:
-        sessionData.startTime ?? admin.firestore.FieldValue.serverTimestamp(),
-      payload: {
-        startTime:
-          sessionData.startTime ?? admin.firestore.FieldValue.serverTimestamp(),
-      },
-      metadata: {
-        source: "session_trigger",
-      },
-    });
+    // Check if session_start log already exists (written by client with location)
+    const existing = await admin.firestore().collection('activityLogs')
+      .where('sessionId', '==', sessionId)
+      .where('type', '==', 'session_start')
+      .limit(1)
+      .get();
 
+    if (!existing.empty) {
+      logger.info("onSessionStarted: session_start log already written by client, skipping.", {
+        sessionId,
+        employeeId,
+      });
+    } else {
+      const employeeName = await getEmployeeName(employeeId);
+      await upsertActivityLog(admin.firestore(), {
+        id: `session_started_${sessionId}`,
+        enterpriseId: sessionData.enterpriseId,
+        employeeId,
+        sessionId,
+        orgId: sessionData.enterpriseId,
+        type: "session_start",
+        title: "Session Started",
+        detail: `${employeeName} started a field session`,
+        timestamp:
+          sessionData.startTime ?? admin.firestore.FieldValue.serverTimestamp(),
+        payload: {
+          startTime:
+            sessionData.startTime ?? admin.firestore.FieldValue.serverTimestamp(),
+        },
+        metadata: {
+          source: "session_trigger",
+        },
+      });
+    }
+
+    const employeeName = await getEmployeeName(employeeId);
     const recipients = await lookupRecipients({
       employeeId,
       enterpriseId: sessionData.enterpriseId,

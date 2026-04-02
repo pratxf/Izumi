@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -169,6 +170,11 @@ class SessionProvider extends ChangeNotifier {
     }
   }
 
+  String _todayDateIST() {
+    final now = DateTime.now().toUtc().add(const Duration(hours: 5, minutes: 30));
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
   Future<bool> startSession({
     required String employeeId,
     required String enterpriseId,
@@ -287,6 +293,28 @@ class SessionProvider extends ChangeNotifier {
           ),
         );
       }
+
+      // Write session_start activityLog with location data.
+      // Client writes first with GPS; Cloud Function skips if already exists.
+      unawaited(
+        FirebaseFirestore.instance.collection('activityLogs').add({
+          'type': 'session_start',
+          'employeeId': employeeId,
+          'sessionId': sessionId,
+          'enterpriseId': enterpriseId,
+          'orgId': enterpriseId,
+          'timestamp': FieldValue.serverTimestamp(),
+          'date': _todayDateIST(),
+          'title': 'Session Started',
+          'detail': '$employeeId started a field session',
+          'payload': {
+            if (initialPosition != null) 'lat': initialPosition.latitude,
+            if (initialPosition != null) 'lng': initialPosition.longitude,
+            'address': initialAddress,
+            'startTime': FieldValue.serverTimestamp(),
+          },
+        }),
+      );
 
       _isLoading = false;
       _safeNotifyListeners();
