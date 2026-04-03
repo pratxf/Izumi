@@ -48,7 +48,7 @@ class SessionRepository {
   }) async {
     await _firestoreService.updateDocument(_collection, sessionId, {
       'endTime': Timestamp.fromDate(DateTime.now()),
-      'status': 'completed',
+      'status': 'ended',
       'totalDuration': totalDuration,
       'totalDistance': totalDistance,
       'photosCount': photosCount,

@@ -13,6 +13,7 @@ import '../../models/daily_summary_model.dart';
 import '../../models/photo_model.dart';
 import '../../models/session_model.dart';
 import '../../providers/analytics_provider.dart';
+import '../../providers/dashboard_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/admin_activity_feed_service.dart';
 import '../../services/geocoding_cache.dart';
@@ -244,11 +245,15 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
 
   List<String> _linkedIds() {
     final analytics = context.read<AnalyticsProvider>();
-    return _feedService.resolveLinkedEmployeeIds(
+    final employees = analytics.employees.isNotEmpty
+        ? analytics.employees
+        : context.read<DashboardProvider>().employees;
+    final ids = _feedService.resolveLinkedEmployeeIds(
       widget.employeeId,
-      analytics.employees,
+      employees,
       additionalIds: widget.linkedEmployeeIds,
     );
+    return ids.isEmpty ? [widget.employeeId] : ids;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

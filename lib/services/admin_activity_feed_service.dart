@@ -266,14 +266,18 @@ class AdminActivityFeedService {
         endDate: rangeEnd,
         limit: 1000,
       );
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[FeedService] getLogsByEmployeeIds failed: $e');
+    }
     if (logsByEmployee.isEmpty) {
       try {
         logsByEmployee = (await _logRepo.getLogsByEmployeeIdsUnfiltered(
           employeeIds,
           limit: 1000,
         )).where((log) => _isInRange(log.timestamp, rangeStart, rangeEnd)).toList();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[FeedService] getLogsByEmployeeIdsUnfiltered failed: $e');
+      }
     }
 
     var logsBySession = <ActivityLogModel>[];
@@ -285,14 +289,18 @@ class AdminActivityFeedService {
           endDate: rangeEnd,
           limit: 1000,
         );
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[FeedService] getLogsBySessionIds failed: $e');
+      }
       if (logsBySession.isEmpty) {
         try {
           logsBySession = (await _logRepo.getLogsBySessionIdsUnfiltered(
             sessionIds,
             limit: 1000,
           )).where((log) => _isInRange(log.timestamp, rangeStart, rangeEnd)).toList();
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[FeedService] getLogsBySessionIdsUnfiltered failed: $e');
+        }
       }
     }
 

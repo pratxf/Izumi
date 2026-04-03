@@ -119,26 +119,35 @@ class _IzumiRouterState extends State<_IzumiRouter> {
   }
 
   void _setupDashboardAutoStart(AuthProvider authProvider) {
-    final dashboardProvider = context.read<DashboardProvider>();
+    void tryStartDashboard() {
+      if (!mounted) return;
+      if (!authProvider.isAuthenticated) return;
+      final enterpriseId = authProvider.enterpriseId;
+      if (enterpriseId == null) return;
+      final dashboardProvider = context.read<DashboardProvider>();
+      dashboardProvider.initWithEnterpriseId(enterpriseId);
+    }
 
-    authProvider.addListener(() {
-      if (authProvider.isAuthenticated &&
-          authProvider.enterpriseId != null &&
-          dashboardProvider.employees.isEmpty &&
-          !dashboardProvider.isLoading) {
-        dashboardProvider.initDashboard(authProvider.enterpriseId!);
-      }
+    // Listen for future auth state changes
+    authProvider.addListener(tryStartDashboard);
+
+    // Fire immediately — don't wait for a state change
+    // Use multiple post frame callbacks to handle both fast and slow auth paths
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      tryStartDashboard();
+      // Second callback handles slow path auth that completes after first frame
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        tryStartDashboard();
+      });
     });
 
-    // Also trigger immediately if already authenticated when widget mounts
-    if (authProvider.isAuthenticated && authProvider.enterpriseId != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (dashboardProvider.employees.isEmpty &&
-            !dashboardProvider.isLoading) {
-          dashboardProvider.initDashboard(authProvider.enterpriseId!);
-        }
-      });
-    }
+    // Final safety net — try again after 3 seconds in case auth was slow
+    Future.delayed(const Duration(seconds: 3), () {
+      tryStartDashboard();
+    });
+    Future.delayed(const Duration(seconds: 6), () {
+      tryStartDashboard();
+    });
   }
 
   void _setupNotificationListeners(AuthProvider authProvider) {
