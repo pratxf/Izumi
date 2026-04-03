@@ -143,9 +143,11 @@ export const sweepSignalLostSessions = onSchedule(
           const ll2 = (llSnap2.val() as number) ?? 0;
           if (ll2 > latestMostRecent) latestMostRecent = ll2;
         } catch (_) {}
-        if (latestMostRecent > 0 && now - latestMostRecent < SIGNAL_LOST_MAX_AGE_MS) {
+        // Only skip if we have a RECENT signal — zero means no data = definitely stale
+        if (latestMostRecent > 0 && (now - latestMostRecent) < SIGNAL_LOST_MAX_AGE_MS) {
           continue;
         }
+        // If latestMostRecent is 0, fall through — no heartbeat data means stale
 
         let sessionRef: admin.firestore.DocumentReference | null = null;
         if (latestPresence.currentSessionId) {
@@ -176,7 +178,7 @@ export const sweepSignalLostSessions = onSchedule(
           }
 
           const session = sessionSnap.data() as SessionDoc;
-          if (session.status !== "active") {
+          if (session.status !== "active" && session.status !== "signal_lost") {
             return null;
           }
 
@@ -289,13 +291,19 @@ export const sweepSignalLostSessions = onSchedule(
     const maxDurationCutoff = admin.firestore.Timestamp.fromMillis(
       now - MAX_SESSION_DURATION_MS,
     );
-    const staleActiveSessions = await db
-      .collection("sessions")
-      .where("status", "==", "active")
-      .where("startTime", "<", maxDurationCutoff)
-      .get();
+    const [activeStale, signalLostStale] = await Promise.all([
+      db.collection("sessions")
+        .where("status", "==", "active")
+        .where("startTime", "<", maxDurationCutoff)
+        .get(),
+      db.collection("sessions")
+        .where("status", "==", "signal_lost")
+        .where("startTime", "<", maxDurationCutoff)
+        .get(),
+    ]);
+    const allStaleDocs = [...activeStale.docs, ...signalLostStale.docs];
 
-    for (const sessionDoc of staleActiveSessions.docs) {
+    for (const sessionDoc of allStaleDocs) {
       const session = sessionDoc.data() as SessionDoc;
       const startTimeMs = session.startTime?.toMillis() ?? now;
       const totalDurationSecs = Math.max(

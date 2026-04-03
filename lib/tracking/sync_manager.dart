@@ -64,6 +64,10 @@ class SyncManager {
 
     _periodicFlushTimer?.cancel();
     _periodicFlushTimer = Timer.periodic(flushInterval, (_) {
+      debugPrint(
+        '[SyncManager] periodic flush timer fired '
+        '(online=$_isOnline, session=$_sessionId)',
+      );
       unawaited(flushPendingLocations(reason: 'periodic_flush'));
     });
   }
@@ -109,6 +113,10 @@ class SyncManager {
     final employeeId = _employeeId;
 
     if (sessionId == null || enterpriseId == null || employeeId == null) {
+      debugPrint(
+        '[SyncManager] flush skipped ($reason): missing context '
+        '(session=$sessionId, enterprise=$enterpriseId, employee=$employeeId)',
+      );
       return {
         'flushed': false,
         'reason': reason,
@@ -117,6 +125,7 @@ class SyncManager {
     }
 
     if (_flushInFlight) {
+      debugPrint('[SyncManager] flush skipped ($reason): flush already in flight');
       return {
         'flushed': false,
         'reason': reason,
@@ -125,6 +134,10 @@ class SyncManager {
     }
 
     if (!_isOnline && !allowOfflineQueue) {
+      debugPrint(
+        '[SyncManager] flush skipped ($reason): device offline, '
+        'allowOfflineQueue=$allowOfflineQueue',
+      );
       return {
         'flushed': false,
         'reason': reason,
@@ -139,6 +152,7 @@ class SyncManager {
       );
 
       if (rows.isEmpty) {
+        debugPrint('[SyncManager] flush ($reason): no pending rows to flush');
         _lastFlushAt = DateTime.now();
         return {
           'flushed': true,

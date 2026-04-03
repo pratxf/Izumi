@@ -4,10 +4,13 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.util.Log
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ServerValue
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import java.util.concurrent.TimeUnit
 
 class SessionTaskRemovalService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
@@ -76,10 +79,12 @@ class SessionTaskRemovalService : Service() {
         val rtdb = FirebaseDatabase.getInstance().reference
         val sessionRef = firestore.collection("sessions").document(sessionId)
 
-        sessionRef.get().addOnSuccessListener { snapshot ->
+        try {
+            val snapshot = Tasks.await(sessionRef.get(), 10, TimeUnit.SECONDS)
+
             if (!snapshot.exists()) {
                 clearSessionContext()
-                return@addOnSuccessListener
+                return
             }
 
             val status = snapshot.getString("status")
@@ -90,7 +95,7 @@ class SessionTaskRemovalService : Service() {
                 sessionEmployeeId != userId
             ) {
                 clearSessionContext()
-                return@addOnSuccessListener
+                return
             }
 
             val startTimestamp = snapshot.getTimestamp("startTime")
@@ -104,58 +109,81 @@ class SessionTaskRemovalService : Service() {
                 0
             }
 
-            val batch = firestore.batch()
-            batch.update(
-                sessionRef,
-                mapOf(
-                    "endTime" to FieldValue.serverTimestamp(),
-                    "status" to "auto_ended",
-                    "totalDuration" to totalDuration,
-                    "totalDistance" to totalDistance,
-                    "photosCount" to photosCount,
-                    "tasksCompleted" to tasksCompleted,
-                    "notes" to "Auto-ended because the app was removed from recent apps.",
-                    "autoEndReason" to "app_removed_from_recents",
-                    "autoEndSource" to "android_task_removed_service",
-                ),
-            )
-
-            val activityRef = firestore.collection("activityLogs").document("session_auto_ended_$sessionId")
-            batch.set(
-                activityRef,
-                mapOf(
-                    "enterpriseId" to enterpriseId,
-                    "employeeId" to userId,
-                    "sessionId" to sessionId,
-                    "type" to "session_auto_ended",
-                    "title" to "Session Auto-Ended",
-                    "detail" to "App was removed from recent apps.",
-                    "timestamp" to FieldValue.serverTimestamp(),
-                    "metadata" to mapOf(
-                        "reason" to "app_removed_from_recents",
-                        "source" to "android_task_removed_service",
+            // Write session update — separate from activityLog so each can
+            // succeed independently.
+            try {
+                Tasks.await(
+                    sessionRef.update(
+                        mapOf(
+                            "endTime" to FieldValue.serverTimestamp(),
+                            "status" to "auto_ended",
+                            "totalDuration" to totalDuration,
+                            "totalDistance" to totalDistance,
+                            "photosCount" to photosCount,
+                            "tasksCompleted" to tasksCompleted,
+                            "notes" to "Auto-ended because the app was removed from recent apps.",
+                            "autoEndReason" to "app_removed_from_recents",
+                            "autoEndSource" to "android_task_removed_service",
+                        ),
                     ),
-                ),
-            )
+                    10, TimeUnit.SECONDS,
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update session document: $e")
+            }
 
-            batch.commit().addOnCompleteListener {
-                rtdb.child("presence/$enterpriseId/$userId").setValue(
-                    mapOf(
-                        "status" to "offline",
-                        "lastSeen" to ServerValue.TIMESTAMP,
-                        "currentSessionId" to null,
+            // Write activityLog independently
+            try {
+                val activityRef = firestore.collection("activityLogs")
+                    .document("session_auto_ended_$sessionId")
+                Tasks.await(
+                    activityRef.set(
+                        mapOf(
+                            "enterpriseId" to enterpriseId,
+                            "employeeId" to userId,
+                            "sessionId" to sessionId,
+                            "type" to "session_auto_ended",
+                            "title" to "Session Auto-Ended",
+                            "detail" to "App was removed from recent apps.",
+                            "timestamp" to FieldValue.serverTimestamp(),
+                            "metadata" to mapOf(
+                                "reason" to "app_removed_from_recents",
+                                "source" to "android_task_removed_service",
+                            ),
+                        ),
                     ),
+                    10, TimeUnit.SECONDS,
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to write activityLog: $e")
+            }
+
+            // Clean up RTDB presence
+            try {
+                Tasks.await(
+                    rtdb.child("presence/$enterpriseId/$userId").setValue(
+                        mapOf(
+                            "status" to "offline",
+                            "lastSeen" to ServerValue.TIMESTAMP,
+                            "currentSessionId" to null,
+                        ),
+                    ),
+                    10, TimeUnit.SECONDS,
                 )
                 rtdb.child("activeStats/$enterpriseId/$userId").removeValue()
                 rtdb.child("sessionHeartbeat/$enterpriseId/$userId").removeValue()
-                clearSessionContext()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clean up RTDB: $e")
             }
-        }.addOnFailureListener {
+        } catch (e: Exception) {
+            Log.e(TAG, "autoEndSession failed: $e")
+        } finally {
             clearSessionContext()
         }
     }
 
     companion object {
+        private const val TAG = "SessionTaskRemoval"
         private const val PREFS_NAME = "izumi_session_task_guard"
         private const val KEY_ENTERPRISE_ID = "enterprise_id"
         private const val KEY_USER_ID = "user_id"

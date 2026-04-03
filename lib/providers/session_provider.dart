@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 
 import '../models/session_location_model.dart';
 import '../models/session_model.dart';
@@ -178,6 +179,7 @@ class SessionProvider extends ChangeNotifier {
   Future<bool> startSession({
     required String employeeId,
     required String enterpriseId,
+    required String employeeName,
   }) async {
     // Debounce: prevent rapid session start after recent auto-end
     final now = DateTime.now();
@@ -200,6 +202,20 @@ class SessionProvider extends ChangeNotifier {
         _isLoading = false;
         notifyListeners();
         return false;
+      }
+
+      // Check background location — warn but don't hard-block
+      final alwaysStatus = await ph.Permission.locationAlways.status;
+      if (!alwaysStatus.isGranted) {
+        debugPrint(
+            '[SessionProvider] Background location not granted, '
+            'requesting upgrade...');
+        final result = await ph.Permission.locationAlways.request();
+        if (!result.isGranted) {
+          debugPrint(
+              '[SessionProvider] WARNING: background location denied, '
+              'GPS may stop when screen locks');
+        }
       }
 
       Position? initialPosition;
@@ -274,6 +290,7 @@ class SessionProvider extends ChangeNotifier {
           enterpriseId: enterpriseId,
           employeeId: employeeId,
           sessionId: sessionId,
+          employeeName: employeeName,
         ),
       ]);
 
@@ -306,7 +323,7 @@ class SessionProvider extends ChangeNotifier {
           'timestamp': FieldValue.serverTimestamp(),
           'date': _todayDateIST(),
           'title': 'Session Started',
-          'detail': '$employeeId started a field session',
+          'detail': '$employeeName started a field session',
           'payload': {
             if (initialPosition != null) 'lat': initialPosition.latitude,
             if (initialPosition != null) 'lng': initialPosition.longitude,

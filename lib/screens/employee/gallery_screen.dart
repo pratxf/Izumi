@@ -455,8 +455,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Widget _buildPhotoTile(PhotoModel photo, AuthProvider auth) {
-    final imageUrl =
-        photo.thumbnailUrl.isNotEmpty ? photo.thumbnailUrl : photo.imageUrl;
+    final displayUrl = (photo.thumbnailUrl?.isNotEmpty == true)
+        ? photo.thumbnailUrl!
+        : (photo.imageUrl.isNotEmpty)
+            ? photo.imageUrl
+            : null;
+    final imageUrl = displayUrl ?? '';
     final heroTag = 'photo_${photo.id}';
     final capturedBy = _resolveCapturedBy(photo, auth);
 
@@ -529,18 +533,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           ),
                         ),
                       )
-                    : Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: AppColors.glassPrimary,
-                          child: const Icon(
-                            AppIcons.image,
-                            color: AppColors.textTertiary,
-                            size: 24,
+                    : displayUrl == null
+                        ? Container(
+                            color: Colors.grey[300],
+                            child: Icon(Icons.image_not_supported,
+                                color: Colors.grey[500]),
+                          )
+                        : Image.network(
+                            displayUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.grey[300],
+                              child: Icon(Icons.broken_image,
+                                  color: Colors.grey[500]),
+                            ),
                           ),
-                        ),
-                      ),
               ),
               if (photo.uploadStatus == UploadStatus.pending)
                 Container(

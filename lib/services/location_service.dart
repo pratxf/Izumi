@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 
 enum LocationPermissionResult {
   granted,
@@ -14,7 +15,9 @@ enum LocationPermissionResult {
 class LocationService {
   StreamSubscription<Position>? _positionSubscription;
 
-  // Check and request location permissions (with distinct error types)
+  // Check and request location permissions (with distinct error types).
+  // Two-step flow: request whileInUse first, then upgrade to always
+  // (background) which is required for GPS to work when the screen is locked.
   Future<LocationPermissionResult> checkPermissions() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
@@ -22,6 +25,7 @@ class LocationService {
       return LocationPermissionResult.serviceDisabled;
     }
 
+    // Step 1: Ensure at least whileInUse permission via Geolocator
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -36,7 +40,21 @@ class LocationService {
       return LocationPermissionResult.deniedForever;
     }
 
-    debugPrint('[LocationService] Permission granted: $permission');
+    // Step 2: Upgrade to background (always) permission if not already granted.
+    // On Android 11+ this opens system settings — that is expected.
+    if (permission == LocationPermission.whileInUse) {
+      final alwaysStatus = await ph.Permission.locationAlways.request();
+      if (alwaysStatus.isGranted) {
+        debugPrint('[LocationService] Permission granted: always');
+      } else {
+        debugPrint(
+            '[LocationService] WARNING: only whileInUse granted, '
+            'background location denied by user');
+      }
+    } else {
+      debugPrint('[LocationService] Permission granted: always');
+    }
+
     return LocationPermissionResult.granted;
   }
 

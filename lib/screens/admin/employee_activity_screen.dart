@@ -515,15 +515,17 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
             separatorBuilder: (_, __) => const SizedBox(width: 10),
             itemBuilder: (context, index) {
               final photo = photos[index];
-              final previewUrl = photo.thumbnailUrl.isNotEmpty
-                  ? photo.thumbnailUrl
-                  : photo.imageUrl;
+              final previewUrl = (photo.thumbnailUrl?.isNotEmpty == true)
+                  ? photo.thumbnailUrl!
+                  : (photo.imageUrl.isNotEmpty)
+                      ? photo.imageUrl
+                      : null;
               final heroTag = 'capture_preview_${photo.id}';
               return GestureDetector(
                 onTap: () {
                   context.push('/employee/image-detail', extra: {
                     'imageUrl': photo.imageUrl,
-                    'thumbnailUrl': previewUrl,
+                    'thumbnailUrl': previewUrl ?? '',
                     'location': photo.location,
                     'capturedBy': widget.employeeName,
                     'employeeId': photo.employeeId,
@@ -547,30 +549,33 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
                       children: [
                         Hero(
                           tag: heroTag,
-                          child: Image.network(
-                            previewUrl,
-                            fit: BoxFit.cover,
-                            loadingBuilder: (context, child, progress) {
-                              if (progress == null) return child;
-                              return Container(
-                                color: AppColors.glassPrimary,
-                                child: const Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppColors.primary,
+                          child: previewUrl == null
+                              ? Container(
+                                  color: Colors.grey[300],
+                                  child: Icon(Icons.image_not_supported,
+                                      color: Colors.grey[500]),
+                                )
+                              : Image.network(
+                                  previewUrl,
+                                  fit: BoxFit.cover,
+                                  loadingBuilder: (context, child, progress) {
+                                    if (progress == null) return child;
+                                    return Container(
+                                      color: AppColors.glassPrimary,
+                                      child: const Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: AppColors.primary,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: Colors.grey[300],
+                                    child: Icon(Icons.broken_image,
+                                        color: Colors.grey[500]),
                                   ),
                                 ),
-                              );
-                            },
-                            errorBuilder: (_, __, ___) => Container(
-                              color: AppColors.glassPrimary,
-                              child: Icon(
-                                AppIcons.image,
-                                color: AppColors.textTertiary,
-                                size: 24,
-                              ),
-                            ),
-                          ),
                         ),
                         Positioned(
                           left: 0,
@@ -1278,15 +1283,18 @@ class _GalleryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final previewUrl =
-        photo.thumbnailUrl.isNotEmpty ? photo.thumbnailUrl : photo.imageUrl;
+    final previewUrl = (photo.thumbnailUrl?.isNotEmpty == true)
+        ? photo.thumbnailUrl!
+        : (photo.imageUrl.isNotEmpty)
+            ? photo.imageUrl
+            : null;
     final heroTag = 'gallery_tile_${photo.id}';
 
     return GestureDetector(
       onTap: () {
         context.push('/employee/image-detail', extra: {
           'imageUrl': photo.imageUrl,
-          'thumbnailUrl': previewUrl,
+          'thumbnailUrl': previewUrl ?? '',
           'location': photo.location,
           'capturedBy': employeeName,
           'employeeId': photo.employeeId,
@@ -1307,42 +1315,37 @@ class _GalleryTile extends StatelessWidget {
           children: [
             Hero(
               tag: heroTag,
-              child: Image.network(
-                previewUrl,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Container(
-                    color: AppColors.glassPrimary,
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.primary.withValues(alpha: 0.5),
-                        value: loadingProgress.expectedTotalBytes != null
-                            ? loadingProgress.cumulativeBytesLoaded /
-                                loadingProgress.expectedTotalBytes!
-                            : null,
+              child: previewUrl == null
+                  ? Container(
+                      color: Colors.grey[300],
+                      child: Icon(Icons.image_not_supported,
+                          color: Colors.grey[500]),
+                    )
+                  : Image.network(
+                      previewUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          color: AppColors.glassPrimary,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primary.withValues(alpha: 0.5),
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.grey[300],
+                        child: Icon(Icons.broken_image,
+                            color: Colors.grey[500]),
                       ),
                     ),
-                  );
-                },
-                errorBuilder: (_, __, ___) => Container(
-                  color: AppColors.glassPrimary,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(AppIcons.image,
-                          color: AppColors.textTertiary, size: 24),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Error',
-                        style: AppTypography.small
-                            .copyWith(color: AppColors.textTertiary),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             ),
             Positioned(
               left: 0,

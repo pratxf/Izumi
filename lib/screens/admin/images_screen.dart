@@ -329,7 +329,11 @@ class _ImagesScreenState extends State<ImagesScreen> {
 
   Widget _buildPhotoTile(PhotoModel photo) {
     final initials = _getEmployeeInitials(photo.employeeId);
-    final imageUrl = photo.thumbnailUrl.isNotEmpty ? photo.thumbnailUrl : photo.imageUrl;
+    final displayUrl = (photo.thumbnailUrl?.isNotEmpty == true)
+        ? photo.thumbnailUrl!
+        : (photo.imageUrl.isNotEmpty)
+            ? photo.imageUrl
+            : null;
     final heroTag = 'admin_photo_${photo.id}';
 
     return GestureDetector(
@@ -339,7 +343,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
         }
         context.push('/employee/image-detail', extra: {
           'imageUrl': photo.imageUrl,
-          'thumbnailUrl': imageUrl,
+          'thumbnailUrl': displayUrl ?? '',
           'location': photo.location,
           'capturedBy': _getEmployeeName(photo.employeeId),
           'employeeId': photo.employeeId,
@@ -371,18 +375,21 @@ class _ImagesScreenState extends State<ImagesScreen> {
             children: [
               Hero(
                 tag: heroTag,
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: AppColors.glassPrimary,
-                    child: const Icon(
-                      AppIcons.image,
-                      color: AppColors.textTertiary,
-                      size: 24,
-                    ),
-                  ),
-                ),
+                child: displayUrl == null
+                    ? Container(
+                        color: Colors.grey[300],
+                        child: Icon(Icons.image_not_supported,
+                            color: Colors.grey[500]),
+                      )
+                    : Image.network(
+                        displayUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Colors.grey[300],
+                          child: Icon(Icons.broken_image,
+                              color: Colors.grey[500]),
+                        ),
+                      ),
               ),
               // Employee Badge (top-left)
               Positioned(

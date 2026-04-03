@@ -179,12 +179,15 @@ class SessionTrackingTaskHandler extends TaskHandler {
           reason: 'app_removed_flush',
           allowOfflineQueue: true,
         );
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('[TrackingTaskHandler] onDestroy flush failed: $e\n$st');
+      }
 
-      // Write session end to Firestore
+      // Write session end to Firestore — separate from activityLog so each
+      // can succeed independently.
+      final now = DateTime.now();
+      final durationSecs = _sessionDurationSeconds();
       try {
-        final now = DateTime.now();
-        final durationSecs = _sessionDurationSeconds();
         await _firestore.collection('sessions').doc(sessionId).update({
           'endTime': Timestamp.fromDate(now),
           'status': 'auto_ended',
@@ -193,8 +196,12 @@ class SessionTrackingTaskHandler extends TaskHandler {
           'autoEndReason': 'app_removed',
           'autoEndSource': 'foreground_task_onDestroy',
         });
+      } catch (e, st) {
+        debugPrint('[TrackingTaskHandler] onDestroy session update failed: $e\n$st');
+      }
 
-        // Write activityLog for session end
+      // Write activityLog independently
+      try {
         await _firestore.collection('activityLogs').doc('session_auto_ended_$sessionId').set({
           'enterpriseId': enterpriseId,
           'employeeId': employeeId,
@@ -212,7 +219,9 @@ class SessionTrackingTaskHandler extends TaskHandler {
             'endReason': 'app_removed',
           },
         }, SetOptions(merge: true));
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('[TrackingTaskHandler] onDestroy activityLog write failed: $e\n$st');
+      }
 
       // Set RTDB presence to signal_lost
       try {
@@ -221,7 +230,9 @@ class SessionTrackingTaskHandler extends TaskHandler {
           'signalLostAt': ServerValue.timestamp,
           'lastSeen': ServerValue.timestamp,
         });
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('[TrackingTaskHandler] onDestroy RTDB update failed: $e\n$st');
+      }
 
       // Send local push notification to employee
       try {
@@ -253,12 +264,16 @@ class SessionTrackingTaskHandler extends TaskHandler {
             iOS: DarwinNotificationDetails(),
           ),
         );
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[TrackingTaskHandler] onDestroy notification failed: $e');
+      }
 
       // Clear session state from SQLite
       try {
         await _pendingLocationStore.markSessionEnding();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[TrackingTaskHandler] onDestroy markSessionEnding failed: $e');
+      }
     }
 
     await _syncManager.dispose();

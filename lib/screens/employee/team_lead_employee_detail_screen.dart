@@ -9,6 +9,7 @@ import '../../core/constants/app_typography.dart';
 import '../../models/activity_log_model.dart';
 import '../../models/photo_model.dart';
 import '../../models/task_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../services/admin_activity_feed_service.dart';
@@ -69,6 +70,21 @@ class _TeamLeadEmployeeDetailScreenState
     if (widget.employeeId == null) return;
     _feedSubscription?.cancel();
 
+    // Ensure DashboardProvider is initialized before loading feed.
+    // The feed depends on the employees list for migration ID resolution.
+    final dashboard = context.read<DashboardProvider>();
+    final enterpriseId =
+        context.read<AuthProvider>().enterpriseId ?? '';
+    if (enterpriseId.isNotEmpty && dashboard.employees.isEmpty) {
+      dashboard.initDashboard(enterpriseId).then((_) {
+        if (mounted) _startFeedStream();
+      });
+    } else {
+      _startFeedStream();
+    }
+  }
+
+  void _startFeedStream() {
     final dashboard = context.read<DashboardProvider>();
     final linkedIds = _feedService.resolveLinkedEmployeeIds(
       widget.employeeId!,
@@ -363,18 +379,32 @@ class _TeamLeadEmployeeDetailScreenState
                   child: Center(
                       child: Icon(AppIcons.camera,
                           color: AppColors.textTertiary)))
-              : Image.network(
-                  photo.thumbnailUrl.isNotEmpty
-                      ? photo.thumbnailUrl
-                      : photo.imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const ColoredBox(
-                    color: AppColors.glassPrimary,
-                    child: Center(
-                        child: Icon(AppIcons.camera,
-                            color: AppColors.textTertiary)),
-                  ),
-                ),
+              : () {
+                  final displayUrl =
+                      (photo.thumbnailUrl?.isNotEmpty == true)
+                          ? photo.thumbnailUrl!
+                          : (photo.imageUrl.isNotEmpty)
+                              ? photo.imageUrl
+                              : null;
+                  if (displayUrl == null) {
+                    return Container(
+                      color: Colors.grey[300],
+                      child: Center(
+                          child: Icon(Icons.image_not_supported,
+                              color: Colors.grey[500])),
+                    );
+                  }
+                  return Image.network(
+                    displayUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: Colors.grey[300],
+                      child: Center(
+                          child: Icon(Icons.broken_image,
+                              color: Colors.grey[500])),
+                    ),
+                  );
+                }(),
         );
       },
     );

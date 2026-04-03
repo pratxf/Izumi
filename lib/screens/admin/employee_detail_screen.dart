@@ -10,7 +10,6 @@ import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../models/activity_log_model.dart';
 import '../../models/photo_model.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../services/admin_activity_feed_service.dart';
 import '../../services/geocoding_cache.dart';
@@ -52,23 +51,16 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Extract employee ID from the route
+    // Extract employee ID from the route and start feed immediately.
+    // Do NOT gate on DashboardProvider.initDashboard() — the feed query
+    // only needs the employeeId. Migration-ID resolution via the employees
+    // list is best-effort; resolveLinkedEmployeeIds gracefully returns
+    // [employeeId] when the list is empty.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final id = GoRouterState.of(context).pathParameters['id'];
       if (id != null) {
         _employeeId = id;
-        // Always ensure DashboardProvider is initialized before loading feed.
-        // The feed depends on the employees list for migration ID resolution.
-        final dashboard = context.read<DashboardProvider>();
-        final enterpriseId =
-            context.read<AuthProvider>().enterpriseId ?? '';
-        if (enterpriseId.isNotEmpty && dashboard.employees.isEmpty) {
-          dashboard.initDashboard(enterpriseId).then((_) {
-            if (mounted) _startRecentFeed(id);
-          });
-        } else {
-          _startRecentFeed(id);
-        }
+        _startRecentFeed(id);
       }
     });
   }
@@ -575,8 +567,11 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
   }
 
   Widget _buildPhotoTile(PhotoModel photo) {
-    final imageUrl =
-        photo.thumbnailUrl.isNotEmpty ? photo.thumbnailUrl : photo.imageUrl;
+    final displayUrl = (photo.thumbnailUrl?.isNotEmpty == true)
+        ? photo.thumbnailUrl!
+        : (photo.imageUrl.isNotEmpty)
+            ? photo.imageUrl
+            : null;
     final heroTag = 'detail_photo_${photo.id}';
 
     return GestureDetector(
@@ -586,7 +581,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
         }
         context.push('/employee/image-detail', extra: {
           'imageUrl': photo.imageUrl,
-          'thumbnailUrl': imageUrl,
+          'thumbnailUrl': displayUrl ?? '',
           'location': photo.location,
           'capturedBy': widget.name,
           'employeeId': photo.employeeId,
@@ -618,18 +613,21 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
             children: [
               Hero(
                 tag: heroTag,
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: AppColors.glassPrimary,
-                    child: const Icon(
-                      AppIcons.image,
-                      color: AppColors.textTertiary,
-                      size: 24,
-                    ),
-                  ),
-                ),
+                child: displayUrl == null
+                    ? Container(
+                        color: Colors.grey[300],
+                        child: Icon(Icons.image_not_supported,
+                            color: Colors.grey[500]),
+                      )
+                    : Image.network(
+                        displayUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Colors.grey[300],
+                          child: Icon(Icons.broken_image,
+                              color: Colors.grey[500]),
+                        ),
+                      ),
               ),
               // Time overlay
               Positioned(

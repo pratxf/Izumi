@@ -43,6 +43,7 @@ class AuthProvider extends ChangeNotifier {
   StreamSubscription<DatabaseEvent>? _deviceSessionSubscription;
   String? _localDeviceToken;
   bool _deviceSessionReady = false; // grace period flag
+  final DateTime _appStartTime = DateTime.now();
   bool _registeringDeviceSession = false; // concurrency guard
   static const _deviceTokenKey = 'izumi_device_token';
   bool _disposed = false;
@@ -273,20 +274,17 @@ class AuthProvider extends ChangeNotifier {
       debugPrint('[AuthProvider] Device session token: $_localDeviceToken '
           '(${persistedToken != null ? "persisted" : "new"})');
 
-      final existingSession = await _rtdb.getDeviceSession(userId);
-      final remoteToken = existingSession?['token'] as String?;
-      if (persistedToken != null &&
-          remoteToken != null &&
-          remoteToken.isNotEmpty &&
-          remoteToken != _localDeviceToken) {
-        // Only sign out if the remote token is a DIFFERENT device's token.
-        // If remote is null/empty (cleared by onDisconnect/app kill), just
-        // reclaim the session — this is the same device restarting.
-        debugPrint(
-            '[AuthProvider] Existing device session belongs to another device. '
-            'local=$_localDeviceToken, remote=$remoteToken. Signing out this device.');
+      // Allow RTDB to reconnect and settle after cold start before reading
+      // the remote device session. Without this delay, the read may return
+      // stale cache data (or null) because the RTDB socket has not finished
+      // reconnecting to the server.
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (_disposed) return;
+
+      await _checkDeviceSession(userId, persistedToken);
+      if (_status == AuthStatus.unauthenticated) {
+        // _checkDeviceSession triggered a signout — abort registration.
         _registeringDeviceSession = false;
-        unawaited(_forceSignOutDueToNewDevice());
         return;
       }
 
@@ -305,6 +303,8 @@ class AuthProvider extends ChangeNotifier {
       (event) {
         // Ignore events during the grace period (stale RTDB cache).
         if (!_deviceSessionReady) return;
+        // Skip stale RTDB events replayed within 10s of app start.
+        if (DateTime.now().difference(_appStartTime).inSeconds < 20) return;
 
         final data = event.snapshot.value;
         if (data == null) return;
@@ -317,9 +317,17 @@ class AuthProvider extends ChangeNotifier {
         }
 
         final remoteToken = sessionData['token'] as String?;
-        if (remoteToken != null &&
-            _localDeviceToken != null &&
-            remoteToken != _localDeviceToken) {
+
+        // Null/empty remote token means the entry was cleared (e.g. by
+        // onDisconnect or a server-side cleanup). Do not sign out — the
+        // next setDeviceSession call will reclaim the slot.
+        if (remoteToken == null || remoteToken.isEmpty) return;
+
+        // If our own local token is not yet initialized, skip this event
+        // rather than risking a false-positive mismatch.
+        if (_localDeviceToken == null) return;
+
+        if (remoteToken != _localDeviceToken) {
           debugPrint('[AuthProvider] Device session mismatch! '
               'local=$_localDeviceToken, remote=$remoteToken. Forcing signout.');
           _forceSignOutDueToNewDevice();
@@ -333,11 +341,55 @@ class AuthProvider extends ChangeNotifier {
     // Grace period: allow RTDB to sync before enabling mismatch detection.
     // The initial .onValue fires immediately with cached data which may be
     // stale; this delay lets the write propagate before we start checking.
-    Future.delayed(const Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 20), () {
       if (!_disposed) _deviceSessionReady = true;
     });
 
     _registeringDeviceSession = false;
+  }
+
+  /// Check the remote device session and decide whether to reclaim or signout.
+  ///
+  /// Called only after [_localDeviceToken] is set. Rules:
+  /// - Remote token is null/empty → reclaim (same device restarting).
+  /// - Remote token matches local → same device, all good.
+  /// - Remote token differs AND we had a persisted token → different device,
+  ///   force signout.
+  /// - Remote token differs but no persisted token (fresh login) → reclaim.
+  Future<void> _checkDeviceSession(
+    String userId,
+    String? persistedToken,
+  ) async {
+    final existingSession = await _rtdb.getDeviceSession(userId);
+    final remoteToken = existingSession?['token'] as String?;
+
+    debugPrint('[AuthProvider] _checkDeviceSession: '
+        'local=$_localDeviceToken, remote=$remoteToken, '
+        'persisted=${persistedToken != null}');
+
+    // No remote token (cleared by disconnect, app kill, or first login)
+    // → reclaim the session slot. Do NOT sign out.
+    if (remoteToken == null || remoteToken.isEmpty) {
+      debugPrint('[AuthProvider] Remote token is null/empty — reclaiming session');
+      return;
+    }
+
+    // Same token → same device, nothing to do.
+    if (remoteToken == _localDeviceToken) return;
+
+    // Different token, but this is a fresh login (no persisted token from
+    // a previous app session) → reclaim. The remote token is stale from an
+    // earlier session that was not cleaned up properly.
+    if (persistedToken == null) {
+      debugPrint('[AuthProvider] Fresh login, stale remote token — reclaiming');
+      return;
+    }
+
+    // Genuinely different device holds the session → force signout.
+    debugPrint(
+        '[AuthProvider] Existing device session belongs to another device. '
+        'local=$_localDeviceToken, remote=$remoteToken. Signing out this device.');
+    unawaited(_forceSignOutDueToNewDevice());
   }
 
   /// Force signout because another device claimed the session.
@@ -981,6 +1033,8 @@ class AuthProvider extends ChangeNotifier {
     _deviceSessionSubscription = null;
     _deviceSessionReady = false;
     final userId = _authService.currentUser?.uid;
+    // Capture token BEFORE clearing so the RTDB cleanup can use it.
+    final tokenForCleanup = _localDeviceToken;
     _localDeviceToken = null;
 
     // Clear persisted device token so next login generates a fresh one.
@@ -996,11 +1050,11 @@ class AuthProvider extends ChangeNotifier {
             .doc(userId)
             .update({'fcmToken': FieldValue.delete()}).catchError((_) {}),
         FirebaseMessaging.instance.deleteToken().catchError((_) {}),
-        if (_localDeviceToken != null)
+        if (tokenForCleanup != null)
           _rtdb
               .clearDeviceSessionIfMatches(
                 userId: userId,
-                token: _localDeviceToken!,
+                token: tokenForCleanup,
               )
               .catchError((_) {}),
       ]);

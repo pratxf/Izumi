@@ -141,6 +141,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await session.startSession(
       employeeId: userId,
       enterpriseId: enterpriseId,
+      employeeName: auth.currentUser?.name ?? '',
     );
   }
 

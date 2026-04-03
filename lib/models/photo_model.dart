@@ -8,7 +8,7 @@ class PhotoModel {
   final String employeeId;
   final String sessionId;
   final String imageUrl;
-  final String thumbnailUrl;
+  final String? thumbnailUrl;
   final String? localFilePath;
   final DateTime timestamp;
   final String location;
@@ -32,7 +32,7 @@ class PhotoModel {
     required this.employeeId,
     required this.sessionId,
     required this.imageUrl,
-    this.thumbnailUrl = '',
+    this.thumbnailUrl,
     this.localFilePath,
     required this.timestamp,
     required this.location,
@@ -66,7 +66,7 @@ class PhotoModel {
       employeeId: data['employeeId'] ?? '',
       sessionId: data['sessionId'] ?? '',
       imageUrl: data['imageUrl'] ?? '',
-      thumbnailUrl: data['thumbnailUrl'] ?? '',
+      thumbnailUrl: data['thumbnailUrl'] as String?,
       localFilePath: null,
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
       location: data['location'] ?? '',
@@ -92,7 +92,7 @@ class PhotoModel {
       'employeeId': employeeId,
       'sessionId': sessionId,
       'imageUrl': imageUrl,
-      'thumbnailUrl': thumbnailUrl,
+      if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
       'timestamp': Timestamp.fromDate(timestamp),
       'location': location,
       'latitude': latitude,
