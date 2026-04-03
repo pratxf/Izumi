@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:izumi/core/ui/app_icons.dart';
@@ -67,12 +68,8 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      final employeeId = _employeeId;
-      if (employeeId != null) {
-        _startRecentFeed(employeeId);
-      }
-    }
+    // No-op: Firestore streams auto-deliver new events on resume.
+    // Restarting the feed here causes an unnecessary loading flash.
   }
 
   void _startRecentFeed(String employeeId) {
@@ -85,16 +82,17 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       });
     }
 
-    final linkedIds = _feedService.resolveLinkedEmployeeIds(
-      employeeId,
-      context.read<DashboardProvider>().employees,
-    );
+    final employees = context.read<DashboardProvider>().employees;
+    final linkedIds = employees.isEmpty
+        ? [employeeId]
+        : _feedService.resolveLinkedEmployeeIds(employeeId, employees);
+    final queryIds = linkedIds.isEmpty ? [employeeId] : linkedIds;
 
-    // Allow up to 3 seconds for all inner streams (employee logs, session
+    // Allow up to 6 seconds for all inner streams (employee logs, session
     // logs, photos) to deliver their first snapshot. Without this, the first
     // stream to fire (often with empty data) would immediately dismiss the
     // loading state and flash "No activity" before session-based data arrives.
-    _warmupTimer = Timer(const Duration(seconds: 3), () {
+    _warmupTimer = Timer(const Duration(seconds: 6), () {
       if (mounted && _activityLoading) {
         setState(() {
           _activityLoading = false;
@@ -105,7 +103,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
 
     _feedSubscription = _feedService
         .streamRecentFeed(
-          linkedEmployeeIds: linkedIds,
+          linkedEmployeeIds: queryIds,
           window: _activityWindow,
           photoLimit: _photoPreviewLimit,
         )
@@ -619,10 +617,13 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
                         child: Icon(Icons.image_not_supported,
                             color: Colors.grey[500]),
                       )
-                    : Image.network(
-                        displayUrl,
+                    : CachedNetworkImage(
+                        imageUrl: displayUrl,
+                        cacheKey: photo.id,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
+                        placeholder: (context, url) =>
+                            Container(color: Colors.grey[200]),
+                        errorWidget: (context, url, error) => Container(
                           color: Colors.grey[300],
                           child: Icon(Icons.broken_image,
                               color: Colors.grey[500]),

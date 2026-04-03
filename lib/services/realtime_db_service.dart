@@ -150,47 +150,4 @@ class RealtimeDbService {
     await _db.ref('sessionHeartbeat/$enterpriseId/$userId').remove();
   }
 
-  // ── Device Sessions (single-device enforcement) ──
-
-  Future<void> setDeviceSession({
-    required String userId,
-    required String token,
-  }) async {
-    await _db.ref('deviceSessions/$userId').set({
-      'token': token,
-      'timestamp': ServerValue.timestamp,
-    });
-  }
-
-  Future<void> clearDeviceSession({required String userId}) async {
-    await _db.ref('deviceSessions/$userId').remove();
-  }
-
-  Future<void> clearDeviceSessionIfMatches({
-    required String userId,
-    required String token,
-  }) async {
-    final ref = _db.ref('deviceSessions/$userId');
-    final snapshot = await ref.get();
-    final data = snapshot.value;
-    if (data is Map) {
-      final sessionData = Map<String, dynamic>.from(data);
-      if (sessionData['token'] == token) {
-        await ref.remove();
-      }
-    }
-  }
-
-  Future<Map<String, dynamic>?> getDeviceSession(String userId) async {
-    final snapshot = await _db.ref('deviceSessions/$userId').get();
-    final data = snapshot.value;
-    if (data is Map) {
-      return Map<String, dynamic>.from(data);
-    }
-    return null;
-  }
-
-  Stream<DatabaseEvent> streamDeviceSession(String userId) {
-    return _db.ref('deviceSessions/$userId').onValue;
-  }
 }

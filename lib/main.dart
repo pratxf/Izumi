@@ -27,6 +27,10 @@ import 'tracking/tracking_foreground_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Clear stale image cache from previous sessions
+  PaintingBinding.instance.imageCache.clear();
+  PaintingBinding.instance.imageCache.clearLiveImages();
+
   // Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -111,6 +115,30 @@ class _IzumiRouterState extends State<_IzumiRouter> {
     final authProvider = context.read<AuthProvider>();
     _router = createAppRouter(authProvider);
     _setupNotificationListeners(authProvider);
+    _setupDashboardAutoStart(authProvider);
+  }
+
+  void _setupDashboardAutoStart(AuthProvider authProvider) {
+    final dashboardProvider = context.read<DashboardProvider>();
+
+    authProvider.addListener(() {
+      if (authProvider.isAuthenticated &&
+          authProvider.enterpriseId != null &&
+          dashboardProvider.employees.isEmpty &&
+          !dashboardProvider.isLoading) {
+        dashboardProvider.initDashboard(authProvider.enterpriseId!);
+      }
+    });
+
+    // Also trigger immediately if already authenticated when widget mounts
+    if (authProvider.isAuthenticated && authProvider.enterpriseId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (dashboardProvider.employees.isEmpty &&
+            !dashboardProvider.isLoading) {
+          dashboardProvider.initDashboard(authProvider.enterpriseId!);
+        }
+      });
+    }
   }
 
   void _setupNotificationListeners(AuthProvider authProvider) {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:izumi/core/ui/app_icons.dart';
 import 'package:intl/intl.dart';
@@ -394,10 +395,13 @@ class _TeamLeadEmployeeDetailScreenState
                               color: Colors.grey[500])),
                     );
                   }
-                  return Image.network(
-                    displayUrl,
+                  return CachedNetworkImage(
+                    imageUrl: displayUrl,
+                    cacheKey: photo.id,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
+                    placeholder: (context, url) =>
+                        Container(color: Colors.grey[200]),
+                    errorWidget: (context, url, error) => Container(
                       color: Colors.grey[300],
                       child: Center(
                           child: Icon(Icons.broken_image,

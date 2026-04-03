@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 class NotificationService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
@@ -115,17 +117,51 @@ class NotificationService {
     _messaging.onTokenRefresh.listen(callback);
   }
 
-  // Store FCM token in user's Firestore document
+  static const _deviceIdKey = 'izumi_device_id';
+  static const _uuid = Uuid();
+
+  /// Get or create a stable device identifier that persists across app restarts
+  /// but differs between devices/installs.
+  Future<String> _getDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    var deviceId = prefs.getString(_deviceIdKey);
+    if (deviceId == null) {
+      deviceId = _uuid.v4();
+      await prefs.setString(_deviceIdKey, deviceId);
+    }
+    return deviceId;
+  }
+
+  /// Save FCM token to Firestore. If a different device already has a token
+  /// on record, write a forceLogout document so a Cloud Function sends a
+  /// force_logout push to the old device.
   Future<void> saveTokenToFirestore(String userId) async {
-    final token = await getToken();
-    if (token != null) {
+    final fcmToken = await getToken();
+    if (fcmToken == null) return;
+
+    final deviceId = await _getDeviceId();
+    final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
+    final doc = await userRef.get();
+    final existingToken = doc.data()?['fcmToken'] as String?;
+    final existingDeviceId = doc.data()?['deviceId'] as String?;
+
+    // Different device detected — request force logout on the old device
+    if (existingToken != null &&
+        existingDeviceId != null &&
+        existingDeviceId != deviceId) {
       await FirebaseFirestore.instance
-          .collection('users')
+          .collection('forceLogout')
           .doc(userId)
-          .update({
-        'fcmToken': token,
+          .set({
+        'token': existingToken,
+        'timestamp': FieldValue.serverTimestamp(),
       });
     }
+
+    await userRef.update({
+      'fcmToken': fcmToken,
+      'deviceId': deviceId,
+    });
   }
 
   // Subscribe to a topic

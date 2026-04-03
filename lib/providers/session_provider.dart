@@ -266,6 +266,14 @@ class SessionProvider extends ChangeNotifier {
       _safeNotifyListeners();
 
       await Future.wait([
+        _rtdb.clearActiveStats(
+          enterpriseId: enterpriseId,
+          userId: employeeId,
+        ),
+        _rtdb.clearSessionHeartbeat(
+          enterpriseId: enterpriseId,
+          userId: employeeId,
+        ),
         _rtdb.setPresence(
           enterpriseId: enterpriseId,
           userId: employeeId,

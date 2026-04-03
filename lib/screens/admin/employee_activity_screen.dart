@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:izumi/core/ui/app_icons.dart';
@@ -555,22 +556,21 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
                                   child: Icon(Icons.image_not_supported,
                                       color: Colors.grey[500]),
                                 )
-                              : Image.network(
-                                  previewUrl,
+                              : CachedNetworkImage(
+                                  imageUrl: previewUrl,
+                                  cacheKey: photo.id,
                                   fit: BoxFit.cover,
-                                  loadingBuilder: (context, child, progress) {
-                                    if (progress == null) return child;
-                                    return Container(
-                                      color: AppColors.glassPrimary,
-                                      child: const Center(
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: AppColors.primary,
-                                        ),
+                                  placeholder: (context, url) => Container(
+                                    color: AppColors.glassPrimary,
+                                    child: const Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: AppColors.primary,
                                       ),
-                                    );
-                                  },
-                                  errorBuilder: (_, __, ___) => Container(
+                                    ),
+                                  ),
+                                  errorWidget: (context, url, error) =>
+                                      Container(
                                     color: Colors.grey[300],
                                     child: Icon(Icons.broken_image,
                                         color: Colors.grey[500]),
@@ -1321,26 +1321,20 @@ class _GalleryTile extends StatelessWidget {
                       child: Icon(Icons.image_not_supported,
                           color: Colors.grey[500]),
                     )
-                  : Image.network(
-                      previewUrl,
+                  : CachedNetworkImage(
+                      imageUrl: previewUrl,
+                      cacheKey: photo.id,
                       fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                          color: AppColors.glassPrimary,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.primary.withValues(alpha: 0.5),
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                            ),
+                      placeholder: (context, url) => Container(
+                        color: AppColors.glassPrimary,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary.withValues(alpha: 0.5),
                           ),
-                        );
-                      },
-                      errorBuilder: (_, __, ___) => Container(
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
                         color: Colors.grey[300],
                         child: Icon(Icons.broken_image,
                             color: Colors.grey[500]),

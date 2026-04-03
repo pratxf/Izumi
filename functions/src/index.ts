@@ -15,6 +15,9 @@ admin.initializeApp();
 // ── Auth Triggers ──────────────────────────────────────────────────────────
 export { onUserCreate } from "./auth/on_user_create";
 
+// ── Force Logout (single-device enforcement via FCM) ──────────────────────
+export { onForceLogoutCreated } from "./force_logout/on_force_logout_created";
+
 // ── Session Triggers ───────────────────────────────────────────────────────
 export { onSessionComplete } from "./sessions/on_session_complete";
 export { onSessionStarted, onSessionEnded } from "./sessions/on_session_event";

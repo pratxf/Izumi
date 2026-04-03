@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -539,10 +540,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
                             child: Icon(Icons.image_not_supported,
                                 color: Colors.grey[500]),
                           )
-                        : Image.network(
-                            displayUrl,
+                        : CachedNetworkImage(
+                            imageUrl: displayUrl,
+                            cacheKey: photo.id,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
+                            placeholder: (context, url) =>
+                                Container(color: Colors.grey[200]),
+                            errorWidget: (context, url, error) => Container(
                               color: Colors.grey[300],
                               child: Icon(Icons.broken_image,
                                   color: Colors.grey[500]),

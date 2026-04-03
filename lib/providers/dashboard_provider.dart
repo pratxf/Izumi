@@ -24,6 +24,8 @@ class DashboardProvider extends ChangeNotifier {
   Map<String, DailySummaryModel> _todaySummaries = {};
   bool _isLoading = false;
   String? _error;
+  String? _enterpriseId;
+  Timer? _refreshTimer;
 
   StreamSubscription? _summarySubscription;
   StreamSubscription<DatabaseEvent>? _presenceSubscription;
@@ -58,8 +60,15 @@ class DashboardProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void initWithEnterpriseId(String enterpriseId) {
+    if (!_isLoading && _presenceSubscription == null) {
+      initDashboard(enterpriseId);
+    }
+  }
+
   // Initialize dashboard with all streams
   Future<void> initDashboard(String enterpriseId) async {
+    _enterpriseId = enterpriseId;
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -90,6 +99,14 @@ class DashboardProvider extends ChangeNotifier {
     _streamPresence(enterpriseId);
     _streamLiveLocations(enterpriseId);
     _streamActiveStats(enterpriseId);
+    _startRefreshTimer();
+  }
+
+  void _startRefreshTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (_enterpriseId != null) refreshEmployees(_enterpriseId!);
+    });
   }
 
   void _streamTodaySummaries(String enterpriseId) {
@@ -308,6 +325,7 @@ class DashboardProvider extends ChangeNotifier {
     _locationSubscription?.cancel();
     _statsSubscription?.cancel();
     _liveClockTimer?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 }

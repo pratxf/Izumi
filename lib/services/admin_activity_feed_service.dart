@@ -484,7 +484,13 @@ class AdminActivityFeedService {
       }
     }, onError: (e) {
       debugPrint('[FeedService] sessionSub error: $e');
-      emit();
+      activeSessionIds = [];
+      attachSessionStreams([]);
+    });
+
+    // Fallback: ensure the feed never stays blank if streams are slow
+    Timer(const Duration(seconds: 4), () {
+      if (!controller.isClosed) emit();
     });
 
     controller.onCancel = () async {
