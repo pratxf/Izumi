@@ -147,14 +147,18 @@ class SessionTrackingTaskHandler extends TaskHandler {
     final employeeId = _employeeId;
 
     if (sessionId != null && enterpriseId != null && employeeId != null) {
-      // If context was cleared from shared storage, this is a normal session
-      // end (not an app kill). Skip auto-end to avoid duplicate notifications.
+      // If context was cleared or marked as 'ending' from shared storage,
+      // this is a normal session end (not an app kill). Skip auto-end to
+      // avoid duplicate notifications.
       final storedSessionId = await FlutterForegroundTask.getData<String>(
         key: _sessionIdKey,
       );
-      if (storedSessionId == null || storedSessionId.isEmpty) {
+      final sessionStatus = await FlutterForegroundTask.getData<String>(
+        key: 'tracking.sessionStatus',
+      );
+      if (storedSessionId == null || storedSessionId.isEmpty || sessionStatus == 'ending') {
         debugPrint(
-          '[TrackingTaskHandler] onDestroy: context cleared, '
+          '[TrackingTaskHandler] onDestroy: context cleared or ending, '
           'skipping auto-end (normal session end).',
         );
         return;
@@ -223,12 +227,17 @@ class SessionTrackingTaskHandler extends TaskHandler {
         debugPrint('[TrackingTaskHandler] onDestroy activityLog write failed: $e\n$st');
       }
 
-      // Set RTDB presence to signal_lost
+      // Atomic RTDB cleanup: set presence to signal_lost AND remove
+      // activeStats/sessionHeartbeat/liveLocations so the dashboard timer
+      // stops immediately. Using multi-path update for atomicity.
       try {
-        await _database.ref('presence/$enterpriseId/$employeeId').update({
-          'status': 'signal_lost',
-          'signalLostAt': ServerValue.timestamp,
-          'lastSeen': ServerValue.timestamp,
+        await _database.ref().update({
+          'presence/$enterpriseId/$employeeId/status': 'signal_lost',
+          'presence/$enterpriseId/$employeeId/signalLostAt': ServerValue.timestamp,
+          'presence/$enterpriseId/$employeeId/lastSeen': ServerValue.timestamp,
+          'activeStats/$enterpriseId/$employeeId': null,
+          'sessionHeartbeat/$enterpriseId/$employeeId': null,
+          'liveLocations/$enterpriseId/$employeeId': null,
         });
       } catch (e, st) {
         debugPrint('[TrackingTaskHandler] onDestroy RTDB update failed: $e\n$st');

@@ -3,7 +3,7 @@ import { logger } from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import { sendNotification } from "../utils/send_notification";
 
-const SIGNAL_LOST_MAX_AGE_MS = 60 * 60 * 1000;
+const SIGNAL_LOST_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_SESSION_DURATION_MS = 16 * 60 * 60 * 1000; // 16 hours
 
 type PresenceNode = {
@@ -25,7 +25,7 @@ type SessionDoc = {
 
 export const sweepSignalLostSessions = onSchedule(
   {
-    schedule: "*/30 * * * *",
+    schedule: "*/10 * * * *",
     timeZone: "Asia/Kolkata",
     region: "asia-south1",
     retryCount: 1,
@@ -364,10 +364,53 @@ export const sweepSignalLostSessions = onSchedule(
       });
     }
 
+    // ── Clean up orphaned RTDB nodes ──
+    // activeStats/sessionHeartbeat/liveLocations may survive if onDestroy
+    // ended the Firestore session but failed to remove RTDB nodes.
+    let orphanCleanedCount = 0;
+    const activeStatsSnap = await rtdb.ref("activeStats").get();
+    const activeStatsRoot = activeStatsSnap.val() as Record<
+      string,
+      Record<string, unknown>
+    > | null;
+
+    if (activeStatsRoot) {
+      for (const [eid, employees] of Object.entries(activeStatsRoot ?? {})) {
+        const cleanupUpdates: Record<string, null> = {};
+
+        for (const empId of Object.keys(employees ?? {})) {
+          const activeSessionSnap = await db
+            .collection("sessions")
+            .where("enterpriseId", "==", eid)
+            .where("employeeId", "==", empId)
+            .where("status", "==", "active")
+            .limit(1)
+            .get();
+
+          if (activeSessionSnap.empty) {
+            // No active Firestore session — RTDB node is orphaned
+            cleanupUpdates[`activeStats/${eid}/${empId}`] = null;
+            cleanupUpdates[`sessionHeartbeat/${eid}/${empId}`] = null;
+            cleanupUpdates[`liveLocations/${eid}/${empId}`] = null;
+            orphanCleanedCount++;
+            logger.info("sweepSignalLostSessions: Cleaning orphaned RTDB nodes.", {
+              enterpriseId: eid,
+              employeeId: empId,
+            });
+          }
+        }
+
+        if (Object.keys(cleanupUpdates).length > 0) {
+          await rtdb.ref().update(cleanupUpdates);
+        }
+      }
+    }
+
     logger.info("sweepSignalLostSessions: Completed run.", {
       inspectedCount,
       autoEndedCount,
       forceEndedCount,
+      orphanCleanedCount,
     });
   },
 );

@@ -145,10 +145,16 @@ class NotificationService {
     final existingToken = doc.data()?['fcmToken'] as String?;
     final existingDeviceId = doc.data()?['deviceId'] as String?;
 
-    // Different device detected — request force logout on the old device
-    if (existingToken != null &&
+    // Only trigger force-logout if BOTH the token AND deviceId differ.
+    // Some OEMs (Motorola) clear SharedPreferences on app kill, causing
+    // deviceId to regenerate on the same device. Checking the FCM token
+    // prevents the device from force-logging out itself after a restart.
+    final isDifferentDevice = existingToken != null &&
+        existingToken != fcmToken &&
         existingDeviceId != null &&
-        existingDeviceId != deviceId) {
+        existingDeviceId != deviceId;
+
+    if (isDifferentDevice) {
       await FirebaseFirestore.instance
           .collection('forceLogout')
           .doc(userId)

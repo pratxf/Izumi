@@ -94,6 +94,18 @@ class SessionTaskRemovalService : Service() {
                 sessionEnterpriseId != enterpriseId ||
                 sessionEmployeeId != userId
             ) {
+                // Session already ended (likely by Flutter onDestroy).
+                // Still clean up RTDB nodes in case onDestroy left them behind.
+                try {
+                    val updates = hashMapOf<String, Any?>(
+                        "activeStats/$enterpriseId/$userId" to null,
+                        "sessionHeartbeat/$enterpriseId/$userId" to null,
+                        "liveLocations/$enterpriseId/$userId" to null,
+                    )
+                    Tasks.await(rtdb.updateChildren(updates), 10, TimeUnit.SECONDS)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to clean up orphaned RTDB nodes: $e")
+                }
                 clearSessionContext()
                 return
             }

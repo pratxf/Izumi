@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_shadows.dart'; // Added for glass shadow
-import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
 
 /// OTP Input Field Widget
@@ -70,7 +68,6 @@ class _OtpInputFieldState extends State<OtpInputField> {
   @override
   Widget build(BuildContext context) {
     final hasError = widget.errorText != null;
-    const boxSize = 54.0;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -87,38 +84,33 @@ class _OtpInputFieldState extends State<OtpInputField> {
 
               return Padding(
                 padding: EdgeInsets.only(
-                  right: index < widget.length - 1 ? AppSpacing.sm : 0,
+                  right: index < widget.length - 1 ? 10.0 : 0,
                 ),
                 child: SizedBox(
-                  width: boxSize,
-                  height: boxSize,
+                  width: 48,
+                  height: 56,
                   child: Container(
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: AppColors.glassPrimary,
-                      borderRadius: BorderRadius.circular(18),
+                      color: isFilled
+                          ? const Color(0xFFF0F7F1)
+                          : const Color(0xFFF5F5F5),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: hasError
                             ? AppColors.error
-                            : isActive || isFilled
-                                ? AppColors.primary.withValues(alpha: 0.5)
-                                : AppColors.glassBorder,
-                        width: 1,
+                            : isActive
+                                ? const Color(0xFF2E7D32)
+                                : Colors.transparent,
+                        width: 1.5,
                       ),
-                      boxShadow: isActive
-                          ? [
-                              BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.25),
-                                blurRadius: 18,
-                              ),
-                            ]
-                          : AppShadows.glass,
                     ),
                     child: Text(
                       displayChar,
-                      style: AppTypography.h2.copyWith(
+                      style: const TextStyle(
                         fontSize: 22,
-                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF111111),
                       ),
                     ),
                   ),
@@ -150,7 +142,7 @@ class _OtpInputFieldState extends State<OtpInputField> {
           ),
         ),
         if (hasError) ...[
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 16),
           Text(
             widget.errorText!,
             style: AppTypography.caption.copyWith(color: AppColors.errorDark),

@@ -116,28 +116,13 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         enterpriseId: authProvider.enterpriseId,
       );
 
-      final initialActivities = _dedupeActivityLogs(
-        widget.initialActivities
-            .where((activity) => _isInSelectedRange(activity.timestamp))
-            .fold<Map<String, ActivityLogModel>>({}, (acc, activity) {
-              acc[activity.id] = activity;
-              return acc;
-            })
-            .values
-            .toList()
-          ..sort((a, b) => b.timestamp.compareTo(a.timestamp)),
-      );
-
-      final effectiveActivities =
-          feed.activities.isNotEmpty ? feed.activities : initialActivities;
-
       if (!mounted || loadVersion != _loadVersion) return;
 
       setState(() {
         _dayActivity = _EmployeeDayActivity(
           selectedDate: _rangeStart,
           summary: feed.summary ?? _buildFallbackSummary(),
-          activities: effectiveActivities,
+          activities: feed.activities,
           photos: feed.photos,
           sessions: feed.sessions,
         );

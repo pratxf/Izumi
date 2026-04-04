@@ -196,8 +196,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                     distance: distance,
                                     photos: photos,
                                     onTap: () {
-                                      final logs =
-                                          analytics.getLogsForEmployee(emp.id);
                                       final liveStats =
                                           analytics.activeStatsData[emp.id];
                                       final filterRange =
@@ -220,7 +218,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                                   emp.migratedFrom!.isNotEmpty)
                                                 emp.migratedFrom!,
                                             ],
-                                            initialActivities: logs,
+                                            initialActivities: const [],
                                             initialDate: initialDate,
                                             initialLiveStats: liveStats,
                                             initialAggregateStats: stats,

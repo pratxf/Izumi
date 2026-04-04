@@ -16,7 +16,9 @@ import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../services/permission_service.dart';
+import '../../services/battery_optimization_service.dart';
 import '../../offline_queue/offline_queue_manager.dart';
+import '../../services/realtime_db_service.dart';
 
 /// Employee Home Screen - Glassmorphism Design
 /// Shows IDLE or ACTIVE state based on session status
@@ -39,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initProviders();
       _listenUnread();
+      _cleanupOrphanedSession();
     });
   }
 
@@ -47,6 +50,66 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       // Force-retry any stuck uploads when app comes to foreground
       OfflineQueueManager.instance.retryAllNow();
+      _cleanupOrphanedSession();
+    }
+  }
+
+  Future<void> _cleanupOrphanedSession() async {
+    if (!mounted) return;
+    try {
+      final session = context.read<SessionProvider>();
+      // If local session thinks we're active, nothing to clean
+      if (session.isSessionActive) return;
+
+      final auth = context.read<AuthProvider>();
+      final rtdb = RealtimeDbService();
+      final userId = auth.currentUser?.id;
+      final enterpriseId = auth.enterpriseId ?? auth.currentUser?.enterpriseId;
+      if (userId == null || enterpriseId == null) return;
+
+      // Check Firestore for any orphaned active session
+      final snap = await FirebaseFirestore.instance
+          .collection('sessions')
+          .where('employeeId', isEqualTo: userId)
+          .where('status', isEqualTo: 'active')
+          .limit(1)
+          .get();
+
+      if (!mounted) return;
+
+      if (snap.docs.isEmpty) {
+        // No orphaned Firestore session — just clean up RTDB in case
+        // activeStats was left behind
+        await rtdb.clearActiveStats(enterpriseId: enterpriseId, userId: userId);
+        return;
+      }
+
+      // Orphaned active session found — end it
+      final orphanedDoc = snap.docs.first;
+      final startTime = orphanedDoc.data()['startTime'] as Timestamp?;
+      final totalDuration = startTime != null
+          ? DateTime.now().difference(startTime.toDate()).inSeconds
+          : 0;
+
+      await orphanedDoc.reference.update({
+        'status': 'auto_ended',
+        'endTime': FieldValue.serverTimestamp(),
+        'totalDuration': totalDuration,
+        'autoEndReason': 'orphaned_on_reopen',
+        'autoEndSource': 'home_screen_cleanup',
+      });
+
+      // Clean up all RTDB nodes
+      await Future.wait([
+        rtdb.setOffline(enterpriseId: enterpriseId, userId: userId),
+        rtdb.clearActiveStats(enterpriseId: enterpriseId, userId: userId),
+        rtdb.clearSessionHeartbeat(enterpriseId: enterpriseId, userId: userId),
+        rtdb.clearLiveLocation(enterpriseId: enterpriseId, userId: userId),
+      ]);
+
+      debugPrint('[HomeScreen] Cleaned up orphaned session: ${orphanedDoc.id}');
+    } catch (e) {
+      debugPrint('[HomeScreen] Orphan cleanup failed: $e');
     }
   }
 
@@ -137,6 +200,64 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           'To keep tracking alive on aggressive Android devices like Samsung and Xiaomi, allow Izumi to ignore battery optimizations on this device.',
     );
     if (!batteryOptimizationGranted || !mounted) return;
+
+    // OEM-specific battery settings (Xiaomi autostart, Huawei protected apps, etc.)
+    // Only prompt once — after that, don't block session start.
+    final oemPrompted = await BatteryOptimizationService.hasPromptedBefore();
+    if (!oemPrompted && mounted) {
+      final shouldOpen = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black.withValues(alpha: 0.4),
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.glassStrong,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            'Keep tracking alive',
+            style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
+          ),
+          content: Text(
+            'Some devices stop background apps aggressively. '
+            'To prevent your session from stopping when you lock your phone, '
+            'please allow Izumi to autostart and run unrestricted.\n\n'
+            'On the next screen, look for "Autostart" or "Battery" and enable it for Izumi.',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(
+                'Skip',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(
+                'Open Settings',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      await BatteryOptimizationService.markAsPrompted();
+      if (shouldOpen == true && mounted) {
+        await BatteryOptimizationService.openOemBatterySettings();
+        // Give user time to return from settings
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
+      if (!mounted) return;
+    }
 
     await session.startSession(
       employeeId: userId,

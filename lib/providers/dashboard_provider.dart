@@ -182,12 +182,16 @@ class DashboardProvider extends ChangeNotifier {
     });
   }
 
+  static const int _maxSessionDurationSecs = 16 * 3600; // 16 hours
+
   int _resolveLiveDurationSecs(Map<String, dynamic> stats) {
     final sessionStartTimeMs = (stats['sessionStartTimeMs'] as num?)?.toInt();
     if (sessionStartTimeMs != null) {
       final startedAt =
           DateTime.fromMillisecondsSinceEpoch(sessionStartTimeMs).toLocal();
       final elapsed = DateTime.now().difference(startedAt).inSeconds;
+      // Safety cap: if more than 16 hours, this is a ghost session
+      if (elapsed >= _maxSessionDurationSecs) return 0;
       if (elapsed >= 0) return elapsed;
     }
     return (stats['sessionDuration'] as num?)?.toInt() ?? 0;

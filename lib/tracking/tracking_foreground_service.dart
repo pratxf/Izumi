@@ -37,7 +37,12 @@ class TrackingForegroundService {
         channelName: 'Izumi Tracking',
         channelDescription:
             'Keeps field session tracking alive in the background.',
+        channelImportance: NotificationChannelImportance.HIGH,
+        priority: NotificationPriority.HIGH,
         onlyAlertOnce: true,
+        enableVibration: false,
+        playSound: false,
+        showWhen: false,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: true,
@@ -183,13 +188,24 @@ class TrackingForegroundService {
     );
   }
 
+  static const String _sessionStatusKey = 'tracking.sessionStatus';
+
   static Future<void> stopTracking({bool clearContext = false}) async {
     if (clearContext) {
+      // Mark as 'ending' FIRST so onDestroy sees it and skips auto-end,
+      // closing the race window where OEM kills service between
+      // stopTracking() call and context being fully cleared.
+      await FlutterForegroundTask.saveData(
+        key: _sessionStatusKey,
+        value: 'ending',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
       await Future.wait([
         FlutterForegroundTask.removeData(key: _enterpriseIdKey),
         FlutterForegroundTask.removeData(key: _employeeIdKey),
         FlutterForegroundTask.removeData(key: _sessionIdKey),
         FlutterForegroundTask.removeData(key: _startedAtKey),
+        FlutterForegroundTask.removeData(key: _sessionStatusKey),
       ]);
     }
 

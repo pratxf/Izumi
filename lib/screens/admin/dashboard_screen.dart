@@ -91,6 +91,16 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.dispose();
   }
 
+  String _signalLostLabel(Map<String, dynamic>? presence) {
+    final signalLostAt = presence?['signalLostAt'];
+    if (signalLostAt is! num) return 'Signal Lost';
+    final minutes =
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(signalLostAt.toInt())).inMinutes;
+    if (minutes < 5) return 'Signal Lost (Reconnecting...)';
+    if (minutes < 15) return 'Signal Lost (${minutes}m ago)';
+    return 'Signal Lost (Ending session...)';
+  }
+
   String _statusFilterLabel() {
     switch (_statusFilter) {
       case 'signal_lost':
@@ -534,7 +544,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         : isBreak
             ? 'BREAK'
             : isSignalLost
-                ? 'Signal Lost (Reconnecting...)'
+                ? _signalLostLabel(dashboardProvider.presenceData[employee.id])
                 : 'OFFLINE';
 
     return GestureDetector(

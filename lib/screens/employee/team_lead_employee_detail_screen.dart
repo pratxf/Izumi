@@ -10,7 +10,6 @@ import '../../core/constants/app_typography.dart';
 import '../../models/activity_log_model.dart';
 import '../../models/photo_model.dart';
 import '../../models/task_model.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../services/admin_activity_feed_service.dart';
@@ -51,12 +50,19 @@ class _TeamLeadEmployeeDetailScreenState
   @override
   void initState() {
     super.initState();
+    // Start feed immediately — no dependency on DashboardProvider loading first
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadFeed();
+      _startFeedStreamDirect();
     });
     // Auto-refresh every 60 seconds
     _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      _loadFeed();
+      _startFeedStreamDirect();
+    });
+    // Safety timeout — never show skeleton forever
+    Future.delayed(const Duration(seconds: 15), () {
+      if (mounted && _feedLoading) {
+        setState(() => _feedLoading = false);
+      }
     });
   }
 
@@ -67,31 +73,19 @@ class _TeamLeadEmployeeDetailScreenState
     super.dispose();
   }
 
-  void _loadFeed() {
+  void _startFeedStreamDirect() {
     if (widget.employeeId == null) return;
     _feedSubscription?.cancel();
 
-    // Ensure DashboardProvider is initialized before loading feed.
-    // The feed depends on the employees list for migration ID resolution.
-    final dashboard = context.read<DashboardProvider>();
-    final enterpriseId =
-        context.read<AuthProvider>().enterpriseId ?? '';
-    if (enterpriseId.isNotEmpty && dashboard.employees.isEmpty) {
-      dashboard.initDashboard(enterpriseId).then((_) {
-        if (mounted) _startFeedStream();
-      });
-    } else {
-      _startFeedStream();
-    }
+    // Start stream immediately with the known employee ID
+    _startStream([widget.employeeId!]);
+
+    // Resolve migration IDs in background and upgrade stream if more found
+    _resolveMigrationIdsInBackground();
   }
 
-  void _startFeedStream() {
-    final dashboard = context.read<DashboardProvider>();
-    final linkedIds = _feedService.resolveLinkedEmployeeIds(
-      widget.employeeId!,
-      dashboard.employees,
-    );
-
+  void _startStream(List<String> linkedIds) {
+    _feedSubscription?.cancel();
     _feedSubscription = _feedService
         .streamRecentFeed(
           linkedEmployeeIds: linkedIds,
@@ -109,6 +103,25 @@ class _TeamLeadEmployeeDetailScreenState
       if (!mounted) return;
       setState(() => _feedLoading = false);
     });
+  }
+
+  void _resolveMigrationIdsInBackground() {
+    try {
+      final dashboard = context.read<DashboardProvider>();
+      final allEmployees = dashboard.employees;
+      if (allEmployees.isEmpty) return;
+      final linked = _feedService.resolveLinkedEmployeeIds(
+        widget.employeeId!,
+        allEmployees,
+      );
+      if (linked.length > 1) {
+        // More IDs found — restart stream with full set
+        _startStream(linked);
+      }
+    } catch (_) {
+      // Migration ID resolution failed — stream already running
+      // with primary ID, no action needed
+    }
   }
 
   @override
@@ -418,10 +431,22 @@ class _TeamLeadEmployeeDetailScreenState
 
   Widget _buildActivityFeed() {
     if (_feedLoading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(
-            child: CircularProgressIndicator(color: AppColors.primary)),
+      // Shimmer skeleton while stream is connecting
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          children: List.generate(5, (_) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Container(
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppColors.glassPrimary,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.glassBorder),
+              ),
+            ),
+          )),
+        ),
       );
     }
 
@@ -429,9 +454,17 @@ class _TeamLeadEmployeeDetailScreenState
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Center(
-          child: Text('No activity in the last 24 hours',
-              style: AppTypography.bodySmall
-                  .copyWith(color: AppColors.textTertiary)),
+          child: Column(
+            children: [
+              Icon(Icons.timeline_outlined,
+                  color: AppColors.textTertiary.withValues(alpha: 0.4),
+                  size: 48),
+              const SizedBox(height: 12),
+              Text('No activity in the last 24 hours',
+                  style: AppTypography.bodySmall
+                      .copyWith(color: AppColors.textTertiary)),
+            ],
+          ),
         ),
       );
     }

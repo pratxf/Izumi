@@ -130,145 +130,136 @@ class _OtpScreenState extends State<OtpScreen> {
         child: Container(
           decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
           child: SafeArea(
-            child: SingleChildScrollView(
-              keyboardDismissBehavior: Platform.isIOS
-                  ? ScrollViewKeyboardDismissBehavior.onDrag
-                  : ScrollViewKeyboardDismissBehavior.manual,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: MediaQuery.of(context).size.height -
-                      MediaQuery.of(context).padding.top -
-                      MediaQuery.of(context).padding.bottom,
-                ),
-                child: Column(
-                  children: [
-                  const SizedBox(height: 40),
+            child: Center(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior: Platform.isIOS
+                    ? ScrollViewKeyboardDismissBehavior.onDrag
+                    : ScrollViewKeyboardDismissBehavior.manual,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 48),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                    // Logo
+                    _buildLogo(),
+                    const SizedBox(height: 16),
 
-                  // Logo
-                  _buildLogo(),
-                  const SizedBox(height: 16),
+                    // Title
+                    Text(
+                      'Verification',
+                      style: AppTypography.h1.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Enter the 6-digit code sent to',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _maskedPhone,
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
 
-                  // Title
-                  Text(
-                    'Verification',
-                    style: AppTypography.h1.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Enter the 6-digit code sent to',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _maskedPhone,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-
-                  // OTP Inputs
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: OtpInputField(
+                    // OTP Inputs
+                    OtpInputField(
                       length: 6,
                       onChanged: (value) => setState(() => _otpValue = value),
                       onCompleted: (value) =>
                           setState(() => _otpValue = value),
                     ),
-                  ),
-                  const SizedBox(height: 32),
+                    const SizedBox(height: 32),
 
-                  // Resend
-                  Text(
-                    "Didn't receive the code?",
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textSecondary,
+                    // Resend
+                    Text(
+                      "Didn't receive the code?",
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      GestureDetector(
-                        onTap: _canResend ? _resendOtp : null,
-                        child: Text(
-                          'Resend OTP',
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: _canResend
-                                ? AppColors.primary
-                                : AppColors.textDisabled,
-                            fontWeight: FontWeight.bold,
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        GestureDetector(
+                          onTap: _canResend ? _resendOtp : null,
+                          child: Text(
+                            'Resend OTP',
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: _canResend
+                                  ? AppColors.primary
+                                  : AppColors.textDisabled,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (!_canResend) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            '(00:${_resendTimer.toString().padLeft(2, '0')})',
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: AppColors.textDisabled,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    // Verify Button
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: GestureDetector(
+                        onTap: _isVerifying ? null : _verifyOtp,
+                        child: Opacity(
+                          opacity: _isVerifying ? 0.6 : 1.0,
+                          child: Container(
+                            width: double.infinity,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(26),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(alpha: 0.3),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: _isVerifying
+                                  ? SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2.5,
+                                      ),
+                                    )
+                                  : Text(
+                                      'Verify & Proceed',
+                                      style: AppTypography.buttonLarge.copyWith(color: Colors.white),
+                                    ),
+                            ),
                           ),
                         ),
                       ),
-                      if (!_canResend) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          '(00:${_resendTimer.toString().padLeft(2, '0')})',
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.textDisabled,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
+                    ),
                     ],
                   ),
-
-                  const Spacer(),
-
-                  // Verify Button
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: GestureDetector(
-                      onTap: _isVerifying ? null : _verifyOtp,
-                      child: Opacity(
-                        opacity: _isVerifying ? 0.6 : 1.0,
-                        child: Container(
-                          width: double.infinity,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(28),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.3),
-                                blurRadius: 20,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: _isVerifying
-                                ? SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2.5,
-                                    ),
-                                  )
-                                : Text(
-                                    'Verify & Proceed',
-                                    style: AppTypography.buttonLarge.copyWith(color: Colors.white),
-                                  ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 48),
-
-                    const SizedBox(height: 16),
-                  ],
                 ),
               ),
             ),

@@ -94,17 +94,20 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _onAuthStateChanged(User? firebaseUser) async {
     if (firebaseUser == null) {
       // Guard: Firebase may briefly emit null before restoring a persisted
-      // session on cold start. If no auth resolution has completed yet,
-      // wait briefly and re-check.
+      // session on cold start. Some OEMs (Motorola) have slow keystore
+      // access that can delay token restoration by 1-2 seconds.
+      // Retry twice with increasing delays before giving up.
       if (_status == AuthStatus.initial || _status == AuthStatus.loading) {
         debugPrint(
             '[AuthProvider] Null event during $_status — checking for spurious emission');
-        await Future.delayed(const Duration(milliseconds: 500));
-        final retryUser = _authService.currentUser;
-        if (retryUser != null) {
-          debugPrint(
-              '[AuthProvider] Spurious null detected, retrying with restored user');
-          return _onAuthStateChanged(retryUser);
+        for (final delay in [500, 1500]) {
+          await Future.delayed(Duration(milliseconds: delay));
+          final retryUser = _authService.currentUser;
+          if (retryUser != null) {
+            debugPrint(
+                '[AuthProvider] Spurious null detected after ${delay}ms, retrying with restored user');
+            return _onAuthStateChanged(retryUser);
+          }
         }
       }
 
