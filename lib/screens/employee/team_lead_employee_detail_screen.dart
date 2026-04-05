@@ -476,9 +476,11 @@ class _TeamLeadEmployeeDetailScreenState
         Color color;
         switch (log.type) {
           case 'session_start':
+          case 'session_started':
             icon = AppIcons.play;
             color = AppColors.success;
           case 'session_end':
+          case 'session_ended':
           case 'session_auto_ended':
             icon = AppIcons.stop_circle;
             color = AppColors.critical;

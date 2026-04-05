@@ -3,15 +3,19 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../models/daily_summary_model.dart';
 import '../models/activity_log_model.dart';
+import '../models/session_model.dart';
 import '../models/user_model.dart';
 import '../repositories/daily_summary_repository.dart';
 import '../repositories/activity_log_repository.dart';
 import '../repositories/photo_repository.dart';
 import '../repositories/user_repository.dart';
 import '../services/realtime_db_service.dart';
+import '../services/session_query_helper.dart';
 
 class AnalyticsProvider extends ChangeNotifier {
+  bool _disposed = false;
   final DailySummaryRepository _summaryRepo = DailySummaryRepository();
+  final SessionQueryHelper _sessionHelper = SessionQueryHelper();
   final ActivityLogRepository _logRepo = ActivityLogRepository();
   final PhotoRepository _photoRepo = PhotoRepository();
   final UserRepository _userRepo = UserRepository();
@@ -25,6 +29,10 @@ class AnalyticsProvider extends ChangeNotifier {
   final Map<String, List<ActivityLogModel>> _employeeLogs = {};
   Map<String, Map<String, dynamic>> _activeStatsData = {};
   Map<String, int> _employeePhotoCounts = {};
+  /// Session-based fallback data: when dailySummaries are empty (e.g. auto-ended
+  /// sessions that never wrote a summary), we compute stats from sessions directly.
+  Map<String, List<SessionModel>> _employeeSessions = {};
+  bool _sessionFallbackLoaded = false;
   int _actualTotalPhotos = 0;
   bool _isLoading = false;
   String? _error;
@@ -47,6 +55,7 @@ class AnalyticsProvider extends ChangeNotifier {
   List<UserModel> get employees => _employees;
   Map<String, List<DailySummaryModel>> get employeeSummaries =>
       _employeeSummaries;
+  Map<String, List<SessionModel>> get employeeSessions => _employeeSessions;
   Map<String, List<ActivityLogModel>> get employeeLogs => _employeeLogs;
   Map<String, Map<String, dynamic>> get activeStatsData => _activeStatsData;
   bool get isLoading => _isLoading;
@@ -90,13 +99,18 @@ class AnalyticsProvider extends ChangeNotifier {
       return;
     }
     _liveClockTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_activeStatsData.isEmpty) {
+      if (_disposed || _activeStatsData.isEmpty) {
         _liveClockTimer?.cancel();
         _liveClockTimer = null;
         return;
       }
+      final prevMinutes = Duration(seconds: _totalDurationSecs).inMinutes;
       _recomputeTotals();
-      notifyListeners();
+      final newMinutes = Duration(seconds: _totalDurationSecs).inMinutes;
+      // Only rebuild widgets when the displayed minute rolls over
+      if (newMinutes != prevMinutes) {
+        notifyListeners();
+      }
     });
   }
 
@@ -117,6 +131,10 @@ class AnalyticsProvider extends ChangeNotifier {
       _summarySubscription?.cancel();
       _logSubscription?.cancel();
       _activeStatsSubscription?.cancel();
+
+      // Reset session fallback state for new load
+      _employeeSessions = {};
+      _sessionFallbackLoaded = false;
 
       // Stream completed-session summaries from Firestore
       _summarySubscription = _summaryRepo
@@ -145,6 +163,10 @@ class AnalyticsProvider extends ChangeNotifier {
       // Load actual photo counts from the photos collection so totals
       // aren't limited to what dailySummaries recorded.
       _loadPhotoCounts(enterpriseId, dateRange.$1, dateRange.$2);
+
+      // Proactively load session fallback so analytics isn't blank while
+      // waiting for the dailySummaries stream to emit.
+      _loadSessionFallback(enterpriseId, dateRange.$1, dateRange.$2);
 
       // Stream live active-session stats from RTDB (updated every 30s)
       _activeStatsSubscription =
@@ -181,6 +203,10 @@ class AnalyticsProvider extends ChangeNotifier {
       case 'Today':
         startDate = DateTime(now.year, now.month, now.day);
         break;
+      case 'Yesterday':
+        final yesterday = now.subtract(const Duration(days: 1));
+        startDate = DateTime(yesterday.year, yesterday.month, yesterday.day);
+        return (startDate, DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59));
       case 'This Week':
         startDate = now.subtract(Duration(days: now.weekday - 1));
         startDate = DateTime(startDate.year, startDate.month, startDate.day);
@@ -208,6 +234,31 @@ class AnalyticsProvider extends ChangeNotifier {
     }
   }
 
+  /// Always load sessions directly alongside dailySummaries.
+  /// Auto-ended sessions and admin force-ended sessions never write
+  /// dailySummary docs, so we must read sessions to get complete data.
+  Future<void> _loadSessionFallback(
+    String enterpriseId,
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    if (_sessionFallbackLoaded) return;
+    _sessionFallbackLoaded = true;
+
+    final sessions = await _sessionHelper.loadSessions(
+      enterpriseId: enterpriseId,
+      startDate: startDate,
+      endDate: endDate,
+    );
+
+    _employeeSessions = {};
+    for (final s in sessions) {
+      _employeeSessions.putIfAbsent(s.employeeId, () => []).add(s);
+    }
+    _recomputeTotals();
+    notifyListeners();
+  }
+
   /// Sanitize a distance value — some older sessions wrote meters instead of km.
   /// A realistic day's travel cap is ~500 km. Anything beyond that is meters.
   static double _sanitizeDistance(double rawKm) {
@@ -225,13 +276,54 @@ class AnalyticsProvider extends ChangeNotifier {
     _totalPhotos = 0;
     _totalTasks = 0;
 
-    // Completed sessions from Firestore dailySummaries
-    for (final summaries in _employeeSummaries.values) {
+    // Collect all employee IDs from both sources
+    final allEmployeeIds = <String>{
+      ..._employeeSummaries.keys,
+      ..._employeeSessions.keys,
+    };
+
+    // For each employee, use whichever source has more data.
+    // DailySummaries aggregate multiple sessions per day but may be missing
+    // for auto-ended sessions. Sessions are always present.
+    for (final empId in allEmployeeIds) {
+      final summaries = _employeeSummaries[empId] ?? [];
+      final sessions = _employeeSessions[empId] ?? [];
+
+      // Compute totals from each source
+      int summaryDuration = 0;
+      double summaryDistance = 0.0;
+      int summaryPhotos = 0;
+      int summaryTasks = 0;
       for (final s in summaries) {
-        _totalDurationSecs += s.totalDuration.clamp(0, _maxSessionDurationSecs);
-        _totalDistance += _sanitizeDistance(s.totalDistance);
-        _totalPhotos += s.photosCount;
-        _totalTasks += s.tasksCompleted;
+        summaryDuration += s.totalDuration.clamp(0, _maxSessionDurationSecs);
+        summaryDistance += _sanitizeDistance(s.totalDistance);
+        summaryPhotos += s.photosCount;
+        summaryTasks += s.tasksCompleted;
+      }
+
+      int sessionDuration = 0;
+      double sessionDistance = 0.0;
+      int sessionPhotos = 0;
+      int sessionTasks = 0;
+      for (final session in sessions) {
+        sessionDuration +=
+            session.totalDuration.clamp(0, _maxSessionDurationSecs);
+        sessionDistance += _sanitizeDistance(session.totalDistance);
+        sessionPhotos += session.photosCount;
+        sessionTasks += session.tasksCompleted;
+      }
+
+      // Use whichever source reports more duration (the more complete one)
+      if (summaryDuration >= sessionDuration) {
+        _totalDurationSecs += summaryDuration;
+        _totalDistance += summaryDistance;
+        _totalPhotos += summaryPhotos;
+        _totalTasks += summaryTasks;
+      } else {
+        _totalDurationSecs += sessionDuration;
+        _totalDistance += sessionDistance;
+        _totalPhotos += sessionPhotos;
+        _totalTasks += sessionTasks;
       }
     }
 
@@ -258,12 +350,15 @@ class AnalyticsProvider extends ChangeNotifier {
     DateTime endDate,
   ) async {
     try {
-      final photos = await _photoRepo.getPhotosByEnterprise(enterpriseId);
+      final photos = await _photoRepo.getPhotosByEnterprise(
+        enterpriseId,
+        startDate: startDate,
+        endDate: endDate,
+        limit: 500,
+      );
       final counts = <String, int>{};
       var total = 0;
       for (final photo in photos) {
-        final local = photo.timestamp.toLocal();
-        if (local.isBefore(startDate) || local.isAfter(endDate)) continue;
         counts[photo.employeeId] = (counts[photo.employeeId] ?? 0) + 1;
         total++;
       }
@@ -301,16 +396,47 @@ class AnalyticsProvider extends ChangeNotifier {
   // Get aggregated stats for a specific employee (completed + live)
   Map<String, dynamic> getEmployeeStats(String employeeId) {
     final summaries = _employeeSummaries[employeeId] ?? [];
-    int durationSecs = 0;
-    double distance = 0.0;
-    int photos = 0;
-    int tasks = 0;
+    final sessions = _employeeSessions[employeeId] ?? [];
 
+    // Compute from dailySummaries
+    int summaryDuration = 0;
+    double summaryDistance = 0.0;
+    int summaryPhotos = 0;
+    int summaryTasks = 0;
     for (final s in summaries) {
-      durationSecs += s.totalDuration.clamp(0, _maxSessionDurationSecs);
-      distance += _sanitizeDistance(s.totalDistance);
-      photos += s.photosCount;
-      tasks += s.tasksCompleted;
+      summaryDuration += s.totalDuration.clamp(0, _maxSessionDurationSecs);
+      summaryDistance += _sanitizeDistance(s.totalDistance);
+      summaryPhotos += s.photosCount;
+      summaryTasks += s.tasksCompleted;
+    }
+
+    // Compute from sessions directly
+    int sessionDuration = 0;
+    double sessionDistance = 0.0;
+    int sessionPhotos = 0;
+    int sessionTasks = 0;
+    for (final session in sessions) {
+      sessionDuration += session.totalDuration.clamp(0, _maxSessionDurationSecs);
+      sessionDistance += _sanitizeDistance(session.totalDistance);
+      sessionPhotos += session.photosCount;
+      sessionTasks += session.tasksCompleted;
+    }
+
+    // Use whichever source reports more duration (the more complete one)
+    int durationSecs;
+    double distance;
+    int photos;
+    int tasks;
+    if (summaryDuration >= sessionDuration) {
+      durationSecs = summaryDuration;
+      distance = summaryDistance;
+      photos = summaryPhotos;
+      tasks = summaryTasks;
+    } else {
+      durationSecs = sessionDuration;
+      distance = sessionDistance;
+      photos = sessionPhotos;
+      tasks = sessionTasks;
     }
 
     // Add live stats from currently active session
@@ -385,6 +511,7 @@ class AnalyticsProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _summarySubscription?.cancel();
     _logSubscription?.cancel();
     _activeStatsSubscription?.cancel();

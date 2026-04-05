@@ -152,7 +152,7 @@ class AuthProvider extends ChangeNotifier {
           cachedClaims['roles'] != null &&
           cachedClaims['enterpriseId'] != null) {
         _roles = List<String>.from(cachedClaims['roles']);
-        _activeRole = cachedClaims['activeRole'] as String? ?? _roles!.first;
+        _activeRole = cachedClaims['activeRole'] as String? ?? (_roles?.isNotEmpty == true ? _roles!.first : 'employee');
         _enterpriseId = cachedClaims['enterpriseId'] as String;
 
         // Try loading user doc from cache (instant, no network)
@@ -274,7 +274,7 @@ class AuthProvider extends ChangeNotifier {
           '[AuthProvider] Token claims: roles=${claims['roles']}, role=${claims['role']}, activeRole=${claims['activeRole']}, enterpriseId=${claims['enterpriseId']}');
       if (claims['roles'] != null) {
         _roles = List<String>.from(claims['roles']);
-        _activeRole = claims['activeRole'] as String? ?? _roles!.first;
+        _activeRole = claims['activeRole'] as String? ?? (_roles?.isNotEmpty == true ? _roles!.first : 'employee');
         claimsFoundInToken = true;
       } else if (claims['role'] != null) {
         // Legacy single-role claim — populate local state but do NOT mark

@@ -128,24 +128,14 @@ class _IzumiRouterState extends State<_IzumiRouter> {
       dashboardProvider.initWithEnterpriseId(enterpriseId);
     }
 
-    // Listen for future auth state changes
+    // Single source of truth: auth state changes trigger dashboard init
     authProvider.addListener(tryStartDashboard);
 
-    // Fire immediately — don't wait for a state change
-    // Use multiple post frame callbacks to handle both fast and slow auth paths
+    // Immediate attempt + one safety fallback for slow auth
     WidgetsBinding.instance.addPostFrameCallback((_) {
       tryStartDashboard();
-      // Second callback handles slow path auth that completes after first frame
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        tryStartDashboard();
-      });
     });
-
-    // Final safety net — try again after 3 seconds in case auth was slow
-    Future.delayed(const Duration(seconds: 3), () {
-      tryStartDashboard();
-    });
-    Future.delayed(const Duration(seconds: 6), () {
+    Future.delayed(const Duration(seconds: 5), () {
       tryStartDashboard();
     });
   }

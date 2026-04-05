@@ -78,15 +78,23 @@ export const onSessionStarted = onDocumentCreated(
       employeeId,
     });
 
-    // Check if session_start log already exists (written by client with location)
-    const existing = await admin.firestore().collection('activityLogs')
-      .where('sessionId', '==', sessionId)
-      .where('type', '==', 'session_start')
-      .limit(1)
-      .get();
+    // Check if session_started log already exists (written by client with location).
+    // Check both legacy 'session_start' and canonical 'session_started' type names.
+    const [existingOld, existingNew] = await Promise.all([
+      admin.firestore().collection('activityLogs')
+        .where('sessionId', '==', sessionId)
+        .where('type', '==', 'session_start')
+        .limit(1)
+        .get(),
+      admin.firestore().collection('activityLogs')
+        .where('sessionId', '==', sessionId)
+        .where('type', '==', 'session_started')
+        .limit(1)
+        .get(),
+    ]);
 
-    if (!existing.empty) {
-      logger.info("onSessionStarted: session_start log already written by client, skipping.", {
+    if (!existingOld.empty || !existingNew.empty) {
+      logger.info("onSessionStarted: session_started log already written by client, skipping.", {
         sessionId,
         employeeId,
       });
@@ -98,7 +106,7 @@ export const onSessionStarted = onDocumentCreated(
         employeeId,
         sessionId,
         orgId: sessionData.enterpriseId,
-        type: "session_start",
+        type: "session_started",
         title: "Session Started",
         detail: `${employeeName} started a field session`,
         timestamp:
@@ -189,13 +197,41 @@ export const onSessionEnded = onDocumentUpdated(
       ? (after.autoEndReason || "auto_ended")
       : "manual";
 
+    // ── Upsert dailySummary so the analytics screen reflects this session ──
+    // Auto-ended sessions and admin force-ended sessions bypass the client's
+    // endSession() flow which normally writes dailySummaries.
+    try {
+      const startDate = after.startTime?.toDate() ?? new Date();
+      const dateStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}`;
+      const summaryDocId = `${employeeId}_${dateStr}`;
+      await admin.firestore().collection("dailySummaries").doc(summaryDocId).set(
+        {
+          employeeId,
+          enterpriseId: after.enterpriseId,
+          date: admin.firestore.Timestamp.fromDate(
+            new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+          ),
+          totalDuration: admin.firestore.FieldValue.increment(durationSeconds),
+          totalDistance: admin.firestore.FieldValue.increment(distanceKm),
+          photosCount: admin.firestore.FieldValue.increment(0),
+          tasksCompleted: admin.firestore.FieldValue.increment(0),
+          sessionIds: admin.firestore.FieldValue.arrayUnion([sessionId]),
+          isOffDuty: false,
+        },
+        { merge: true }
+      );
+      logger.info("onSessionEnded: dailySummary upserted.", { summaryDocId, durationSeconds, distanceKm });
+    } catch (err) {
+      logger.error("onSessionEnded: dailySummary upsert failed.", { sessionId, error: err });
+    }
+
     await upsertActivityLog(admin.firestore(), {
       id: `${after.status === "auto_ended" ? "session_auto_ended" : "session_ended"}_${sessionId}`,
       enterpriseId: after.enterpriseId,
       employeeId,
       sessionId,
       orgId: after.enterpriseId,
-      type: "session_end",
+      type: after.status === "auto_ended" ? "session_auto_ended" : "session_ended",
       title: after.status === "auto_ended" ? "Session Auto-Ended" : "Session Ended",
       detail: after.status === "auto_ended"
         ? `${employeeName}'s session was auto-ended`

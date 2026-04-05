@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 import '../models/task_model.dart';
 import '../models/upload_status.dart';
 import '../repositories/task_repository.dart';
@@ -191,6 +193,40 @@ class TaskProvider extends ChangeNotifier {
       await _taskRepo.completeTask(taskId);
       _taskUploadStatuses[taskId] = UploadStatus.success;
       _replaceCompletedTaskStatus(taskId, UploadStatus.success);
+
+      // Write task_completed activity log directly from the client.
+      // The Cloud Function also writes one — duplicates are deduplicated
+      // by the feed service using document ID.
+      final now = DateTime.now();
+      unawaited(
+        FirebaseFirestore.instance
+            .collection('activityLogs')
+            .doc('task_completed_$taskId')
+            .set({
+          'enterpriseId': originalTask.enterpriseId,
+          'employeeId': originalTask.assignedTo,
+          'orgId': originalTask.enterpriseId,
+          'type': 'task_completed',
+          'title': 'Task Completed',
+          'detail': originalTask.title,
+          'timestamp': Timestamp.fromDate(now),
+          'date': DateFormat('yyyy-MM-dd').format(now),
+          'payload': {
+            'taskId': taskId,
+            'title': originalTask.title,
+            'completedAt': Timestamp.fromDate(now),
+          },
+          'metadata': {
+            'taskId': taskId,
+            'taskType': originalTask.type,
+            'priority': originalTask.priority,
+            'assignedBy': originalTask.assignedBy,
+            'source': 'client_direct',
+          },
+        }, SetOptions(merge: true)).catchError((e) {
+          debugPrint('[TaskProvider] task_completed activity log failed: $e');
+        }),
+      );
     } catch (e) {
       _error = e.toString();
       _taskUploadStatuses[taskId] = UploadStatus.error;
@@ -253,10 +289,14 @@ class TaskProvider extends ChangeNotifier {
               uploadStatus: pendingStatuses[task.id] ?? UploadStatus.success,
             ))
         .toList();
+    // Clean up statuses for tasks that are done uploading AND for stale
+    // entries whose task IDs no longer exist in the current task list.
+    final allTaskIds = _allTasks.map((t) => t.id).toSet();
     _taskUploadStatuses.removeWhere(
       (taskId, status) =>
-          status == UploadStatus.success &&
-          _completedTasks.any((task) => task.id == taskId),
+          !allTaskIds.contains(taskId) ||
+          (status == UploadStatus.success &&
+              _completedTasks.any((task) => task.id == taskId)),
     );
   }
 

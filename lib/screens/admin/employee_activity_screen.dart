@@ -385,8 +385,6 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
                 for (final period in [
                   'Today',
                   'Yesterday',
-                  'This Week',
-                  'Last 7 Days',
                   'This Month',
                   'Custom Range'
                 ])
@@ -439,10 +437,6 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
       case 'This Week':
         final weekday = today.weekday;
         newStart = today.subtract(Duration(days: weekday - 1));
-        newEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
-        break;
-      case 'Last 7 Days':
-        newStart = today.subtract(const Duration(days: 6));
         newEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
         break;
       case 'This Month':

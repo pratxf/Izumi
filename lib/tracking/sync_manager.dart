@@ -332,6 +332,24 @@ class SyncManager {
       return;
     }
 
+    // Validate session is still active in Firestore before restoring presence.
+    // Without this check, ended/force-ended sessions resurrect as "active"
+    // every time the device regains connectivity.
+    try {
+      final sessionDoc =
+          await _firestore.collection('sessions').doc(sessionId).get();
+      if (!sessionDoc.exists || sessionDoc.data()?['status'] != 'active') {
+        debugPrint(
+          '[SyncManager] _restorePresence: session $sessionId no longer active, '
+          'skipping presence restore.',
+        );
+        return;
+      }
+    } catch (e) {
+      debugPrint('[SyncManager] _restorePresence validation failed: $e');
+      return;
+    }
+
     // Restore presence only — do NOT flush here. Location data will be
     // flushed at the next 20-minute periodic timer to keep feed intervals
     // consistent. Flushing on every connectivity toggle caused sub-20-minute

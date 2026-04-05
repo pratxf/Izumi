@@ -57,4 +57,5 @@ export { syncLinkedChatGroups } from "./callable/sync_linked_chat_groups";
 export { deleteUser } from "./callable/delete_user";
 export { adminCleanup } from "./callable/admin_cleanup";
 export { forceEndGhostSessions } from "./callable/force_end_ghost_sessions";
+export { forceEndAllSessions } from "./callable/force_end_all_sessions";
 export { backfillActivityLogs } from "./callable/backfill_activity_logs";

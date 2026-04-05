@@ -52,9 +52,11 @@ class SessionTrackingTaskHandler extends TaskHandler {
   int _activityConfidence = 0;
   bool _pollInFlight = false;
 
-  // Quality filter constants per spec
-  static const double _maxAccuracyMeters = 30.0;
-static const double _maxSpeedMps = 100.0; // ~360 km/h — impossible spike
+  // Quality filter constants
+  // Indoor/desk workers can have GPS accuracy worse than 30m — use a generous
+  // threshold so stationary sessions still record location data.
+  static const double _maxAccuracyMeters = 100.0;
+  static const double _maxSpeedMps = 100.0; // ~360 km/h — impossible spike
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -96,6 +98,8 @@ static const double _maxSpeedMps = 100.0; // ~360 km/h — impossible spike
         _employeeId = data['employeeId']?.toString() ?? _employeeId;
         _sessionId = data['sessionId']?.toString() ?? _sessionId;
         _employeeName = data['employeeName']?.toString() ?? _employeeName;
+        final refreshStartMs = data['startTimeMs'];
+        if (refreshStartMs is int) _startedAtMs = refreshStartMs;
         final enterpriseId = _enterpriseId;
         final employeeId = _employeeId;
         final sessionId = _sessionId;
@@ -609,14 +613,63 @@ static const double _maxSpeedMps = 100.0; // ~360 km/h — impossible spike
   }
 
   bool _isUsableFix(Position position) {
-    // Spec: accuracy worse than 30m → discard
-    return position.accuracy > 0 && position.accuracy <= _maxAccuracyMeters;
+    if (position.accuracy <= 0) return false;
+    // Always accept the first fix so stationary/indoor sessions immediately
+    // show up in the dashboard and analytics, even with poor GPS.
+    if (_lastPosition == null) return true;
+    return position.accuracy <= _maxAccuracyMeters;
   }
 
   // ── Heartbeat (every 25 min) ──
 
   Future<void> _sendHeartbeat() async {
     if (_enterpriseId == null || _employeeId == null || _sessionId == null) {
+      return;
+    }
+
+    // Validate the Firestore session is still active before writing presence.
+    // This prevents ghost sessions from reappearing after admin force-end.
+    try {
+      final sessionDoc =
+          await _firestore.collection('sessions').doc(_sessionId).get();
+      if (!sessionDoc.exists || sessionDoc.data()?['status'] != 'active') {
+        debugPrint(
+          '[TrackingTaskHandler] heartbeat: session $_sessionId is no longer '
+          'active (${sessionDoc.data()?['status']}), cleaning up and stopping.',
+        );
+        // Clean up RTDB presence so dashboard stops showing this employee
+        // as active. Must happen BEFORE stopping the service.
+        try {
+          await _database.ref().update({
+            'presence/$_enterpriseId/$_employeeId/status': 'offline',
+            'presence/$_enterpriseId/$_employeeId/signalLostAt': null,
+            'presence/$_enterpriseId/$_employeeId/currentSessionId': null,
+            'presence/$_enterpriseId/$_employeeId/lastSeen':
+                ServerValue.timestamp,
+            'activeStats/$_enterpriseId/$_employeeId': null,
+            'sessionHeartbeat/$_enterpriseId/$_employeeId': null,
+            'liveLocations/$_enterpriseId/$_employeeId': null,
+          });
+          // Cancel onDisconnect so it doesn't write signal_lost after cleanup
+          await _database
+              .ref('presence/$_enterpriseId/$_employeeId')
+              .onDisconnect()
+              .cancel();
+        } catch (e) {
+          debugPrint('[TrackingTaskHandler] heartbeat RTDB cleanup failed: $e');
+        }
+        // Clear context so onDestroy skips auto-end
+        await FlutterForegroundTask.saveData(
+          key: 'tracking.sessionStatus',
+          value: 'ending',
+        );
+        await FlutterForegroundTask.removeData(key: _sessionIdKey);
+        await FlutterForegroundTask.stopService();
+        return;
+      }
+    } catch (e) {
+      // Network error — skip heartbeat but don't kill the service
+      debugPrint('[TrackingTaskHandler] heartbeat validation failed: $e');
       return;
     }
 

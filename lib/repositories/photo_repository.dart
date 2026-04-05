@@ -124,14 +124,20 @@ class PhotoRepository {
         employeeIds.where((id) => id.trim().isNotEmpty).toSet().toList();
     if (normalizedIds.isEmpty) return const [];
 
-    // Iterate per-ID to avoid whereIn + range-filter index conflict.
-    // whereIn combined with timestamp inequality is not supported by Firestore
-    // composite indexes and silently returns 0 results.
     final results = <PhotoModel>[];
 
-    for (final empId in normalizedIds) {
+    // Batch into chunks of 10 using whereIn (Firestore limit).
+    for (var i = 0; i < normalizedIds.length; i += 10) {
+      final batch = normalizedIds.sublist(
+        i,
+        i + 10 > normalizedIds.length ? normalizedIds.length : i + 10,
+      );
+
       final filters = <QueryFilter>[
-        QueryFilter('employeeId', FilterOp.isEqualTo, empId),
+        if (batch.length == 1)
+          QueryFilter('employeeId', FilterOp.isEqualTo, batch.first)
+        else
+          QueryFilter('employeeId', FilterOp.whereIn, batch),
       ];
 
       if (date != null) {
@@ -192,12 +198,26 @@ class PhotoRepository {
 
   Future<List<PhotoModel>> getPhotosByEnterprise(
     String enterpriseId, {
+    DateTime? startDate,
+    DateTime? endDate,
     int? limit,
   }) async {
     final snapshot = await _firestoreService.getCollection(
       _collection,
       filters: [
         QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
+        if (startDate != null)
+          QueryFilter(
+            'timestamp',
+            FilterOp.isGreaterThanOrEqualTo,
+            Timestamp.fromDate(startDate),
+          ),
+        if (endDate != null)
+          QueryFilter(
+            'timestamp',
+            FilterOp.isLessThanOrEqualTo,
+            Timestamp.fromDate(endDate),
+          ),
       ],
       orderBy: 'timestamp',
       descending: true,
@@ -230,12 +250,17 @@ class PhotoRepository {
         sessionIds.where((id) => id.trim().isNotEmpty).toSet().toList();
     if (normalizedIds.isEmpty) return const [];
 
-    // Iterate per-ID to avoid whereIn + range-filter index conflict.
-    // whereIn combined with timestamp inequality silently returns 0 results.
     final results = <PhotoModel>[];
-    for (final sessionId in normalizedIds) {
+    for (var i = 0; i < normalizedIds.length; i += 10) {
+      final batch = normalizedIds.sublist(
+        i,
+        i + 10 > normalizedIds.length ? normalizedIds.length : i + 10,
+      );
       final filters = <QueryFilter>[
-        QueryFilter('sessionId', FilterOp.isEqualTo, sessionId),
+        if (batch.length == 1)
+          QueryFilter('sessionId', FilterOp.isEqualTo, batch.first)
+        else
+          QueryFilter('sessionId', FilterOp.whereIn, batch),
         if (startDate != null)
           QueryFilter(
             'timestamp',
@@ -285,14 +310,18 @@ class PhotoRepository {
     if (normalizedIds.isEmpty) return const [];
 
     final results = <PhotoModel>[];
-    // Query per-ID without orderBy to avoid requiring a composite index.
-    // Firestore auto-creates single-field indexes, so equality-only queries
-    // always work. We sort in memory below.
-    for (final empId in normalizedIds) {
+    for (var i = 0; i < normalizedIds.length; i += 10) {
+      final batch = normalizedIds.sublist(
+        i,
+        i + 10 > normalizedIds.length ? normalizedIds.length : i + 10,
+      );
       final snapshot = await _firestoreService.getCollection(
         _collection,
         filters: [
-          QueryFilter('employeeId', FilterOp.isEqualTo, empId),
+          if (batch.length == 1)
+            QueryFilter('employeeId', FilterOp.isEqualTo, batch.first)
+          else
+            QueryFilter('employeeId', FilterOp.whereIn, batch),
         ],
         limit: limit,
       );
@@ -324,12 +353,18 @@ class PhotoRepository {
     if (normalizedIds.isEmpty) return const [];
 
     final results = <PhotoModel>[];
-    // Query per-ID without orderBy to avoid composite index requirement.
-    for (final sessionId in normalizedIds) {
+    for (var i = 0; i < normalizedIds.length; i += 10) {
+      final batch = normalizedIds.sublist(
+        i,
+        i + 10 > normalizedIds.length ? normalizedIds.length : i + 10,
+      );
       final snapshot = await _firestoreService.getCollection(
         _collection,
         filters: [
-          QueryFilter('sessionId', FilterOp.isEqualTo, sessionId),
+          if (batch.length == 1)
+            QueryFilter('sessionId', FilterOp.isEqualTo, batch.first)
+          else
+            QueryFilter('sessionId', FilterOp.whereIn, batch),
         ],
         limit: limit,
       );

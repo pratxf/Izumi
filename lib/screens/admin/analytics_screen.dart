@@ -42,23 +42,83 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   // Period selection
   // ---------------------------------------------------------------------------
 
-  void _onPeriodSelected(String chipLabel) {
+  void _onPeriodSelected(String period) {
     final enterpriseId = context.read<AuthProvider>().enterpriseId;
     if (enterpriseId == null || enterpriseId.isEmpty) return;
 
-    if (chipLabel == 'Custom') {
+    if (period == 'Custom') {
       _showCustomDatePicker();
     } else {
-      final period = switch (chipLabel) {
-        'Week' => 'This Week',
-        'Month' => 'This Month',
-        _ => chipLabel,
-      };
       context.read<AnalyticsProvider>().loadAnalytics(
             enterpriseId,
             period: period,
           );
     }
+  }
+
+  void _showPeriodPicker() {
+    final analytics = context.read<AnalyticsProvider>();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Text(
+                  'Select Period',
+                  style: AppTypography.headline.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                for (final period in [
+                  'Today',
+                  'Yesterday',
+                  'This Month',
+                  'Custom',
+                ])
+                  ListTile(
+                    title: Text(
+                      period,
+                      style: AppTypography.body.copyWith(
+                        color: analytics.selectedPeriod == period
+                            ? AppColors.primary
+                            : AppColors.textPrimary,
+                        fontWeight: analytics.selectedPeriod == period
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                    trailing: analytics.selectedPeriod == period
+                        ? const Icon(Icons.check, color: AppColors.primary)
+                        : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _onPeriodSelected(period);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showCustomDatePicker() async {
@@ -114,6 +174,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     switch (analytics.selectedPeriod) {
       case 'Today':
         return (DateTime(now.year, now.month, now.day), now);
+      case 'Yesterday':
+        final yesterday = now.subtract(const Duration(days: 1));
+        return (
+          DateTime(yesterday.year, yesterday.month, yesterday.day),
+          DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59),
+        );
       case 'This Week':
         final start = now.subtract(Duration(days: now.weekday - 1));
         return (DateTime(start.year, start.month, start.day), now);
@@ -130,12 +196,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   // Chip label mapping
   // ---------------------------------------------------------------------------
 
-  String _periodToChipLabel(String period) {
-    return switch (period) {
-      'This Week' => 'Week',
-      'This Month' => 'Month',
-      _ => period,
-    };
+  String _periodLabel(AnalyticsProvider analytics) {
+    if (analytics.selectedPeriod == 'Custom' &&
+        analytics.customStart != null &&
+        analytics.customEnd != null) {
+      final fmt = MaterialLocalizations.of(context);
+      return '${fmt.formatShortDate(analytics.customStart!)} - ${fmt.formatShortDate(analytics.customEnd!)}';
+    }
+    return analytics.selectedPeriod;
   }
 
   // ---------------------------------------------------------------------------
@@ -153,7 +221,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           title: 'Analytics',
           showAvatar: false,
           showLeading: false,
-          actions: [_buildPeriodDropdown(analytics)],
+          actions: [_buildPeriodButton(analytics)],
         ),
         body: analytics.isLoading
             ? const Center(
@@ -168,38 +236,34 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   // Period pill chips
   // ---------------------------------------------------------------------------
 
-  Widget _buildPeriodDropdown(AnalyticsProvider analytics) {
-    final currentLabel = _periodToChipLabel(analytics.selectedPeriod);
-    const labels = ['Today', 'Week', 'Month', 'Custom'];
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.primary, width: 1),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: currentLabel,
-          isDense: true,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded,
-              size: 18, color: AppColors.primary),
-          style: AppTypography.small.copyWith(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w600,
+  Widget _buildPeriodButton(AnalyticsProvider analytics) {
+    return GestureDetector(
+      onTap: _showPeriodPicker,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: AppColors.primary.withValues(alpha: 0.2),
           ),
-          dropdownColor: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          items: labels
-              .map((label) => DropdownMenuItem(
-                    value: label,
-                    child: Text(label),
-                  ))
-              .toList(),
-          onChanged: (value) {
-            if (value != null) _onPeriodSelected(value);
-          },
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(AppIcons.calendar, size: 14, color: AppColors.primary),
+            const SizedBox(width: 6),
+            Text(
+              _periodLabel(analytics),
+              style: AppTypography.caption.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.keyboard_arrow_down_rounded,
+                size: 16, color: AppColors.primary),
+          ],
         ),
       ),
     );

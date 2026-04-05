@@ -68,6 +68,15 @@ class DashboardProvider extends ChangeNotifier {
 
   // Initialize dashboard with all streams
   Future<void> initDashboard(String enterpriseId) async {
+    // Cancel any existing subscriptions to prevent orphaned listeners
+    // if this is called multiple times without dispose.
+    _summarySubscription?.cancel();
+    _presenceSubscription?.cancel();
+    _locationSubscription?.cancel();
+    _statsSubscription?.cancel();
+    _refreshTimer?.cancel();
+    _liveClockTimer?.cancel();
+
     _enterpriseId = enterpriseId;
     _isLoading = true;
     _error = null;
@@ -93,13 +102,16 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   Future<void> _loadEmployeesAndStreams(String enterpriseId) async {
-    _employees = await _userRepo.getUsersByEnterprise(enterpriseId);
-    _employees = _employees.where((u) => u.activeRole != 'admin').toList();
+    // Start RTDB streams immediately — they emit data independently of
+    // the employee list. This shaves 1-2s off first dashboard paint.
     _streamTodaySummaries(enterpriseId);
     _streamPresence(enterpriseId);
     _streamLiveLocations(enterpriseId);
     _streamActiveStats(enterpriseId);
     _startRefreshTimer();
+
+    _employees = await _userRepo.getUsersByEnterprise(enterpriseId);
+    _employees = _employees.where((u) => u.activeRole != 'admin').toList();
   }
 
   void _startRefreshTimer() {
@@ -218,7 +230,7 @@ class DashboardProvider extends ChangeNotifier {
       _liveClockTimer = null;
       return;
     }
-    _liveClockTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+    _liveClockTimer ??= Timer.periodic(const Duration(seconds: 10), (_) {
       if (_activeStatsData.isEmpty) {
         _liveClockTimer?.cancel();
         _liveClockTimer = null;
@@ -253,8 +265,10 @@ class DashboardProvider extends ChangeNotifier {
       return 'break';
     }
 
-    // Respect explicit offline status — don't override with stale location data
-    if (presenceStatus == 'offline') return 'offline';
+    // Respect explicit offline status — don't override with stale location data.
+    // Also treat null/missing presence as offline so that cleared or absent
+    // presence nodes don't fall through to the live-location freshness check.
+    if (presenceStatus == 'offline' || presenceStatus == null) return 'offline';
 
     // A fresh live-location ping is the strongest signal that the user is
     // still active in the field, even if presence briefly got stuck.

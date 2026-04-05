@@ -81,3 +81,4 @@ node_modules/
 .gitpush_tmp/
 .claude/
 build/
+functions/service-account.json

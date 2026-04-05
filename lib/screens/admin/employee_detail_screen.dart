@@ -301,15 +301,16 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       final fallback = LatLng(lat, lng);
       setState(() {
         _liveLatLng = fallback;
-        _markers
-          ..removeWhere((m) => m.markerId.value == 'last_known')
-          ..add(Marker(
+        _markers = <Marker>{
+          ..._markers.where((m) => m.markerId.value != 'last_known'),
+          Marker(
             markerId: const MarkerId('last_known'),
             position: fallback,
             icon: BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueAzure),
             infoWindow: const InfoWindow(title: 'Last Known Location'),
-          ));
+          ),
+        };
       });
       _fitMapToLiveLocation();
       return;
@@ -339,17 +340,20 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       setState(() {
         _liveLatLng = newLive;
 
-        // Update live marker
-        _markers.removeWhere((m) => m.markerId.value == 'live_location');
-        _markers.add(Marker(
-          markerId: const MarkerId('live_location'),
-          position: newLive,
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
-          infoWindow: const InfoWindow(title: 'Current Location'),
-        ));
+        // Replace markers with a new Set so GoogleMap detects the change
+        final updatedMarkers = <Marker>{
+          ..._markers.where((m) => m.markerId.value != 'live_location'),
+          Marker(
+            markerId: const MarkerId('live_location'),
+            position: newLive,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueViolet),
+            infoWindow: const InfoWindow(title: 'Current Location'),
+          ),
+        };
+        _markers = updatedMarkers;
 
-        // Extend polyline if route exists
+        // Replace polylines with a new Set so GoogleMap detects the change
         if (_routePoints.isNotEmpty) {
           final polylinePoints = [..._routePoints, newLive];
           _polylines = {
@@ -362,6 +366,13 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
           };
         }
       });
+
+      // Move the camera to follow the updated location
+      if (_routePoints.isNotEmpty) {
+        _fitMapBounds();
+      } else {
+        _fitMapToLiveLocation();
+      }
     });
   }
 

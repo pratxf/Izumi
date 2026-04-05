@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
@@ -13,7 +15,6 @@ import '../../models/upload_status.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/photo_provider.dart';
 import '../../providers/team_provider.dart';
-import 'dart:async';
 import '../../offline_queue/offline_job.dart';
 import '../../offline_queue/offline_queue_manager.dart';
 import '../../widgets/glass/gradient_background.dart';

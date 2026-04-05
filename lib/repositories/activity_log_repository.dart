@@ -83,13 +83,29 @@ class ActivityLogRepository {
 
   Future<List<ActivityLogModel>> getLogsByEnterprise(
     String enterpriseId, {
+    DateTime? startDate,
+    DateTime? endDate,
     int? limit,
   }) async {
+    final filters = <QueryFilter>[
+      QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
+      if (startDate != null)
+        QueryFilter(
+          'timestamp',
+          FilterOp.isGreaterThanOrEqualTo,
+          Timestamp.fromDate(startDate),
+        ),
+      if (endDate != null)
+        QueryFilter(
+          'timestamp',
+          FilterOp.isLessThanOrEqualTo,
+          Timestamp.fromDate(endDate),
+        ),
+    ];
+
     final snapshot = await _firestoreService.getCollection(
       _collection,
-      filters: [
-        QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
-      ],
+      filters: filters,
       orderBy: 'timestamp',
       descending: true,
       limit: limit,

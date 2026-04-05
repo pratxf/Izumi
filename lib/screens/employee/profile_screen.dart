@@ -24,7 +24,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool get isAdmin => widget.isAdmin;
 
-  Future<void> _clearGhostSessions(BuildContext context) async {
+  Future<void> _endAllSessions(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
 
     final confirmed = await showDialog<bool>(
@@ -38,11 +38,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             borderRadius: BorderRadius.circular(24),
           ),
           title: Text(
-            'Clear Ghost Sessions',
+            'End All Sessions',
             style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
           ),
           content: Text(
-            'This will force-end all stuck sessions and set signal-lost employees to offline. Continue?',
+            'This will immediately end ALL active sessions — including employees currently working. Everyone will be notified to start a new session.\n\nAre you sure?',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -60,7 +60,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
               child: Text(
-                'Clear',
+                'End All',
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.critical,
                   fontWeight: FontWeight.bold,
@@ -85,15 +85,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
-          .httpsCallable('forceEndGhostSessions');
+          .httpsCallable('forceEndAllSessions');
       final result = await callable.call();
       final data = result.data as Map<String, dynamic>? ?? {};
       final ended = data['ended'] ?? 0;
+      final rtdbCleaned = data['rtdbCleaned'] ?? 0;
 
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
+
+      final parts = <String>[];
+      if ((ended as num) > 0) parts.add('Ended $ended session(s)');
+      if ((rtdbCleaned as num) > 0) parts.add('Cleaned $rtdbCleaned stuck presence(s)');
+      final message = parts.isNotEmpty
+          ? '${parts.join('. ')}. Employees have been notified.'
+          : 'No active sessions or stuck presence found.';
+
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Cleared $ended ghost session(s).'),
+          content: Text(message),
           backgroundColor: AppColors.success,
         ),
       );
@@ -101,7 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
       messenger.showSnackBar(
         SnackBar(
-          content: Text(e.message ?? 'Failed to clear ghost sessions'),
+          content: Text(e.message ?? 'Failed to end sessions'),
           backgroundColor: AppColors.critical,
         ),
       );
@@ -459,8 +468,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _buildDivider(),
                 _buildMenuItem(
                   icon: AppIcons.refresh,
-                  label: 'Clear Ghost Sessions',
-                  onTap: () => _clearGhostSessions(context),
+                  label: 'End All Sessions',
+                  onTap: () => _endAllSessions(context),
                 ),
               ],
             ],

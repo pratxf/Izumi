@@ -212,6 +212,43 @@ class SessionRepository {
     return merged;
   }
 
+  /// Enterprise-wide session query — used as a last-resort fallback when
+  /// employee-scoped composite-index queries fail.
+  Future<List<SessionModel>> getSessionsByEnterprise(
+    String enterpriseId, {
+    DateTime? startDate,
+    DateTime? endDate,
+    int? limit,
+  }) async {
+    final filters = <QueryFilter>[
+      QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
+      if (startDate != null)
+        QueryFilter(
+          'startTime',
+          FilterOp.isGreaterThanOrEqualTo,
+          Timestamp.fromDate(startDate),
+        ),
+      if (endDate != null)
+        QueryFilter(
+          'startTime',
+          FilterOp.isLessThanOrEqualTo,
+          Timestamp.fromDate(endDate),
+        ),
+    ];
+
+    final snapshot = await _firestoreService.getCollection(
+      _collection,
+      filters: filters,
+      orderBy: 'startTime',
+      descending: true,
+      limit: limit,
+    );
+
+    return snapshot.docs
+        .map((doc) => SessionModel.fromFirestore(doc))
+        .toList();
+  }
+
   // ── Location subcollection ──
 
   Future<void> addSessionLocation(

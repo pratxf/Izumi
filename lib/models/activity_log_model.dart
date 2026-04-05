@@ -6,7 +6,7 @@ class ActivityLogModel {
   final String employeeId;
   final String? sessionId;
   final String? orgId;
-  final String type; // 'location_update' | 'task_started' | 'task_completed' | 'photo_captured' | 'session_start' | 'session_end' | etc.
+  final String type; // 'location_update' | 'task_started' | 'task_completed' | 'photo_captured' | 'session_started' | 'session_ended' | 'session_auto_ended' | etc.
   final String title;
   final String detail;
   final DateTime timestamp;
@@ -102,12 +102,12 @@ class ActivityLogModel {
       }
     }
 
-    // Normalise type names: session_started → session_start, etc.
+    // Normalise legacy type names → canonical names used across the app.
     final type = normalised['type']?.toString() ?? '';
-    if (type == 'session_started') {
-      normalised['type'] = 'session_start';
-    } else if (type == 'session_ended' || type == 'session_auto_ended') {
-      normalised['type'] = 'session_end';
+    if (type == 'session_start') {
+      normalised['type'] = 'session_started';
+    } else if (type == 'session_end') {
+      normalised['type'] = 'session_ended';
     }
 
     return normalised;

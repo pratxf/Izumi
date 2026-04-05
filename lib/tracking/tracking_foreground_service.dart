@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_activity_recognition/flutter_activity_recognition.dart'
     as ar;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../core/constants/app_colors.dart';
 
 import 'tracking_task_handler.dart';
@@ -84,6 +85,7 @@ class TrackingForegroundService {
     required String employeeId,
     required String sessionId,
     String? employeeName,
+    int? startTimeMs,
   }) async {
     await ensureRuntimePermissions();
 
@@ -101,7 +103,7 @@ class TrackingForegroundService {
     );
     await FlutterForegroundTask.saveData(
       key: _startedAtKey,
-      value: DateTime.now().millisecondsSinceEpoch,
+      value: startTimeMs ?? DateTime.now().millisecondsSinceEpoch,
     );
     if (employeeName != null) {
       await FlutterForegroundTask.saveData(
@@ -150,6 +152,7 @@ class TrackingForegroundService {
     required String employeeId,
     required String sessionId,
     String? employeeName,
+    int? startTimeMs,
   }) async {
     if (await FlutterForegroundTask.isRunningService) {
       await FlutterForegroundTask.saveData(
@@ -164,6 +167,13 @@ class TrackingForegroundService {
         key: _sessionIdKey,
         value: sessionId,
       );
+      // Ensure _startedAtMs stays consistent with the Firestore session
+      if (startTimeMs != null) {
+        await FlutterForegroundTask.saveData(
+          key: _startedAtKey,
+          value: startTimeMs,
+        );
+      }
       if (employeeName != null) {
         await FlutterForegroundTask.saveData(
           key: _employeeNameKey,
@@ -176,6 +186,7 @@ class TrackingForegroundService {
         'employeeId': employeeId,
         'sessionId': sessionId,
         'employeeName': employeeName,
+        'startTimeMs': startTimeMs,
       });
       return;
     }
@@ -185,6 +196,7 @@ class TrackingForegroundService {
       employeeId: employeeId,
       sessionId: sessionId,
       employeeName: employeeName,
+      startTimeMs: startTimeMs,
     );
   }
 
@@ -211,6 +223,24 @@ class TrackingForegroundService {
 
     if (await FlutterForegroundTask.isRunningService) {
       await FlutterForegroundTask.stopService();
+    }
+
+    // Force-clear any lingering foreground notification. On some OEM
+    // devices (Samsung, Xiaomi) stopService does not immediately remove
+    // the notification — cancel it explicitly to avoid showing stale
+    // "Tracking active" after the session has ended.
+    try {
+      final flnp = FlutterLocalNotificationsPlugin();
+      await flnp.initialize(
+        const InitializationSettings(
+          android: AndroidInitializationSettings('ic_stat_izumi'),
+          iOS: DarwinInitializationSettings(),
+        ),
+      );
+      // Cancel the foreground service notification (serviceId used as notif id)
+      await flnp.cancel(_serviceId);
+    } catch (_) {
+      // Best-effort; don't block session end if this fails
     }
   }
 

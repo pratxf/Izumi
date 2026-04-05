@@ -8,8 +8,10 @@ import '../models/photo_model.dart';
 import '../models/session_model.dart';
 import '../models/user_model.dart';
 import '../repositories/activity_log_repository.dart';
+import '../repositories/daily_summary_repository.dart';
 import '../repositories/photo_repository.dart';
 import '../repositories/session_repository.dart';
+import 'session_query_helper.dart';
 
 class AdminRangeActivityFeedData {
   const AdminRangeActivityFeedData({
@@ -54,13 +56,19 @@ class AdminActivityFeedService {
     ActivityLogRepository? logRepository,
     PhotoRepository? photoRepository,
     SessionRepository? sessionRepository,
+    DailySummaryRepository? dailySummaryRepository,
+    SessionQueryHelper? sessionQueryHelper,
   })  : _logRepo = logRepository ?? ActivityLogRepository(),
         _photoRepo = photoRepository ?? PhotoRepository(),
-        _sessionRepo = sessionRepository ?? SessionRepository();
+        _sessionRepo = sessionRepository ?? SessionRepository(),
+        _summaryRepo = dailySummaryRepository ?? DailySummaryRepository(),
+        _sessionHelper = sessionQueryHelper ?? SessionQueryHelper();
 
   final ActivityLogRepository _logRepo;
   final PhotoRepository _photoRepo;
   final SessionRepository _sessionRepo;
+  final DailySummaryRepository _summaryRepo;
+  final SessionQueryHelper _sessionHelper;
 
   List<String> resolveLinkedEmployeeIds(
     String employeeId,
@@ -100,36 +108,20 @@ class AdminActivityFeedService {
   }) async {
     final normalizedIds = _normalizeIds(linkedEmployeeIds);
 
-    // ── 1. Load sessions ────────────────────────────────────────────────
-    var sessions = <SessionModel>[];
-    try {
-      sessions = await _sessionRepo.getSessionHistoryByEmployeeIds(
-        normalizedIds,
-        startDate: rangeStart,
-        endDate: rangeEnd,
-        limit: 1000,
-      );
-    } catch (e) {
-      debugPrint('[FeedService] sessions filtered query failed: $e');
-      try {
-        sessions = (await _sessionRepo.getSessionHistoryByEmployeeIdsUnfiltered(
-          normalizedIds,
-          limit: 500,
-        )).where((session) {
-          final sessionEnd = session.endTime ?? session.startTime;
-          return !session.startTime.isAfter(rangeEnd) &&
-              !sessionEnd.isBefore(rangeStart);
-        }).toList();
-      } catch (e2) {
-        debugPrint('[FeedService] sessions unfiltered fallback also failed: $e2');
-      }
-    }
+    // ── 1. Load sessions via shared helper (cached + multi-layer fallback)
+    var sessions = await _sessionHelper.loadSessions(
+      enterpriseId: enterpriseId ?? '',
+      startDate: rangeStart,
+      endDate: rangeEnd,
+      employeeIds: normalizedIds,
+    );
 
     final sessionIds = sessions.map((s) => s.id).toSet().toList();
 
     // ── 2. Load activity logs + photos in parallel ──────────────────────
     final results = await Future.wait([
-      _loadActivityLogs(normalizedIds, sessionIds, rangeStart, rangeEnd),
+      _loadActivityLogs(normalizedIds, sessionIds, rangeStart, rangeEnd,
+          enterpriseId: enterpriseId),
       _loadAllPhotos(normalizedIds, sessionIds, rangeStart, rangeEnd),
     ]);
 
@@ -196,10 +188,13 @@ class AdminActivityFeedService {
       try {
         final empIdSet = normalizedIds.toSet();
         enterpriseFallbackPhotos =
-            (await _photoRepo.getPhotosByEnterprise(resolvedEnterpriseId))
-                .where((photo) =>
-                    empIdSet.contains(photo.employeeId) &&
-                    _isInRange(photo.timestamp, rangeStart, rangeEnd))
+            (await _photoRepo.getPhotosByEnterprise(
+              resolvedEnterpriseId,
+              startDate: rangeStart,
+              endDate: rangeEnd,
+              limit: 500,
+            ))
+                .where((photo) => empIdSet.contains(photo.employeeId))
                 .toList();
         debugPrint(
           '[FeedService] enterprise photo fallback: ${enterpriseFallbackPhotos.length} photos',
@@ -272,8 +267,9 @@ class AdminActivityFeedService {
     List<String> employeeIds,
     List<String> sessionIds,
     DateTime rangeStart,
-    DateTime rangeEnd,
-  ) async {
+    DateTime rangeEnd, {
+    String? enterpriseId,
+  }) async {
     var logsByEmployee = <ActivityLogModel>[];
     try {
       logsByEmployee = await _logRepo.getLogsByEmployeeIds(
@@ -320,7 +316,33 @@ class AdminActivityFeedService {
       }
     }
 
-    return [...logsByEmployee, ...logsBySession];
+    final combined = [...logsByEmployee, ...logsBySession];
+
+    // Enterprise-wide activity log fallback — when employee/session scoped
+    // queries return nothing (often due to missing composite indexes).
+    if (combined.isEmpty &&
+        enterpriseId != null &&
+        enterpriseId.isNotEmpty) {
+      try {
+        final empIdSet = employeeIds.toSet();
+        final enterpriseLogs = (await _logRepo.getLogsByEnterprise(
+          enterpriseId,
+          startDate: rangeStart,
+          endDate: rangeEnd,
+          limit: 1000,
+        ))
+            .where((log) => empIdSet.contains(log.employeeId))
+            .toList();
+        debugPrint(
+          '[FeedService] enterprise activity log fallback: ${enterpriseLogs.length} logs',
+        );
+        return enterpriseLogs;
+      } catch (e) {
+        debugPrint('[FeedService] enterprise activity log fallback failed: $e');
+      }
+    }
+
+    return combined;
   }
 
   Future<List<PhotoModel>> _loadAllPhotos(
@@ -587,6 +609,11 @@ class AdminActivityFeedService {
     return !local.isBefore(start) && !local.isAfter(end);
   }
 
+  /// Minimum interval between location entries shown in the feed.
+  /// GPS polls happen every 60s but we only show one entry per this interval
+  /// to avoid flooding the activity timeline.
+  static const Duration _locationDisplayInterval = Duration(minutes: 20);
+
   Future<List<ActivityLogModel>> _loadLocationActivitiesForSessions(
     List<SessionModel> sessions, {
     required DateTime rangeStart,
@@ -594,12 +621,42 @@ class AdminActivityFeedService {
   }) async {
     final locationActivities = <ActivityLogModel>[];
 
-    for (final session in sessions) {
-      final locations = await _sessionRepo.getSessionLocations(session.id);
-      for (final location in locations) {
+    // Load all session locations in parallel instead of sequentially
+    final allLocations = await Future.wait(
+      sessions.map((s) => _sessionRepo.getSessionLocations(s.id)),
+    );
+
+    for (var i = 0; i < sessions.length; i++) {
+      final session = sessions[i];
+      final locations = allLocations[i];
+
+      // Thin out location_update entries to one per ~20-min window.
+      // Keep non-location types (check_in, check_out, visit) always.
+      DateTime? lastLocationShown;
+
+      // Sort ascending so we pick the first location per window
+      final sorted = List.of(locations)
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+      for (final location in sorted) {
         if (!_isInRange(location.timestamp, rangeStart, rangeEnd)) {
           continue;
         }
+
+        final isSpecialType = location.type == 'check_in' ||
+            location.type == 'check_out' ||
+            location.type == 'visit';
+
+        if (!isSpecialType) {
+          // Thin: skip if too close to the last shown location
+          if (lastLocationShown != null &&
+              location.timestamp.difference(lastLocationShown).abs() <
+                  _locationDisplayInterval) {
+            continue;
+          }
+          lastLocationShown = location.timestamp;
+        }
+
         locationActivities.add(
           ActivityLogModel(
             id: 'session_location_${session.id}_${location.id}',

@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 
 import '../models/session_location_model.dart';
 import '../models/session_model.dart';
+import '../repositories/daily_summary_repository.dart';
 import '../repositories/session_repository.dart';
 import '../services/location_service.dart';
 import '../services/realtime_db_service.dart';
@@ -16,6 +18,7 @@ import '../tracking/tracking_foreground_service.dart';
 
 class SessionProvider extends ChangeNotifier {
   final SessionRepository _sessionRepo = SessionRepository();
+  final DailySummaryRepository _dailySummaryRepo = DailySummaryRepository();
   final RealtimeDbService _rtdb = RealtimeDbService();
   final LocationService _locationService = LocationService();
 
@@ -94,10 +97,20 @@ class SessionProvider extends ChangeNotifier {
     await _activeSessionSubscription?.cancel();
     _activeSessionSubscription =
         _sessionRepo.streamActiveSession(employeeId).listen((session) async {
+      if (_disposed) return;
       _activeSession = session;
 
       if (session == null) {
         _distance = 0.0;
+        // Session ended or doesn't exist — ensure the foreground service is
+        // stopped so heartbeats/presence don't resurrect a ghost session.
+        try {
+          if (await FlutterForegroundTask.isRunningService) {
+            await TrackingForegroundService.stopTracking(clearContext: true);
+          }
+        } catch (e) {
+          debugPrint('[SessionProvider] stop orphan tracking failed: $e');
+        }
       } else {
         _distance = session.totalDistance;
         try {
@@ -105,6 +118,7 @@ class SessionProvider extends ChangeNotifier {
             enterpriseId: session.enterpriseId,
             employeeId: session.employeeId,
             sessionId: session.id,
+            startTimeMs: session.startTime.millisecondsSinceEpoch,
           );
         } catch (error, stackTrace) {
           debugPrint(
@@ -170,6 +184,13 @@ class SessionProvider extends ChangeNotifier {
     } finally {
       _locationInitializing = false;
     }
+  }
+
+  String _formatDuration(int totalSeconds) {
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    if (hours > 0) return '${hours}h ${minutes}m';
+    return '${minutes}m';
   }
 
   String _todayDateIST() {
@@ -251,16 +272,13 @@ class SessionProvider extends ChangeNotifier {
       _currentLocation = initialAddress;
       _lastLocationUpdate = DateTime.now();
 
-      // ── 1. Reset RTDB activeStats with fresh zero values (first!) ────
-      // This must happen before anything else so the dashboard timer always
-      // reflects the correct start time, even if later steps fail.
-      await _rtdb.initializeActiveStats(
-        enterpriseId: enterpriseId,
-        userId: employeeId,
-      );
-
-      // ── 2. Clear stale RTDB data from previous crashed session ───────
+      // ── 1-2. Reset RTDB and clear stale data in parallel ────────────
+      final sessionStartTime = DateTime.now();
       await Future.wait([
+        _rtdb.initializeActiveStats(
+          enterpriseId: enterpriseId,
+          userId: employeeId,
+        ),
         _rtdb.clearLiveLocation(
           enterpriseId: enterpriseId,
           userId: employeeId,
@@ -272,7 +290,6 @@ class SessionProvider extends ChangeNotifier {
       ]);
 
       // ── 3. Create Firestore session doc ──────────────────────────────
-      final sessionStartTime = DateTime.now();
       final session = SessionModel(
         id: '',
         enterpriseId: enterpriseId,
@@ -294,14 +311,20 @@ class SessionProvider extends ChangeNotifier {
         }),
       );
 
-      // ── 4. Write session_started activityLog (awaited, with retry) ───
-      await _writeSessionStartLog(
-        sessionId: sessionId,
-        employeeId: employeeId,
-        enterpriseId: enterpriseId,
-        employeeName: employeeName,
-        address: initialAddress,
-        position: initialPosition,
+      // ── 4. Write session_started activityLog (fire-and-forget) ─────────
+      // The Cloud Function onSessionStarted also writes this log as a
+      // fallback, so we don't need to block the UI waiting for it.
+      unawaited(
+        _writeSessionStartLog(
+          sessionId: sessionId,
+          employeeId: employeeId,
+          enterpriseId: enterpriseId,
+          employeeName: employeeName,
+          address: initialAddress,
+          position: initialPosition,
+        ).catchError((e) {
+          debugPrint('[SessionProvider] session_started log failed: $e');
+        }),
       );
 
       // ── 5-8. Set RTDB presence, onDisconnect, start tracking ─────────
@@ -331,6 +354,7 @@ class SessionProvider extends ChangeNotifier {
           employeeId: employeeId,
           sessionId: sessionId,
           employeeName: employeeName,
+          startTimeMs: sessionStartTime.millisecondsSinceEpoch,
         ),
       ]);
 
@@ -360,30 +384,6 @@ class SessionProvider extends ChangeNotifier {
           sessionId: sessionId,
         ),
       );
-
-      // ── 11. Validate Firestore session doc exists ────────────────────
-      try {
-        final sessionDoc = await FirebaseFirestore.instance
-            .collection('sessions')
-            .doc(sessionId)
-            .get();
-        if (!sessionDoc.exists) {
-          debugPrint('[SessionProvider] Session doc $sessionId not found after creation — rolling back');
-          await _cleanupFailedSessionStart(
-            sessionId: sessionId,
-            enterpriseId: enterpriseId,
-            employeeId: employeeId,
-          );
-          _error = 'Session start failed — please try again';
-          _isLoading = false;
-          _safeNotifyListeners();
-          return false;
-        }
-      } catch (e) {
-        // Validation read failed (e.g. offline) — don't block the session,
-        // the doc was already created successfully above.
-        debugPrint('[SessionProvider] Session validation read failed (non-fatal): $e');
-      }
 
       _isLoading = false;
       _safeNotifyListeners();
@@ -435,29 +435,6 @@ class SessionProvider extends ChangeNotifier {
     }
   }
 
-  /// Rolls back a failed session start: cleans up RTDB, stops tracking.
-  Future<void> _cleanupFailedSessionStart({
-    required String sessionId,
-    required String enterpriseId,
-    required String employeeId,
-  }) async {
-    _activeSession = null;
-    _distance = 0.0;
-    try {
-      await Future.wait([
-        TrackingForegroundService.stopTracking(clearContext: true),
-        _rtdb.clearActiveStats(enterpriseId: enterpriseId, userId: employeeId),
-        _rtdb.setOffline(enterpriseId: enterpriseId, userId: employeeId),
-        _rtdb.clearOnDisconnect(enterpriseId: enterpriseId, userId: employeeId),
-        _rtdb.clearSessionHeartbeat(enterpriseId: enterpriseId, userId: employeeId),
-        _rtdb.clearLiveLocation(enterpriseId: enterpriseId, userId: employeeId),
-      ]);
-      unawaited(SessionTaskGuard.stop());
-    } catch (e) {
-      debugPrint('[SessionProvider] _cleanupFailedSessionStart error: $e');
-    }
-  }
-
   Future<Map<String, dynamic>?> endSession({
     required String enterpriseId,
     required String employeeId,
@@ -471,7 +448,20 @@ class SessionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final flushResult = await TrackingForegroundService.finalFlush();
+      // Attempt a quick flush — 5s cap so the button doesn't spin forever.
+      // Any un-flushed points will be written by the Cloud Function or
+      // picked up on next app open. Data already tracked locally is used
+      // as fallback for the summary.
+      Map<String, dynamic> flushResult = const {};
+      try {
+        flushResult = await TrackingForegroundService.finalFlush()
+            .timeout(const Duration(seconds: 5));
+      } on TimeoutException {
+        debugPrint('[SessionProvider] finalFlush timed out after 5s, proceeding');
+      } catch (e) {
+        debugPrint('[SessionProvider] finalFlush failed: $e');
+      }
+
       final flushedDistance = flushResult['distanceKm'];
       if (flushedDistance is num) {
         _distance = flushedDistance.toDouble();
@@ -490,14 +480,20 @@ class SessionProvider extends ChangeNotifier {
           : DateTime.now().difference(session.startTime);
       final totalDurationSecs = totalDuration.inSeconds;
 
-      await TrackingForegroundService.stopTracking(clearContext: true);
-      // The session is ending normally — stop the task-removal guard so it
-      // does not fire a spurious auto-end after we've already ended the session.
+      // Stop tracking + RTDB cleanup in parallel for speed.
+      // clearOnDisconnect runs first, then setOffline — but both are
+      // independent of stopTracking, so we overlap them.
       unawaited(SessionTaskGuard.stop());
-      await _rtdb.clearOnDisconnect(
-        enterpriseId: enterpriseId,
-        userId: employeeId,
-      );
+      await Future.wait([
+        TrackingForegroundService.stopTracking(clearContext: true),
+        _rtdb.clearOnDisconnect(
+          enterpriseId: enterpriseId,
+          userId: employeeId,
+        ).then((_) => _rtdb.setOffline(
+              enterpriseId: enterpriseId,
+              userId: employeeId,
+            )),
+      ]);
 
       final now = DateTime.now();
       final finalAddress = _currentLocation.isNotEmpty
@@ -511,10 +507,6 @@ class SessionProvider extends ChangeNotifier {
           totalDistance: _distance,
           photosCount: session.photosCount,
           tasksCompleted: session.tasksCompleted,
-        ),
-        _rtdb.setOffline(
-          enterpriseId: enterpriseId,
-          userId: employeeId,
         ),
         _rtdb.clearActiveStats(
           enterpriseId: enterpriseId,
@@ -542,6 +534,53 @@ class SessionProvider extends ChangeNotifier {
             ),
           ),
       ]);
+
+      // ── Write session_ended activity log ───────────────────────────────
+      unawaited(
+        FirebaseFirestore.instance.collection('activityLogs').add({
+          'type': 'session_ended',
+          'employeeId': employeeId,
+          'sessionId': session.id,
+          'enterpriseId': enterpriseId,
+          'orgId': enterpriseId,
+          'timestamp': FieldValue.serverTimestamp(),
+          'date': _todayDateIST(),
+          'title': 'Session Ended',
+          'detail': _formatDuration(totalDurationSecs),
+          'payload': {
+            'endTime': FieldValue.serverTimestamp(),
+            'durationSeconds': totalDurationSecs,
+            'distanceKm': _distance,
+            'photosCount': session.photosCount,
+            'tasksCompleted': session.tasksCompleted,
+            if (_currentLat != 0 || _currentLng != 0) 'lat': _currentLat,
+            if (_currentLat != 0 || _currentLng != 0) 'lng': _currentLng,
+            'address': finalAddress,
+          },
+          'metadata': {
+            if (_currentLat != 0 || _currentLng != 0) 'latitude': _currentLat,
+            if (_currentLat != 0 || _currentLng != 0) 'longitude': _currentLng,
+            'address': finalAddress,
+          },
+        }).then((_) {}).catchError((e) {
+          debugPrint('[SessionProvider] session_ended activity log failed: $e');
+        }),
+      );
+
+      // ── Upsert daily summary so analytics reflect this session ────────
+      unawaited(
+        _dailySummaryRepo.upsertFromSession(
+          employeeId: employeeId,
+          enterpriseId: enterpriseId,
+          sessionId: session.id,
+          totalDuration: totalDurationSecs,
+          totalDistance: _distance,
+          photosCount: session.photosCount,
+          tasksCompleted: session.tasksCompleted,
+        ).catchError((e) {
+          debugPrint('[SessionProvider] dailySummary upsert failed: $e');
+        }),
+      );
 
       final summary = <String, dynamic>{
         'sessionDuration': totalDuration,

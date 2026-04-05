@@ -148,7 +148,10 @@ class PhotoProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
-      final remotePhotos = await _photoRepo.getPhotosByEnterprise(enterpriseId);
+      final remotePhotos = await _photoRepo.getPhotosByEnterprise(
+        enterpriseId,
+        limit: 500,
+      );
       _applyRemotePhotos(remotePhotos);
       await _hydrateQueuedPhotos(
         (payload) => payload['enterpriseId']?.toString() == enterpriseId,
@@ -323,6 +326,50 @@ class PhotoProvider extends ChangeNotifier {
             .ref('activeStats/$enterpriseId/$employeeId/photosToday')
             .set(ServerValue.increment(1));
       } catch (_) {}
+
+      // Write photo_captured activity log directly from the client.
+      // The Cloud Function also writes one — duplicates are deduplicated
+      // by the feed service using document ID.
+      unawaited(
+        _firestore.collection('activityLogs').doc('photo_captured_${photo.id}').set({
+          'enterpriseId': enterpriseId,
+          'employeeId': employeeId,
+          'sessionId': sessionId,
+          'orgId': enterpriseId,
+          'type': 'photo_captured',
+          'title': 'Photo Captured',
+          'detail': (() {
+            final parts = [
+              if (location.isNotEmpty) location,
+              if (category != null && category.isNotEmpty) category,
+              if (customerName != null && customerName.isNotEmpty) customerName,
+            ];
+            return parts.isEmpty ? 'Photo uploaded' : parts.join(' • ');
+          })(),
+          'timestamp': Timestamp.fromDate(now),
+          'date': DateFormat('yyyy-MM-dd').format(now),
+          'payload': {
+            'photoId': photo.id,
+            'photoUrl': imageUrl,
+            'thumbnailUrl': thumbnailUrl,
+          },
+          'metadata': {
+            'photoId': photo.id,
+            'latitude': latitude,
+            'longitude': longitude,
+            'address': location,
+            'imageUrl': imageUrl,
+            'thumbnailUrl': thumbnailUrl,
+            if (category != null) 'category': category,
+            if (customerName != null) 'customerName': customerName,
+            if (customerPhone != null) 'customerPhone': customerPhone,
+            if (notes != null) 'notes': notes,
+            'source': 'client_direct',
+          },
+        }, SetOptions(merge: true)).catchError((e) {
+          debugPrint('[PhotoProvider] photo_captured activity log failed: $e');
+        }),
+      );
 
       // Update optimistic photo with uploaded URLs
       _optimisticPhotosByRequestId[clientRequestId] = photo;

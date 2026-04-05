@@ -33,6 +33,9 @@ class NotificationService {
   Stream<Map<String, dynamic>> get onLocalNotificationTap =>
       _localNotificationTapController.stream;
 
+  StreamSubscription<RemoteMessage>? _onMessageSub;
+  StreamSubscription<RemoteMessage>? _onMessageOpenedSub;
+  StreamSubscription<String>? _onTokenRefreshSub;
   bool _initialized = false;
 
   /// Phase 1: Lightweight APNs registration for iOS phone auth.
@@ -101,10 +104,12 @@ class NotificationService {
         ?.createNotificationChannel(tasksChannel);
 
     // Handle foreground messages
-    FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+    _onMessageSub?.cancel();
+    _onMessageSub = FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
     // Handle background message tap (app was in background)
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
+    _onMessageOpenedSub?.cancel();
+    _onMessageOpenedSub = FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
   }
 
   // Get FCM token
@@ -114,7 +119,8 @@ class NotificationService {
 
   // Listen for token refresh
   void onTokenRefresh(void Function(String token) callback) {
-    _messaging.onTokenRefresh.listen(callback);
+    _onTokenRefreshSub?.cancel();
+    _onTokenRefreshSub = _messaging.onTokenRefresh.listen(callback);
   }
 
   static const _deviceIdKey = 'izumi_device_id';
@@ -276,6 +282,9 @@ class NotificationService {
   }
 
   void dispose() {
+    _onMessageSub?.cancel();
+    _onMessageOpenedSub?.cancel();
+    _onTokenRefreshSub?.cancel();
     _foregroundMessageController.close();
     _messageOpenedController.close();
     _localNotificationTapController.close();
