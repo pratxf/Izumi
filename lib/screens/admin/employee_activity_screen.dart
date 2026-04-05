@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:izumi/core/ui/app_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -15,11 +16,11 @@ import '../../models/session_model.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../repositories/session_repository.dart';
 import '../../services/admin_activity_feed_service.dart';
 import '../../services/geocoding_cache.dart';
 import '../../widgets/glass/gradient_background.dart';
-import '../../widgets/glass/glass_panel.dart';
-import '../../widgets/navigation/app_header.dart';
+
 
 class EmployeeActivityScreen extends StatefulWidget {
   final String employeeName;
@@ -50,12 +51,15 @@ class EmployeeActivityScreen extends StatefulWidget {
   });
 
   @override
-  State<EmployeeActivityScreen> createState() => _EmployeeActivityScreenState();
+  State<EmployeeActivityScreen> createState() =>
+      _EmployeeActivityScreenState();
 }
 
 class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
   final AdminActivityFeedService _feedService = AdminActivityFeedService();
+  final SessionRepository _sessionRepository = SessionRepository();
 
+  late String _selectedPeriod;
   DateTime _rangeStart = DateTime.now();
   DateTime _rangeEnd = DateTime.now();
   bool _showFullGallery = false;
@@ -64,9 +68,15 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
   _EmployeeDayActivity? _dayActivity;
   Timer? _liveRefreshTimer;
 
+  // Route map state
+  List<LatLng> _routePoints = [];
+  Set<Marker> _markers = {};
+  bool _isLoadingRoute = false;
+
   @override
   void initState() {
     super.initState();
+    _selectedPeriod = widget.selectedPeriod;
     _initializeRange();
     _liveRefreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || !_isSelectedToday()) return;
@@ -128,6 +138,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         );
         _isLoading = false;
       });
+      _loadRouteData(feed.sessions);
     } catch (error, stackTrace) {
       debugPrint('[EmployeeActivityScreen] Failed to load day data: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -135,6 +146,102 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
       setState(() {
         _dayActivity = _fallbackDayActivity();
         _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadRouteData(List<SessionModel> sessions) async {
+    if (sessions.isEmpty) {
+      setState(() {
+        _routePoints = [];
+        _markers = {};
+        _isLoadingRoute = false;
+      });
+      return;
+    }
+
+    setState(() => _isLoadingRoute = true);
+
+    try {
+      final allPoints = <LatLng>[];
+      final sessionBoundaries = <LatLng>[];
+
+      // Sort sessions by start time
+      final sortedSessions = List<SessionModel>.from(sessions)
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+      for (final session in sortedSessions) {
+        try {
+          final locations =
+              await _sessionRepository.getSessionLocations(session.id);
+          if (locations.isEmpty) continue;
+
+          final sessionStart =
+              LatLng(locations.first.latitude, locations.first.longitude);
+          final sessionEnd =
+              LatLng(locations.last.latitude, locations.last.longitude);
+
+          sessionBoundaries.add(sessionStart);
+          sessionBoundaries.add(sessionEnd);
+
+          for (final loc in locations) {
+            allPoints.add(LatLng(loc.latitude, loc.longitude));
+          }
+        } catch (_) {
+          // Skip sessions whose locations fail to load
+        }
+      }
+
+      if (!mounted) return;
+
+      final markers = <Marker>{};
+      if (allPoints.isNotEmpty) {
+        // Green marker at first point
+        markers.add(Marker(
+          markerId: const MarkerId('route_start'),
+          position: allPoints.first,
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          infoWindow: const InfoWindow(title: 'Start'),
+        ));
+
+        // Red marker at last point
+        markers.add(Marker(
+          markerId: const MarkerId('route_end'),
+          position: allPoints.last,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          infoWindow: const InfoWindow(title: 'End'),
+        ));
+
+        // Intermediate session boundary markers (indigo/violet)
+        // Skip the very first start and very last end since they are already marked
+        for (var i = 0; i < sessionBoundaries.length; i++) {
+          final isVeryFirst = i == 0;
+          final isVeryLast = i == sessionBoundaries.length - 1;
+          if (isVeryFirst || isVeryLast) continue;
+
+          markers.add(Marker(
+            markerId: MarkerId('boundary_$i'),
+            position: sessionBoundaries[i],
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueViolet),
+            infoWindow: InfoWindow(
+                title: i.isEven ? 'Session start' : 'Session end'),
+          ));
+        }
+      }
+
+      setState(() {
+        _routePoints = allPoints;
+        _markers = markers;
+        _isLoadingRoute = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _routePoints = [];
+        _markers = {};
+        _isLoadingRoute = false;
       });
     }
   }
@@ -242,6 +349,173 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // PERIOD PICKER
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  void _showPeriodPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Text(
+                  'Select Period',
+                  style: AppTypography.headline.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                for (final period in [
+                  'Today',
+                  'Yesterday',
+                  'This Week',
+                  'Last 7 Days',
+                  'This Month',
+                  'Custom Range'
+                ])
+                  ListTile(
+                    title: Text(
+                      period,
+                      style: AppTypography.body.copyWith(
+                        color: _selectedPeriod == period
+                            ? AppColors.primary
+                            : AppColors.textPrimary,
+                        fontWeight: _selectedPeriod == period
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                    trailing: _selectedPeriod == period
+                        ? const Icon(Icons.check, color: AppColors.primary)
+                        : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _onPeriodSelected(period);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _onPeriodSelected(String period) {
+    final now = DateTime.now();
+    final today = _normalizeDate(now);
+
+    DateTime newStart;
+    DateTime newEnd;
+
+    switch (period) {
+      case 'Today':
+        newStart = today;
+        newEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
+        break;
+      case 'Yesterday':
+        final yesterday = today.subtract(const Duration(days: 1));
+        newStart = yesterday;
+        newEnd = DateTime(
+            yesterday.year, yesterday.month, yesterday.day, 23, 59, 59);
+        break;
+      case 'This Week':
+        final weekday = today.weekday;
+        newStart = today.subtract(Duration(days: weekday - 1));
+        newEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
+        break;
+      case 'Last 7 Days':
+        newStart = today.subtract(const Duration(days: 6));
+        newEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
+        break;
+      case 'This Month':
+        newStart = DateTime(today.year, today.month, 1);
+        newEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
+        break;
+      case 'Custom Range':
+        _showCustomRangePicker();
+        return;
+      default:
+        return;
+    }
+
+    setState(() {
+      _selectedPeriod = period;
+      _rangeStart = newStart;
+      _rangeEnd = newEnd;
+      _routePoints = [];
+      _markers = {};
+    });
+    _loadDayData();
+  }
+
+  Future<void> _showCustomRangePicker() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: DateTimeRange(start: _rangeStart, end: _rangeEnd),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null && mounted) {
+      setState(() {
+        _selectedPeriod = 'Custom Range';
+        _rangeStart = _normalizeDate(picked.start);
+        _rangeEnd = DateTime(
+          picked.end.year,
+          picked.end.month,
+          picked.end.day,
+          23,
+          59,
+          59,
+        );
+        _routePoints = [];
+        _markers = {};
+      });
+      _loadDayData();
+    }
+  }
+
+  String get _periodLabel {
+    if (_selectedPeriod == 'Custom Range') {
+      final startStr = DateFormat('MMM d').format(_rangeStart);
+      final endStr = DateFormat('MMM d').format(_rangeEnd);
+      return '$startStr - $endStr';
+    }
+    return _selectedPeriod;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // BUILD
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -264,11 +538,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
           bottom: false,
           child: Column(
             children: [
-              AppHeader(
-                title: "${widget.employeeName}'s Activity",
-                type: AppHeaderType.secondary,
-                showAvatar: false,
-              ),
+              _buildHeader(),
               Expanded(
                 child: _isLoading
                     ? const Center(
@@ -281,7 +551,8 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildSummaryCard(stats),
+                            _buildRouteMap(),
+                            _buildStatCards(stats),
                             const SizedBox(height: 20),
                             _buildCapturesSection(dayActivity),
                             const SizedBox(height: 20),
@@ -298,48 +569,282 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // SUMMARY CARD
+  // HEADER
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Widget _buildSummaryCard(Map<String, String> stats) {
-    return GlassPanel(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: Column(
+  Widget _buildHeader() {
+    final initials = widget.employeeName
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0].toUpperCase())
+        .join();
+
+    return Container(
+      padding: EdgeInsets.only(
+        top: 4,
+        left: 8,
+        right: 16,
+        bottom: 8,
+      ),
+      child: Row(
         children: [
-          _buildSummaryRow(
-            icon: AppIcons.timer_1,
-            color: AppColors.primary,
-            label: 'Duration',
-            value: stats['duration']!,
+          // Back button
+          IconButton(
+            onPressed: () => context.pop(),
+            icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+            color: AppColors.textPrimary,
           ),
-          _buildSummaryDivider(),
-          _buildSummaryRow(
-            icon: AppIcons.routing_2,
-            color: AppColors.warning,
-            label: 'Distance',
-            value: stats['distance']!,
+          const SizedBox(width: 4),
+          // Avatar
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.primary.withValues(alpha: 0.12),
+            ),
+            child: widget.profileImageUrl != null &&
+                    widget.profileImageUrl!.isNotEmpty
+                ? ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: widget.profileImageUrl!,
+                      width: 32,
+                      height: 32,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Center(
+                        child: Text(
+                          initials,
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : Center(
+                    child: Text(
+                      initials,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
           ),
-          _buildSummaryDivider(),
-          _buildSummaryRow(
-            icon: AppIcons.camera,
-            color: AppColors.info,
-            label: 'Photos',
-            value: stats['photos']!,
+          const SizedBox(width: 10),
+          // Employee name
+          Expanded(
+            child: Text(
+              widget.employeeName,
+              style: AppTypography.headline.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          // Period selector button
+          GestureDetector(
+            onTap: _showPeriodPicker,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(AppIcons.calendar, size: 14, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    _periodLabel,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(AppIcons.arrow_down, size: 12, color: AppColors.primary),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryRow({
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ROUTE MAP
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildRouteMap() {
+    if (_isLoadingRoute && _routePoints.isEmpty) {
+      return Container(
+        height: 190,
+        decoration: BoxDecoration(
+          color: AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: AppColors.primary,
+          ),
+        ),
+      );
+    }
+
+    if (_routePoints.isEmpty) {
+      return Container(
+        height: 190,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: const [
+            BoxShadow(blurRadius: 6, color: Colors.black12),
+          ],
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                AppIcons.map,
+                size: 36,
+                color: AppColors.textTertiary.withValues(alpha: 0.5),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No route data for this period',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Compute bounds
+    double minLat = _routePoints.first.latitude;
+    double maxLat = _routePoints.first.latitude;
+    double minLng = _routePoints.first.longitude;
+    double maxLng = _routePoints.first.longitude;
+    for (final point in _routePoints) {
+      if (point.latitude < minLat) minLat = point.latitude;
+      if (point.latitude > maxLat) maxLat = point.latitude;
+      if (point.longitude < minLng) minLng = point.longitude;
+      if (point.longitude > maxLng) maxLng = point.longitude;
+    }
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
+    );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        height: 190,
+        child: GoogleMap(
+          initialCameraPosition: CameraPosition(
+            target: LatLng(
+              (minLat + maxLat) / 2,
+              (minLng + maxLng) / 2,
+            ),
+            zoom: 14,
+          ),
+          polylines: {
+            Polyline(
+              polylineId: const PolylineId('route'),
+              points: _routePoints,
+              color: AppColors.primary,
+              width: 3,
+            ),
+          },
+          markers: _markers,
+          onMapCreated: (controller) {
+            // Fit camera to bounds after map is created
+            Future.delayed(const Duration(milliseconds: 300), () {
+              controller.animateCamera(
+                CameraUpdate.newLatLngBounds(bounds, 50),
+              );
+            });
+          },
+          zoomControlsEnabled: false,
+          myLocationButtonEnabled: false,
+          myLocationEnabled: false,
+          scrollGesturesEnabled: false,
+          zoomGesturesEnabled: false,
+          tiltGesturesEnabled: false,
+          rotateGesturesEnabled: false,
+          mapToolbarEnabled: false,
+          liteModeEnabled: true,
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAT CARDS (floating below map)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildStatCards(Map<String, String> stats) {
+    return Transform.translate(
+      offset: const Offset(0, -16),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: const [
+            BoxShadow(blurRadius: 6, color: Colors.black12),
+          ],
+        ),
+        child: Row(
+          children: [
+            _buildStatItem(
+              icon: AppIcons.timer_1,
+              color: AppColors.primary,
+              label: 'Duration',
+              value: stats['duration']!,
+            ),
+            _statDivider(),
+            _buildStatItem(
+              icon: AppIcons.routing_2,
+              color: AppColors.warning,
+              label: 'Distance',
+              value: stats['distance']!,
+            ),
+            _statDivider(),
+            _buildStatItem(
+              icon: AppIcons.camera,
+              color: AppColors.info,
+              label: 'Photos',
+              value: stats['photos']!,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem({
     required IconData icon,
     required Color color,
     required String label,
     required String value,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(
+    return Expanded(
+      child: Column(
         children: [
           Container(
             width: 32,
@@ -350,35 +855,34 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
             ),
             child: Icon(icon, size: 16, color: color),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
+          const SizedBox(height: 6),
           Text(
             value,
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.textPrimary,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
             ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: AppTypography.small.copyWith(
+              color: AppColors.textTertiary,
+            ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryDivider() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Divider(
-        height: 1,
-        thickness: 0.5,
-        color: AppColors.divider.withValues(alpha: 0.5),
-      ),
+  Widget _statDivider() {
+    return Container(
+      width: 1,
+      height: 40,
+      color: AppColors.divider.withValues(alpha: 0.5),
     );
   }
 
@@ -531,7 +1035,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
                   });
                 },
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(8),
                   child: SizedBox(
                     width: 100,
                     height: 100,
@@ -567,6 +1071,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
                                   ),
                                 ),
                         ),
+                        // Time bottom right
                         Positioned(
                           left: 0,
                           right: 0,
@@ -583,39 +1088,43 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
                                 ],
                               ),
                             ),
-                            child: Text(
-                              DateFormat('h:mm a').format(photo.timestamp),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                // Category tag bottom left
+                                if ((photo.category ?? '').isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.4),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      (photo.category ?? '').length > 6
+                                          ? '${(photo.category ?? '').substring(0, 6)}\u2026'
+                                          : (photo.category ?? ''),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                Text(
+                                  DateFormat('h:mm a')
+                                      .format(photo.timestamp),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                        if ((photo.category ?? '').isNotEmpty)
-                          Positioned(
-                            top: 5,
-                            right: 5,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.5),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                (photo.category ?? '').length > 6
-                                    ? '${(photo.category ?? '').substring(0, 6)}\u2026'
-                                    : (photo.category ?? ''),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
                       ],
                     ),
                   ),
@@ -629,11 +1138,14 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // ACTIVITY TIMELINE
+  // ACTIVITY TIMELINE (SESSION GROUPED)
   // ═══════════════════════════════════════════════════════════════════════════
 
   Widget _buildTimeline(_EmployeeDayActivity dayActivity) {
-    if (dayActivity.activities.isEmpty) {
+    final activities = List<ActivityLogModel>.from(dayActivity.activities)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp)); // ascending
+
+    if (activities.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -646,20 +1158,37 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
           ),
           const SizedBox(height: 24),
           Center(
-            child: Text(
-              _isSelectedToday() && _hasLiveStatsForToday()
-                  ? 'Live session activity is in progress'
-                  : 'No activity for this period',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.textSecondary,
-              ),
+            child: Column(
+              children: [
+                Icon(
+                  AppIcons.activity,
+                  size: 36,
+                  color: AppColors.textTertiary.withValues(alpha: 0.4),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'No activity for this period',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       );
     }
 
-    final activities = dayActivity.activities;
+    // Group activities by session
+    final sessions = List<SessionModel>.from(dayActivity.sessions)
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+    // If we have sessions, group activities by session
+    if (sessions.isNotEmpty) {
+      return _buildSessionGroupedTimeline(sessions, activities);
+    }
+
+    // Fallback: ungrouped timeline
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -681,6 +1210,101 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
     );
   }
 
+  Widget _buildSessionGroupedTimeline(
+    List<SessionModel> sessions,
+    List<ActivityLogModel> allActivities,
+  ) {
+    final widgets = <Widget>[
+      Text(
+        'Activity Timeline',
+        style: AppTypography.bodyMedium.copyWith(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: 14),
+    ];
+
+    // Build a map of sessionId -> activities
+    final activityBySession = <String?, List<ActivityLogModel>>{};
+    for (final activity in allActivities) {
+      activityBySession.putIfAbsent(activity.sessionId, () => []);
+      activityBySession[activity.sessionId]!.add(activity);
+    }
+
+    for (var i = 0; i < sessions.length; i++) {
+      final session = sessions[i];
+      final sessionNum = i + 1;
+
+      // Session divider label
+      final startTimeStr = DateFormat('h:mm a').format(session.startTime);
+      final dateStr = DateFormat('MMM d').format(session.startTime);
+      String endTimeStr;
+      if (session.isAutoEnded) {
+        endTimeStr = 'auto-ended';
+      } else if (session.endTime != null) {
+        endTimeStr = DateFormat('h:mm a').format(session.endTime!);
+      } else if (session.isActive) {
+        endTimeStr = 'in progress';
+      } else {
+        endTimeStr = '--';
+      }
+
+      widgets.add(
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          margin: EdgeInsets.only(top: i == 0 ? 0 : 12, bottom: 8),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: AppColors.primary.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Text(
+            'Session $sessionNum \u00B7 $dateStr \u00B7 $startTimeStr \u2192 $endTimeStr',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      );
+
+      // Activities for this session
+      final sessionActivities = activityBySession[session.id] ?? [];
+      sessionActivities.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+      for (var j = 0; j < sessionActivities.length; j++) {
+        final isLastInSession = j == sessionActivities.length - 1;
+        final isLastOverall =
+            i == sessions.length - 1 && isLastInSession;
+        widgets.add(_buildTimelineItem(
+          sessionActivities[j],
+          isLast: isLastOverall,
+        ));
+      }
+    }
+
+    // Activities not assigned to any session
+    final orphanActivities = activityBySession[null] ?? [];
+    if (orphanActivities.isNotEmpty) {
+      for (var j = 0; j < orphanActivities.length; j++) {
+        widgets.add(_buildTimelineItem(
+          orphanActivities[j],
+          isLast: j == orphanActivities.length - 1,
+        ));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
+  }
+
   Widget _buildTimelineItem(ActivityLogModel activity, {bool isLast = false}) {
     final type = activity.type;
     IconData icon;
@@ -691,13 +1315,16 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         color = AppColors.success;
         break;
       case 'session_ended':
-      case 'session_auto_ended':
         icon = AppIcons.timer_pause;
         color = AppColors.critical;
         break;
+      case 'session_auto_ended':
+        icon = AppIcons.timer_pause;
+        color = AppColors.warning;
+        break;
       case 'location_update':
         icon = AppIcons.location;
-        color = AppColors.warning;
+        color = AppColors.primary;
         break;
       case 'task_started':
         icon = AppIcons.task_square;
@@ -705,7 +1332,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         break;
       case 'task_completed':
         icon = AppIcons.tick_circle;
-        color = AppColors.success;
+        color = Color(0xFF7C3AED); // purple
         break;
       case 'photo_captured':
         icon = AppIcons.camera;
@@ -720,8 +1347,75 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         color = AppColors.primary;
     }
 
-    // For location updates, prefer a human-readable address over raw coords.
+    // Resolve display title based on type
+    String displayTitle;
+    switch (type) {
+      case 'session_started':
+        displayTitle = 'Session started';
+        break;
+      case 'session_ended':
+        displayTitle = 'Session ended';
+        break;
+      case 'session_auto_ended':
+        displayTitle = 'Session auto-ended';
+        break;
+      case 'location_update':
+        displayTitle = 'Tracked location';
+        break;
+      case 'photo_captured':
+        displayTitle = 'Photo captured';
+        break;
+      case 'task_completed':
+        displayTitle = 'Task completed';
+        break;
+      default:
+        displayTitle = activity.title;
+    }
+
+    // Resolve detail text
     final detail = _resolveActivityDetail(activity);
+
+    // Build badge for certain types
+    Widget? badge;
+    if (type == 'session_auto_ended') {
+      badge = Container(
+        margin: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          'Auto-ended',
+          style: AppTypography.small.copyWith(
+            color: AppColors.warning,
+            fontWeight: FontWeight.w600,
+            fontSize: 10,
+          ),
+        ),
+      );
+    } else if (type == 'photo_captured') {
+      final category = activity.metadata?['category']?.toString() ??
+          activity.payload?['category']?.toString();
+      if (category != null && category.isNotEmpty) {
+        badge = Container(
+          margin: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.info.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            category,
+            style: AppTypography.small.copyWith(
+              color: AppColors.info,
+              fontWeight: FontWeight.w600,
+              fontSize: 10,
+            ),
+          ),
+        );
+      }
+    }
 
     return IntrinsicHeight(
       child: Row(
@@ -761,65 +1455,76 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
           const SizedBox(width: 10),
           // Content card
           Expanded(
-            child: GlassPanel(
-              margin: EdgeInsets.only(bottom: isLast ? 0 : 8),
-              padding: const EdgeInsets.all(14),
+            child: GestureDetector(
               onTap: () => _onActivityTap(context, activity),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(icon, size: 18, color: color),
+              child: Container(
+                margin: EdgeInsets.only(bottom: isLast ? 0 : 8),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.divider.withValues(alpha: 0.5),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                activity.title,
-                                style: AppTypography.bodySmall.copyWith(
-                                  color: AppColors.textPrimary,
-                                  fontWeight: FontWeight.w600,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(icon, size: 18, color: color),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  displayTitle,
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                            const SizedBox(width: 6),
+                              const SizedBox(width: 6),
+                              Text(
+                                DateFormat('h:mm a')
+                                    .format(activity.timestamp),
+                                style: AppTypography.small.copyWith(
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (detail.isNotEmpty) ...[
+                            const SizedBox(height: 3),
                             Text(
-                              DateFormat('h:mm a').format(activity.timestamp),
-                              style: AppTypography.small.copyWith(
-                                color: AppColors.textTertiary,
+                              detail,
+                              style: AppTypography.caption.copyWith(
+                                color: AppColors.textSecondary,
+                                height: 1.3,
                               ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
-                        ),
-                        if (detail.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            detail,
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.textSecondary,
-                              height: 1.3,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          if (badge != null) badge,
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -860,6 +1565,28 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
       return rawDetail;
     }
 
+    // For task_completed, show the task title from metadata if available
+    if (activity.type == 'task_completed') {
+      final taskTitle = metadata?['taskTitle']?.toString().trim() ??
+          payload?['taskTitle']?.toString().trim() ??
+          '';
+      if (taskTitle.isNotEmpty) return taskTitle;
+    }
+
+    // For session_ended, show duration+distance summary from detail
+    if (activity.type == 'session_ended') {
+      final raw = activity.detail.trim();
+      if (raw.isNotEmpty) return raw;
+    }
+
+    // For session_auto_ended, show the reason
+    if (activity.type == 'session_auto_ended') {
+      final reason = metadata?['reason']?.toString().trim() ??
+          payload?['reason']?.toString().trim() ??
+          activity.detail.trim();
+      if (reason.isNotEmpty) return reason;
+    }
+
     return activity.detail.trim();
   }
 
@@ -871,15 +1598,6 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
     _EmployeeDayActivity dayActivity,
     Map<String, dynamic>? liveStats,
   ) {
-    final sessions = dayActivity.sessions
-        .where((session) => _sessionOverlapsSelectedRange(session))
-        .toList()
-      ..sort((a, b) => a.startTime.compareTo(b.startTime));
-    final sessionStarts = dayActivity.activities
-        .where((activity) => activity.type == 'session_started')
-        .map((activity) => activity.timestamp)
-        .toList()
-      ..sort();
     final sessionEnds = dayActivity.activities
         .where((activity) =>
             activity.type == 'session_ended' ||
@@ -888,13 +1606,10 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         .toList()
       ..sort();
 
-    String formatTime(DateTime? value) {
-      if (value == null) return '--';
-      return DateFormat('hh:mm a').format(value);
-    }
-
     String formatDuration(Duration value) {
       if (value == Duration.zero) return '--';
+      // Ghost session guard: > 24 hours is suspicious
+      if (value.inHours > 24) return '--';
       final hours = value.inHours;
       final minutes = value.inMinutes.remainder(60);
       if (hours > 0) return '${hours}h ${minutes}m';
@@ -907,35 +1622,20 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
                 activity.timestamp == sessionEnds.last &&
                 (activity.type == 'session_ended' ||
                     activity.type == 'session_auto_ended'),
+            orElse: () => dayActivity.activities.first,
           )
         : null;
     final durationFromLog = _parseDurationFromDetail(fallbackEndLog?.detail);
     final summaryDuration = dayActivity.summary?.duration ?? Duration.zero;
     final liveDuration = _liveDuration(liveStats);
+
+    // Ghost session guard for live duration
+    final safeLiveDuration =
+        liveDuration.inHours > 24 ? Duration.zero : liveDuration;
+
     final totalDuration = summaryDuration > Duration.zero
         ? summaryDuration
-        : (durationFromLog ?? liveDuration);
-
-    final endTime = sessionEnds.isNotEmpty
-        ? sessionEnds.last
-        : sessions
-            .map((session) => session.endTime)
-            .whereType<DateTime>()
-            .fold<DateTime?>(null, (latest, value) {
-            if (latest == null || value.isAfter(latest)) {
-              return value;
-            }
-            return latest;
-          });
-    final startTime = sessionStarts.isNotEmpty
-        ? sessionStarts.first
-        : sessions.isNotEmpty
-            ? sessions.first.startTime
-            : (endTime != null && totalDuration > Duration.zero
-                ? endTime.subtract(totalDuration)
-                : (_isSelectedToday() && liveDuration > Duration.zero
-                    ? DateTime.now().subtract(liveDuration)
-                    : null));
+        : (durationFromLog ?? safeLiveDuration);
 
     final photoCount = dayActivity.photoCount > 0
         ? dayActivity.photoCount
@@ -948,8 +1648,6 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
     final distance = dayActivity.summary?.totalDistance ?? 0.0;
 
     return {
-      'startedAt': formatTime(startTime),
-      'endedAt': formatTime(endTime),
       'duration': formatDuration(totalDuration),
       'photos': '${photoCount ?? dayActivity.photoCount}',
       'distance': distance > 0 ? '${distance.toStringAsFixed(1)} km' : '--',
@@ -1005,12 +1703,6 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
     return !local.isBefore(_rangeStart) && !local.isAfter(_rangeEnd);
   }
 
-  bool _sessionOverlapsSelectedRange(SessionModel session) {
-    final localStart = session.startTime.toLocal();
-    final localEnd = (session.endTime ?? session.startTime).toLocal();
-    return !localStart.isAfter(_rangeEnd) && !localEnd.isBefore(_rangeStart);
-  }
-
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
@@ -1019,16 +1711,6 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
     final today = _normalizeDate(DateTime.now());
     return _isSameDay(_rangeStart, today) &&
         _isSameDay(_normalizeDate(_rangeEnd), today);
-  }
-
-  bool _hasLiveStatsForToday() {
-    final stats = _currentLiveStats();
-    if (stats == null) return false;
-    final duration = (stats['sessionDuration'] as num?)?.toInt() ?? 0;
-    final photos = (stats['photosToday'] as num?)?.toInt() ?? 0;
-    final tasks = (stats['tasksToday'] as num?)?.toInt() ?? 0;
-    final distance = (stats['distance'] as num?)?.toDouble() ?? 0.0;
-    return duration > 0 || photos > 0 || tasks > 0 || distance > 0;
   }
 
   Map<String, dynamic>? _currentLiveStats() {
@@ -1193,7 +1875,7 @@ class _GallerySectionState extends State<_GallerySection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Category filter chips — only show if multiple categories
+        // Category filter chips - only show if multiple categories
         if (categories.length > 1) ...[
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,

@@ -100,6 +100,17 @@ class PendingLocationStore {
     );
   }
 
+  /// Deletes all pending locations that do NOT belong to [currentSessionId].
+  /// Prevents orphaned rows from a crashed session from bleeding into a new one.
+  Future<void> clearStaleLocations(String currentSessionId) async {
+    final db = await database;
+    await db.delete(
+      tableName,
+      where: 'session_id != ?',
+      whereArgs: [currentSessionId],
+    );
+  }
+
   // ── Session state persistence for crash recovery ──
 
   static const _sessionStateTable = 'session_state';

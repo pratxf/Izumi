@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:izumi/core/ui/app_icons.dart';
 import 'package:provider/provider.dart';
@@ -73,154 +72,6 @@ class GroupsContent extends StatelessWidget {
 
   const GroupsContent({super.key, this.showCreateButton = false});
 
-  Future<void> _runGroupIdRepair(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final functions = FirebaseFunctions.instanceFor(region: 'asia-south1');
-    final callable = functions.httpsCallable('migrateGroupMemberIds');
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
-      ),
-    );
-
-    Map<String, dynamic> dryRunData;
-    try {
-      final dryRunResult = await callable.call({
-        'dryRun': true,
-        'removeOrphans': false,
-      });
-      dryRunData = Map<String, dynamic>.from(dryRunResult.data as Map);
-    } on FirebaseFunctionsException catch (e) {
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(e.message ?? 'Dry run failed'),
-          backgroundColor: AppColors.critical,
-        ),
-      );
-      return;
-    } catch (_) {
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Dry run failed'),
-          backgroundColor: AppColors.critical,
-        ),
-      );
-      return;
-    }
-
-    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
-
-    if (!context.mounted) return;
-    final shouldApply = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        final totalGroups = dryRunData['totalGroups'] ?? 0;
-        final groupsUpdated = dryRunData['groupsUpdated'] ?? 0;
-        final rewrittenMembers = dryRunData['rewrittenMemberIds'] ?? 0;
-        final rewrittenLeads = dryRunData['rewrittenLeadIds'] ?? 0;
-        final unresolved = dryRunData['unresolvedIdCount'] ?? 0;
-
-        return AlertDialog(
-          backgroundColor: AppColors.glassStrong,
-          title: Text(
-            'Repair Preview',
-            style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
-          ),
-          content: Text(
-            'Groups scanned: $totalGroups\n'
-            'Groups to update: $groupsUpdated\n'
-            'Member IDs to rewrite: $rewrittenMembers\n'
-            'Lead IDs to rewrite: $rewrittenLeads\n'
-            'Still unresolved IDs: $unresolved',
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(
-                'Cancel',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(
-                'Apply Fixes',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldApply != true || !context.mounted) return;
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
-      ),
-    );
-
-    try {
-      final applyResult = await callable.call({
-        'dryRun': false,
-        'removeOrphans': true,
-      });
-      final data = Map<String, dynamic>.from(applyResult.data as Map);
-      final groupsUpdated = data['groupsUpdated'] ?? 0;
-      final removedOrphans =
-          (data['removedOrphanMemberIds'] ?? 0) + (data['removedOrphanLeadIds'] ?? 0);
-
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Repair complete: updated $groupsUpdated groups, removed $removedOrphans orphan IDs.',
-          ),
-          backgroundColor: AppColors.success,
-        ),
-      );
-
-      if (!context.mounted) return;
-      final enterpriseId = context.read<AuthProvider>().enterpriseId;
-      if (enterpriseId != null) {
-        context.read<GroupProvider>().streamGroups(enterpriseId);
-        context.read<UserProvider>().streamUsers(enterpriseId);
-      }
-    } on FirebaseFunctionsException catch (e) {
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(e.message ?? 'Repair failed'),
-          backgroundColor: AppColors.critical,
-        ),
-      );
-    } catch (_) {
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Repair failed'),
-          backgroundColor: AppColors.critical,
-        ),
-      );
-    }
-  }
-
   UserModel? _employeeByAnyId(List<UserModel> employees, String id) {
     return employees.where((e) => e.id == id || e.migratedFrom == id).firstOrNull;
   }
@@ -246,8 +97,6 @@ class GroupsContent extends StatelessWidget {
       children: [
         if (showCreateButton) ...[
           _buildCreateButton(context),
-          const SizedBox(height: 12),
-          _buildRepairButton(context),
           const SizedBox(height: 24),
         ],
 
@@ -345,35 +194,6 @@ class GroupsContent extends StatelessWidget {
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRepairButton(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _runGroupIdRepair(context),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.glassPrimary,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(AppIcons.refresh, color: AppColors.primary, size: 18),
-            const SizedBox(width: 10),
-            Text(
-              'Repair Unknown Users',
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
               ),
             ),
           ],

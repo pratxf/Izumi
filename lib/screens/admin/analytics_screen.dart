@@ -1,20 +1,16 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:izumi/core/ui/app_icons.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
-import '../../widgets/inputs/text_input_field.dart';
 import '../../widgets/navigation/app_header.dart';
 import 'employee_activity_screen.dart';
 
-/// Analytics Screen - Glassmorphism Design
-/// Enterprise activity overview
+/// Analytics Screen - Enterprise activity overview with daily bar chart
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
 
@@ -23,10 +19,8 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  final List<String> _periods = ['Today', 'This Week', 'This Month', 'Custom'];
-  final TextEditingController _searchController = TextEditingController();
-  bool _initialized = false;
   String _searchQuery = '';
+  bool _initialized = false;
 
   @override
   void initState() {
@@ -39,295 +33,36 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   void _initProvider() {
     if (_initialized) return;
     _initialized = true;
-    final auth = context.read<AuthProvider>();
-    final enterpriseId = auth.enterpriseId ?? '';
-    if (enterpriseId.isEmpty) return;
+    final enterpriseId = context.read<AuthProvider>().enterpriseId;
+    if (enterpriseId == null || enterpriseId.isEmpty) return;
     context.read<AnalyticsProvider>().loadAnalytics(enterpriseId);
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
+  // ---------------------------------------------------------------------------
+  // Period selection
+  // ---------------------------------------------------------------------------
 
-  @override
-  Widget build(BuildContext context) {
-    final analytics = context.watch<AnalyticsProvider>();
-    final employees = analytics.employees;
-    final normalizedQuery = _searchQuery.trim().toLowerCase();
-    final filteredEmployees = normalizedQuery.isEmpty
-        ? employees
-        : employees
-            .where((employee) =>
-                employee.name.toLowerCase().contains(normalizedQuery) ||
-                employee.phone.toLowerCase().contains(normalizedQuery))
-            .toList();
-    final sortedEmployees = [...filteredEmployees]..sort((a, b) {
-        final aStats = analytics.getEmployeeStats(a.id);
-        final bStats = analytics.getEmployeeStats(b.id);
-        final aDuration = aStats['durationSecs'] as int? ?? 0;
-        final bDuration = bStats['durationSecs'] as int? ?? 0;
-        final durationCompare = bDuration.compareTo(aDuration);
-        if (durationCompare != 0) return durationCompare;
-        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-      });
+  void _onPeriodSelected(String chipLabel) {
+    final enterpriseId = context.read<AuthProvider>().enterpriseId;
+    if (enterpriseId == null || enterpriseId.isEmpty) return;
 
-    return GradientBackground(
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            AppHeader(
-              title: 'Analytics',
-              type: AppHeaderType.primary,
-              showAvatar: false,
-              showLeading: false,
-              actions: [_buildPeriodSelector(analytics)],
-            ),
-            const SizedBox(height: 16),
-
-            // Summary Stats
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _buildSummaryCard(analytics),
-            ),
-            const SizedBox(height: 24),
-
-            // Content Panel
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      AppColors.glassStrong,
-                      AppColors.glassPrimary,
-                    ],
-                  ),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(32),
-                  ),
-                  border: Border(
-                    top: BorderSide(color: AppColors.glassBorder),
-                    left: BorderSide(color: AppColors.glassBorder),
-                    right: BorderSide(color: AppColors.glassBorder),
-                  ),
-                  boxShadow: AppShadows.glass,
-                ),
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(32),
-                  ),
-                  child: analytics.isLoading
-                      ? const Center(
-                          child: CircularProgressIndicator(
-                            color: AppColors.primary,
-                          ),
-                        )
-                      : SingleChildScrollView(
-                          padding: EdgeInsets.only(
-                            left: 20,
-                            right: 20,
-                            top: 24,
-                            bottom: 120,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Section Header
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Employee Logs',
-                                    style: AppTypography.h3.copyWith(
-                                      color: AppColors.textPrimary,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              GlassInputField(
-                                controller: _searchController,
-                                hint: 'Search employees',
-                                prefixIcon: AppIcons.search_normal,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                                onChanged: (value) =>
-                                    setState(() => _searchQuery = value),
-                              ),
-                              const SizedBox(height: 16),
-
-                              if (sortedEmployees.isEmpty)
-                                Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 32),
-                                    child: Text(
-                                      'No employee data',
-                                      style: AppTypography.bodyMedium.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              else
-                                // Employee Performance Cards
-                                ...sortedEmployees.map((emp) {
-                                  final stats =
-                                      analytics.getEmployeeStats(emp.id);
-                                  final resolvedProfileImageUrl =
-                                      analytics.getResolvedProfileImageUrl(
-                                    emp.id,
-                                  );
-                                  final duration = stats['duration'] as String;
-                                  final distance = stats['distance'] as double;
-                                  final photos = stats['photos'] as int;
-
-                                  return _buildEmployeeCard(
-                                    name: emp.name,
-                                    profileImageUrl: resolvedProfileImageUrl,
-                                    duration: duration,
-                                    distance: distance,
-                                    photos: photos,
-                                    onTap: () {
-                                      final liveStats =
-                                          analytics.activeStatsData[emp.id];
-                                      final filterRange =
-                                          _resolveFilterRange(analytics);
-                                      final initialDate =
-                                          filterRange.$1 ?? DateTime.now();
-
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              EmployeeActivityScreen(
-                                            employeeName: emp.name,
-                                            employeeId: emp.id,
-                                            profileImageUrl:
-                                                resolvedProfileImageUrl,
-                                            linkedEmployeeIds: [
-                                              emp.id,
-                                              if (emp.migratedFrom != null &&
-                                                  emp.migratedFrom!.isNotEmpty)
-                                                emp.migratedFrom!,
-                                            ],
-                                            initialActivities: const [],
-                                            initialDate: initialDate,
-                                            initialLiveStats: liveStats,
-                                            initialAggregateStats: stats,
-                                            selectedPeriod:
-                                                analytics.selectedPeriod,
-                                            rangeStart: filterRange.$1,
-                                            rangeEnd: filterRange.$2,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  );
-                                }),
-                            ],
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPeriodSelector(AnalyticsProvider analytics) {
-    String label = analytics.selectedPeriod;
-    if (analytics.selectedPeriod == 'Custom' &&
-        analytics.customStart != null &&
-        analytics.customEnd != null) {
-      final fmt = DateFormat('dd MMM');
-      label =
-          '${fmt.format(analytics.customStart!)} – ${fmt.format(analytics.customEnd!)}';
+    if (chipLabel == 'Custom') {
+      _showCustomDatePicker();
+    } else {
+      final period = switch (chipLabel) {
+        'Week' => 'This Week',
+        'Month' => 'This Month',
+        _ => chipLabel,
+      };
+      context.read<AnalyticsProvider>().loadAnalytics(
+            enterpriseId,
+            period: period,
+          );
     }
-
-    return GestureDetector(
-      onTap: () => _showPeriodPicker(analytics),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.glassPrimary,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(AppIcons.calendar_1, size: 18, color: AppColors.textPrimary),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.textOnGradient,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
-  void _showPeriodPicker(AnalyticsProvider analytics) {
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => Container(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          24,
-          24,
-          24 + MediaQuery.of(sheetContext).viewPadding.bottom,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Select Period', style: AppTypography.h3),
-            const SizedBox(height: 16),
-            ..._periods.map(
-              (period) => ListTile(
-                title: Text(period),
-                trailing: analytics.selectedPeriod == period
-                    ? Icon(AppIcons.check, color: AppColors.primary)
-                    : null,
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  if (period == 'Custom') {
-                    _showCustomDatePicker(analytics);
-                  } else {
-                    final auth = context.read<AuthProvider>();
-                    final enterpriseId = auth.enterpriseId ?? '';
-                    analytics.loadAnalytics(enterpriseId, period: period);
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showCustomDatePicker(AnalyticsProvider analytics) async {
+  Future<void> _showCustomDatePicker() async {
+    final analytics = context.read<AnalyticsProvider>();
     final now = DateTime.now();
     final initialRange = DateTimeRange(
       start: analytics.customStart ?? now.subtract(const Duration(days: 7)),
@@ -339,7 +74,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       firstDate: DateTime(now.year - 1),
       lastDate: now,
       initialDateRange: initialRange,
-      builder: (context, child) {
+      builder: (ctx, child) {
         return Theme(
           data: ThemeData.light().copyWith(
             colorScheme: const ColorScheme.light(
@@ -360,18 +95,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
 
     if (picked != null && mounted) {
-      final auth = context.read<AuthProvider>();
-      final enterpriseId = auth.enterpriseId ?? '';
-      analytics.loadCustomRange(enterpriseId, picked.start, picked.end);
+      final enterpriseId = context.read<AuthProvider>().enterpriseId;
+      if (enterpriseId == null || enterpriseId.isEmpty) return;
+      context.read<AnalyticsProvider>().loadCustomRange(
+            enterpriseId,
+            picked.start,
+            picked.end,
+          );
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Filter range helper
+  // ---------------------------------------------------------------------------
 
   (DateTime?, DateTime?) _resolveFilterRange(AnalyticsProvider analytics) {
     final now = DateTime.now();
     switch (analytics.selectedPeriod) {
       case 'Today':
-        final start = DateTime(now.year, now.month, now.day);
-        return (start, now);
+        return (DateTime(now.year, now.month, now.day), now);
       case 'This Week':
         final start = now.subtract(Duration(days: now.weekday - 1));
         return (DateTime(start.year, start.month, start.day), now);
@@ -384,114 +126,256 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     }
   }
 
-  Widget _buildSummaryCard(AnalyticsProvider analytics) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            gradient: AppColors.glassPanelGradient,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassBorder),
+  // ---------------------------------------------------------------------------
+  // Chip label mapping
+  // ---------------------------------------------------------------------------
+
+  String _periodToChipLabel(String period) {
+    return switch (period) {
+      'This Week' => 'Week',
+      'This Month' => 'Month',
+      _ => period,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    final analytics = context.watch<AnalyticsProvider>();
+
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppHeader(
+          title: 'Analytics',
+          showAvatar: false,
+          showLeading: false,
+          actions: [_buildPeriodDropdown(analytics)],
+        ),
+        body: analytics.isLoading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primary),
+              )
+            : _buildBody(analytics),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Period pill chips
+  // ---------------------------------------------------------------------------
+
+  Widget _buildPeriodDropdown(AnalyticsProvider analytics) {
+    final currentLabel = _periodToChipLabel(analytics.selectedPeriod);
+    const labels = ['Today', 'Week', 'Month', 'Custom'];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.primary, width: 1),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: currentLabel,
+          isDense: true,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded,
+              size: 18, color: AppColors.primary),
+          style: AppTypography.small.copyWith(
+            color: AppColors.primary,
+            fontWeight: FontWeight.w600,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(AppIcons.chart, size: 20, color: AppColors.textSecondary),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Enterprise Summary',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSummaryItem(
-                    icon: AppIcons.timer_1,
-                    value: analytics.formattedTotalDuration,
-                    label: 'Hours',
-                    color: AppColors.iconOrange,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildSummaryItem(
-                    icon: AppIcons.routing_2,
-                    value: analytics.totalDistance.toStringAsFixed(0),
-                    label: 'km',
-                    color: AppColors.iconTeal,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildSummaryItem(
-                    icon: AppIcons.gallery,
-                    value: '${analytics.totalPhotos}',
-                    label: 'Photos',
-                    color: AppColors.iconAmber,
-                  ),
-                ],
-              ),
-            ],
-          ),
+          dropdownColor: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          items: labels
+              .map((label) => DropdownMenuItem(
+                    value: label,
+                    child: Text(label),
+                  ))
+              .toList(),
+          onChanged: (value) {
+            if (value != null) _onPeriodSelected(value);
+          },
         ),
       ),
     );
   }
 
-  Widget _buildSummaryItem({
-    required IconData icon,
-    required String value,
-    required String label,
-    required Color color,
-  }) {
-    return Expanded(
+  // ---------------------------------------------------------------------------
+  // Body
+  // ---------------------------------------------------------------------------
+
+  Widget _buildBody(AnalyticsProvider analytics) {
+    final showChart = analytics.selectedPeriod == 'This Week' ||
+        analytics.selectedPeriod == 'This Month';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 20, color: color),
+          _buildSummaryCards(analytics),
+          if (showChart) ...[
+            const SizedBox(height: 20),
+            _buildDailyBarChart(analytics),
+          ],
+          const SizedBox(height: 20),
+          _buildEmployeeLogsSection(analytics),
+          const SizedBox(height: 100),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Enterprise Summary Cards
+  // ---------------------------------------------------------------------------
+
+  Widget _buildSummaryCards(AnalyticsProvider analytics) {
+    return Row(
+      children: [
+        Expanded(
+          child: _SummaryCard(
+            value: analytics.formattedTotalDuration,
+            label: 'Hours',
+            icon: AppIcons.clock,
           ),
-          const SizedBox(height: 8),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _SummaryCard(
+            value: '${analytics.totalDistance.toInt()}',
+            label: 'km',
+            icon: AppIcons.routing_2,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _SummaryCard(
+            value: '${analytics.totalPhotos}',
+            label: 'Photos',
+            icon: AppIcons.camera,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Daily Bar Chart
+  // ---------------------------------------------------------------------------
+
+  Widget _buildDailyBarChart(AnalyticsProvider analytics) {
+    final dailyHours = _aggregateDailyHours(analytics);
+    if (dailyHours.isEmpty) return const SizedBox.shrink();
+
+    final sortedDates = dailyHours.keys.toList()..sort();
+    final maxHours =
+        dailyHours.values.fold<double>(0, (a, b) => a > b ? a : b);
+    final yMax = maxHours < 1 ? 1.0 : (maxHours * 1.2).ceilToDouble();
+    final isWeek = analytics.selectedPeriod == 'This Week';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.12),
+          width: 0.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Daily Hours',
+            style: AppTypography.bodySmall.copyWith(
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
           SizedBox(
-            height: 28,
-            child: Center(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                  style: AppTypography.h3.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.bold,
+            height: 100,
+            child: BarChart(
+              BarChartData(
+                maxY: yMax,
+                barTouchData: BarTouchData(enabled: false),
+                titlesData: FlTitlesData(
+                  show: true,
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 28,
+                      getTitlesWidget: (value, meta) {
+                        if (value == 0 || value == meta.max) {
+                          return Text(
+                            '${value.toInt()}h',
+                            style: AppTypography.small.copyWith(fontSize: 10),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 22,
+                      getTitlesWidget: (value, meta) {
+                        final idx = value.toInt();
+                        if (idx < 0 || idx >= sortedDates.length) {
+                          return const SizedBox.shrink();
+                        }
+                        final date = sortedDates[idx];
+                        String label;
+                        if (isWeek) {
+                          const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+                          label = days[date.weekday - 1];
+                        } else {
+                          label = '${date.day}';
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            label,
+                            style: AppTypography.small.copyWith(fontSize: 10),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          SizedBox(
-            height: 16,
-            child: Center(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: AppTypography.overline.copyWith(
-                  color: AppColors.textTertiary,
-                ),
+                gridData: const FlGridData(show: false),
+                borderData: FlBorderData(show: false),
+                barGroups: List.generate(sortedDates.length, (i) {
+                  final hours = dailyHours[sortedDates[i]] ?? 0;
+                  return BarChartGroupData(
+                    x: i,
+                    barRods: [
+                      BarChartRodData(
+                        toY: hours,
+                        color: AppColors.primary,
+                        width: isWeek ? 16 : 8,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(4),
+                          topRight: Radius.circular(4),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
               ),
             ),
           ),
@@ -500,108 +384,195 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
+  /// Flatten all employee summaries, group by date, sum totalDuration, convert
+  /// to fractional hours.
+  Map<DateTime, double> _aggregateDailyHours(AnalyticsProvider analytics) {
+    final Map<DateTime, int> dailySecs = {};
+    for (final summaries in analytics.employeeSummaries.values) {
+      for (final s in summaries) {
+        final dateKey = DateTime(s.date.year, s.date.month, s.date.day);
+        dailySecs[dateKey] = (dailySecs[dateKey] ?? 0) + s.totalDuration;
+      }
+    }
+    return dailySecs.map((date, secs) => MapEntry(date, secs / 3600.0));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Employee Logs Section
+  // ---------------------------------------------------------------------------
+
+  Widget _buildEmployeeLogsSection(AnalyticsProvider analytics) {
+    final employees = analytics.employees;
+
+    // Build sorted list with stats
+    final employeeStats = employees.map((emp) {
+      final stats = analytics.getEmployeeStats(emp.id);
+      return (employee: emp, stats: stats);
+    }).toList();
+
+    // Sort by duration descending
+    employeeStats.sort((a, b) {
+      final aDur = (a.stats['durationSecs'] as int?) ?? 0;
+      final bDur = (b.stats['durationSecs'] as int?) ?? 0;
+      final cmp = bDur.compareTo(aDur);
+      if (cmp != 0) return cmp;
+      return a.employee.name
+          .toLowerCase()
+          .compareTo(b.employee.name.toLowerCase());
+    });
+
+    // Filter by search query
+    final normalizedQuery = _searchQuery.trim().toLowerCase();
+    final filtered = normalizedQuery.isEmpty
+        ? employeeStats
+        : employeeStats.where((e) {
+            return e.employee.name.toLowerCase().contains(normalizedQuery);
+          }).toList();
+
+    // Top employee duration for progress bar proportion
+    final topDurationSecs = employeeStats.isNotEmpty
+        ? ((employeeStats.first.stats['durationSecs'] as int?) ?? 1)
+            .clamp(1, double.maxFinite.toInt())
+        : 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Employee logs',
+          style: AppTypography.headline.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 10),
+        // Search field
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.divider, width: 0.5),
+          ),
+          child: TextField(
+            onChanged: (val) => setState(() => _searchQuery = val),
+            style: AppTypography.body,
+            decoration: InputDecoration(
+              hintText: 'Search employees...',
+              hintStyle: AppTypography.inputHint,
+              prefixIcon: const Icon(
+                AppIcons.search_normal,
+                size: 18,
+                color: AppColors.textTertiary,
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (filtered.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text('No employees found', style: AppTypography.bodySmall),
+            ),
+          )
+        else
+          ...filtered.map((entry) {
+            return _buildEmployeeCard(
+              analytics: analytics,
+              emp: entry.employee,
+              stats: entry.stats,
+              topDurationSecs: topDurationSecs,
+            );
+          }),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Employee Card
+  // ---------------------------------------------------------------------------
+
   Widget _buildEmployeeCard({
-    required String name,
-    required String? profileImageUrl,
-    required String duration,
-    required double distance,
-    required int photos,
-    required VoidCallback onTap,
+    required AnalyticsProvider analytics,
+    required dynamic emp,
+    required Map<String, dynamic> stats,
+    required int topDurationSecs,
   }) {
-    final initials = name.split(' ').take(2).map((e) => e[0]).join('');
+    final resolvedProfileImageUrl =
+        analytics.getResolvedProfileImageUrl(emp.id);
+    final durationSecs = (stats['durationSecs'] as int?) ?? 0;
+    final proportion = topDurationSecs > 0
+        ? (durationSecs / topDurationSecs).clamp(0.0, 1.0)
+        : 0.0;
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: () => _navigateToEmployeeActivity(analytics, emp),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.glassPrimary,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.glassBorder),
-          boxShadow: AppShadows.glass,
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.divider, width: 0.5),
         ),
         child: Row(
           children: [
             // Avatar
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: AppColors.surfaceMuted,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: profileImageUrl != null && profileImageUrl.isNotEmpty
-                  ? Image.network(
-                      profileImageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Center(
-                        child: Text(
-                          initials,
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    )
-                  : Center(
-                      child: Text(
-                        initials,
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-            ),
-            const SizedBox(width: 16),
-
-            // Name
+            _buildAvatar(emp, resolvedProfileImageUrl),
+            const SizedBox(width: 12),
+            // Name and stats
             Expanded(
-              flex: 2,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    name,
-                    style: AppTypography.bodyMedium.copyWith(
+                    emp.name,
+                    style: AppTypography.bodySmall.copyWith(
+                      fontWeight: FontWeight.w600,
                       color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      _StatChip(
+                        icon: AppIcons.clock,
+                        value: stats['duration'] as String? ?? '0m',
+                      ),
+                      const SizedBox(width: 12),
+                      _StatChip(
+                        icon: AppIcons.routing_2,
+                        value:
+                            '${((stats['distance'] as double?) ?? 0).toStringAsFixed(1)} km',
+                      ),
+                      const SizedBox(width: 12),
+                      _StatChip(
+                        icon: AppIcons.camera,
+                        value: '${(stats['photos'] as int?) ?? 0}',
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-
-            // Stats
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildMiniStat(
-                      AppIcons.timer_1,
-                      duration,
-                      AppColors.iconOrange,
-                    ),
-                    const SizedBox(width: 12),
-                    _buildMiniStat(
-                      AppIcons.routing_2,
-                      '${distance.toStringAsFixed(0)}km',
-                      AppColors.iconTeal,
-                    ),
-                    const SizedBox(width: 12),
-                    _buildMiniStat(
-                      AppIcons.gallery,
-                      '$photos',
-                      AppColors.iconAmber,
-                    ),
-                  ],
+            const SizedBox(width: 8),
+            // Mini progress bar
+            SizedBox(
+              width: 60,
+              height: 4,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: proportion,
+                  backgroundColor: AppColors.divider,
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(AppColors.primary),
                 ),
-              ],
+              ),
             ),
           ],
         ),
@@ -609,18 +580,155 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildMiniStat(IconData icon, String value, Color color) {
+  Widget _buildAvatar(dynamic emp, String? profileImageUrl) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.primary.withValues(alpha: 0.1),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.16),
+        ),
+      ),
+      child: profileImageUrl != null && profileImageUrl.isNotEmpty
+          ? ClipOval(
+              child: Image.network(
+                profileImageUrl,
+                fit: BoxFit.cover,
+                width: 40,
+                height: 40,
+                errorBuilder: (_, __, ___) => _buildInitials(emp),
+              ),
+            )
+          : _buildInitials(emp),
+    );
+  }
+
+  Widget _buildInitials(dynamic emp) {
+    return Center(
+      child: Text(
+        emp.initials,
+        style: AppTypography.small.copyWith(
+          color: AppColors.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  void _navigateToEmployeeActivity(AnalyticsProvider analytics, dynamic emp) {
+    final resolvedProfileImageUrl =
+        analytics.getResolvedProfileImageUrl(emp.id);
+    final stats = analytics.getEmployeeStats(emp.id);
+    final liveStats = analytics.activeStatsData[emp.id];
+    final filterRange = _resolveFilterRange(analytics);
+    final initialDate = filterRange.$1;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EmployeeActivityScreen(
+          employeeName: emp.name,
+          employeeId: emp.id,
+          profileImageUrl: resolvedProfileImageUrl,
+          linkedEmployeeIds: [
+            emp.id,
+            if (emp.migratedFrom != null && emp.migratedFrom!.isNotEmpty)
+              emp.migratedFrom!,
+          ],
+          initialActivities: const [],
+          initialDate: initialDate,
+          initialLiveStats: liveStats,
+          initialAggregateStats: stats,
+          selectedPeriod: analytics.selectedPeriod,
+          rangeStart: filterRange.$1,
+          rangeEnd: filterRange.$2,
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Summary Card Widget
+// =============================================================================
+
+class _SummaryCard extends StatelessWidget {
+  final String value;
+  final String label;
+  final IconData icon;
+
+  const _SummaryCard({
+    required this.value,
+    required this.label,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color.fromRGBO(79, 70, 229, 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.12),
+          width: 0.5,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 18, color: AppColors.primary),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: AppTypography.headline.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: AppTypography.small.copyWith(color: AppColors.textTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Stat Chip Widget (icon + value inline)
+// =============================================================================
+
+class _StatChip extends StatelessWidget {
+  final IconData icon;
+  final String value;
+
+  const _StatChip({
+    required this.icon,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 12, color: color),
-        const SizedBox(width: 4),
+        Icon(icon, size: 13, color: AppColors.textTertiary),
+        const SizedBox(width: 3),
         Text(
           value,
-          style: AppTypography.caption.copyWith(
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w600,
-          ),
+          style: AppTypography.small.copyWith(fontSize: 11),
         ),
       ],
     );

@@ -161,6 +161,9 @@ class DashboardProvider extends ChangeNotifier {
           }
         });
         notifyListeners();
+      } else {
+        _liveLocationData = {};
+        notifyListeners();
       }
     });
   }
@@ -178,8 +181,19 @@ class DashboardProvider extends ChangeNotifier {
         });
         _refreshLiveClockIfNeeded();
         notifyListeners();
+      } else {
+        _activeStatsData = {};
+        _refreshLiveClockIfNeeded();
+        notifyListeners();
       }
     });
+  }
+
+  /// Sanitize a distance value — some older sessions wrote meters instead of km.
+  /// A realistic day's travel cap is ~500 km. Anything beyond that is meters.
+  static double _sanitizeDistance(double rawKm) {
+    if (rawKm > 500) return rawKm / 1000.0;
+    return rawKm;
   }
 
   static const int _maxSessionDurationSecs = 16 * 3600; // 16 hours
@@ -239,6 +253,9 @@ class DashboardProvider extends ChangeNotifier {
       return 'break';
     }
 
+    // Respect explicit offline status — don't override with stale location data
+    if (presenceStatus == 'offline') return 'offline';
+
     // A fresh live-location ping is the strongest signal that the user is
     // still active in the field, even if presence briefly got stuck.
     if (_isRecentTimestamp(updatedAt, _liveLocationActiveGrace)) {
@@ -280,14 +297,24 @@ class DashboardProvider extends ChangeNotifier {
     final summary = _todaySummaries[userId];
     if (stats == null && summary == null) return null;
 
-    final distance = (summary?.totalDistance ?? 0.0) +
-        ((stats?['distance'] as num?)?.toDouble() ?? 0.0);
+    // Only count RTDB live stats when the employee is still on-clock.
+    // When a session ends, the dailySummary stream may arrive before the
+    // RTDB activeStats deletion — skipping RTDB for offline employees
+    // prevents brief double-counting during this race window.
+    final employeeStatus = getEmployeeStatus(userId);
+    final isOnClock = employeeStatus == 'active' ||
+        employeeStatus == 'break' ||
+        employeeStatus == 'signal_lost';
+    final liveStats = (stats != null && isOnClock) ? stats : null;
+
+    final distance = _sanitizeDistance(summary?.totalDistance ?? 0.0) +
+        _sanitizeDistance((liveStats?['distance'] as num?)?.toDouble() ?? 0.0);
     final sessionDuration = (summary?.totalDuration ?? 0) +
-        (stats != null ? _resolveLiveDurationSecs(stats) : 0);
+        (liveStats != null ? _resolveLiveDurationSecs(liveStats) : 0);
     final photosToday = (summary?.photosCount ?? 0) +
-        ((stats?['photosToday'] as num?)?.toInt() ?? 0);
+        ((liveStats?['photosToday'] as num?)?.toInt() ?? 0);
     final tasksToday = (summary?.tasksCompleted ?? 0) +
-        ((stats?['tasksToday'] as num?)?.toInt() ?? 0);
+        ((liveStats?['tasksToday'] as num?)?.toInt() ?? 0);
 
     final merged = <String, dynamic>{
       ...?stats,

@@ -121,6 +121,21 @@ class RealtimeDbService {
     await _db.ref('activeStats/$enterpriseId/$userId').remove();
   }
 
+  /// Overwrites activeStats with clean zero values and a fresh server timestamp
+  /// for sessionStartTimeMs. Must be the first RTDB write on session start.
+  Future<void> initializeActiveStats({
+    required String enterpriseId,
+    required String userId,
+  }) async {
+    await _db.ref('activeStats/$enterpriseId/$userId').set({
+      'sessionDuration': 0,
+      'distance': 0.0,
+      'photosToday': 0,
+      'tasksToday': 0,
+      'sessionStartTimeMs': ServerValue.timestamp,
+    });
+  }
+
   Stream<DatabaseEvent> streamActiveStats(String enterpriseId) {
     return _db.ref('activeStats/$enterpriseId').onValue;
   }

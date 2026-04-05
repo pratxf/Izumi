@@ -94,13 +94,13 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _onAuthStateChanged(User? firebaseUser) async {
     if (firebaseUser == null) {
       // Guard: Firebase may briefly emit null before restoring a persisted
-      // session on cold start. Some OEMs (Motorola) have slow keystore
-      // access that can delay token restoration by 1-2 seconds.
-      // Retry twice with increasing delays before giving up.
+      // session on cold start. Some OEMs (Motorola Hello UI) have slow
+      // keystore access that can delay token restoration by 3-5+ seconds.
+      // Retry with increasing back-off before giving up.
       if (_status == AuthStatus.initial || _status == AuthStatus.loading) {
         debugPrint(
             '[AuthProvider] Null event during $_status — checking for spurious emission');
-        for (final delay in [500, 1500]) {
+        for (final delay in [500, 1500, 3000, 5000]) {
           await Future.delayed(Duration(milliseconds: delay));
           final retryUser = _authService.currentUser;
           if (retryUser != null) {
@@ -109,6 +109,8 @@ class AuthProvider extends ChangeNotifier {
             return _onAuthStateChanged(retryUser);
           }
         }
+        debugPrint(
+            '[AuthProvider] All retries exhausted — user is genuinely signed out');
       }
 
       // Truly signed out — clear all state

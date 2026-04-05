@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pre-Android 12 (fullBackupContent) backup rules.
+  Preserves Firebase Auth credential storage so users stay signed in
+  across app kills on aggressive OEM skins (Motorola Hello UI, etc.).
+-->
+<full-backup-content>
+    <include domain="sharedpref" path="com.google.firebase.auth.api.Store.xml" />
+    <include domain="sharedpref" path="com.google.android.gms.appid.xml" />
+    <include domain="sharedpref" path="FirebaseAppHeartBeat.xml" />
+    <include domain="sharedpref" path="izumi_session_task_guard.xml" />
+</full-backup-content>

@@ -1,24 +1,26 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:izumi/core/ui/app_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_shadows.dart';
 import '../../core/constants/app_typography.dart';
 import '../../models/activity_log_model.dart';
 import '../../models/photo_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../repositories/session_repository.dart';
 import '../../services/admin_activity_feed_service.dart';
 import '../../services/geocoding_cache.dart';
+import '../../services/realtime_db_service.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 
-/// Employee Detail Screen
-/// Shows real-time employee stats and activity feed
+/// Employee Detail Screen — Live View
+/// Shows real-time employee location on map, stats, activity feed, and photos.
 class EmployeeDetailScreen extends StatefulWidget {
   final String name;
   final bool isActive;
@@ -35,42 +37,62 @@ class EmployeeDetailScreen extends StatefulWidget {
 
 class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     with WidgetsBindingObserver {
+  // ── Constants ──
   static const int _collapsedPhotoCount = 6;
   static const int _photoPreviewLimit = 24;
   static const Duration _activityWindow = Duration(hours: 24);
+
+  // ── Services ──
   final AdminActivityFeedService _feedService = AdminActivityFeedService();
+  final SessionRepository _sessionRepository = SessionRepository();
+  final RealtimeDbService _realtimeDbService = RealtimeDbService();
+
+  // ── State ──
+  String? _employeeId;
   List<ActivityLogModel> _activityLogs = [];
   List<PhotoModel> _photos = [];
-  StreamSubscription<AdminRecentActivityFeedData>? _feedSubscription;
-  Timer? _warmupTimer;
-  String? _employeeId;
+  List<String> _activeSessionIds = [];
   bool _activityLoading = true;
   bool _photosLoading = true;
   bool _showAllPhotos = false;
+
+  // ── Map state ──
+  GoogleMapController? _mapController;
+  Set<Polyline> _polylines = {};
+  Set<Marker> _markers = {};
+  List<LatLng> _routePoints = [];
+  LatLng? _liveLatLng;
+
+  // ── Subscriptions & timers ──
+  StreamSubscription<AdminRecentActivityFeedData>? _feedSubscription;
+  StreamSubscription<dynamic>? _liveLocationSubscription;
+  Timer? _warmupTimer;
+  Timer? _liveDurationTimer;
+
+  // ── Live duration ──
+  String _liveDurationDisplay = '--:--:--';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Extract employee ID from the route and start feed immediately.
-    // Do NOT gate on DashboardProvider.initDashboard() — the feed query
-    // only needs the employeeId. Migration-ID resolution via the employees
-    // list is best-effort; resolveLinkedEmployeeIds gracefully returns
-    // [employeeId] when the list is empty.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final id = GoRouterState.of(context).pathParameters['id'];
       if (id != null) {
         _employeeId = id;
         _startRecentFeed(id);
+        _startLiveLocationStream(id);
+        _startLiveDurationTimer();
       }
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // No-op: Firestore streams auto-deliver new events on resume.
-    // Restarting the feed here causes an unnecessary loading flash.
+    // Firestore streams auto-deliver on resume; no restart needed.
   }
+
+  // ── Feed ──
 
   void _startRecentFeed(String employeeId) {
     _feedSubscription?.cancel();
@@ -88,10 +110,6 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
         : _feedService.resolveLinkedEmployeeIds(employeeId, employees);
     final queryIds = linkedIds.isEmpty ? [employeeId] : linkedIds;
 
-    // Allow up to 6 seconds for all inner streams (employee logs, session
-    // logs, photos) to deliver their first snapshot. Without this, the first
-    // stream to fire (often with empty data) would immediately dismiss the
-    // loading state and flash "No activity" before session-based data arrives.
     _warmupTimer = Timer(const Duration(seconds: 6), () {
       if (mounted && _activityLoading) {
         setState(() {
@@ -110,14 +128,17 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
         .listen((feed) {
       if (!mounted) return;
 
-      // Don't dismiss loading for an initial empty emission — more stream
-      // sources (session-based logs, photos) may still be initializing.
       final hasData = feed.activities.isNotEmpty || feed.photos.isNotEmpty;
       final doneLoading = hasData || !_activityLoading;
+
+      final newSessionIds = feed.activeSessionIds;
+      final sessionIdsChanged =
+          newSessionIds.join(',') != _activeSessionIds.join(',');
 
       setState(() {
         _activityLogs = feed.activities;
         _photos = feed.photos;
+        _activeSessionIds = newSessionIds;
         if (doneLoading) {
           _warmupTimer?.cancel();
           _activityLoading = false;
@@ -127,6 +148,16 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
           _showAllPhotos = false;
         }
       });
+
+      if (sessionIdsChanged) {
+        _loadRouteFromSessions(newSessionIds);
+      }
+
+      // Fallback: if no RTDB live location and no route, use last
+      // location_update from the activity feed for the map marker
+      if (_liveLatLng == null && _routePoints.isEmpty) {
+        _applyFeedLocationFallback(feed.activities);
+      }
     }, onError: (_) {
       if (!mounted) return;
       _warmupTimer?.cancel();
@@ -137,13 +168,261 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     });
   }
 
+  // ── Map: Route polyline from session locations ──
+
+  Future<void> _loadRouteFromSessions(List<String> sessionIds) async {
+    if (sessionIds.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _routePoints = [];
+          _polylines = {};
+          _markers = {};
+        });
+        _fitMapToLiveLocation();
+      }
+      return;
+    }
+
+    try {
+      final allPoints = <LatLng>[];
+      for (final sessionId in sessionIds) {
+        final locations =
+            await _sessionRepository.getSessionLocations(sessionId);
+        locations.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        for (final loc in locations) {
+          if (loc.latitude != 0.0 || loc.longitude != 0.0) {
+            allPoints.add(LatLng(loc.latitude, loc.longitude));
+          }
+        }
+      }
+
+      if (!mounted) return;
+
+      final markers = <Marker>{};
+      if (allPoints.isNotEmpty) {
+        markers.add(Marker(
+          markerId: const MarkerId('session_start'),
+          position: allPoints.first,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          infoWindow: const InfoWindow(title: 'Session Start'),
+        ));
+      }
+      if (_liveLatLng != null) {
+        markers.add(Marker(
+          markerId: const MarkerId('live_location'),
+          position: _liveLatLng!,
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
+          infoWindow: const InfoWindow(title: 'Current Location'),
+        ));
+      }
+
+      final polylines = <Polyline>{};
+      final polylinePoints = [...allPoints];
+      if (_liveLatLng != null) {
+        polylinePoints.add(_liveLatLng!);
+      }
+      if (polylinePoints.length >= 2) {
+        polylines.add(Polyline(
+          polylineId: const PolylineId('route'),
+          points: polylinePoints,
+          color: AppColors.primary,
+          width: 4,
+        ));
+      }
+
+      setState(() {
+        _routePoints = allPoints;
+        _polylines = polylines;
+        _markers = markers;
+      });
+
+      _fitMapBounds();
+    } catch (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  void _fitMapBounds() {
+    if (_mapController == null) return;
+
+    final allPoints = [..._routePoints];
+    if (_liveLatLng != null) allPoints.add(_liveLatLng!);
+
+    if (allPoints.length < 2) {
+      _fitMapToLiveLocation();
+      return;
+    }
+
+    double minLat = allPoints.first.latitude;
+    double maxLat = allPoints.first.latitude;
+    double minLng = allPoints.first.longitude;
+    double maxLng = allPoints.first.longitude;
+    for (final p in allPoints) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        40,
+      ),
+    );
+  }
+
+  void _fitMapToLiveLocation() {
+    if (_mapController == null) return;
+    final target = _liveLatLng ?? const LatLng(20.5937, 78.9629);
+    _mapController!.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: target, zoom: 14),
+      ),
+    );
+  }
+
+  // ── Fallback: last location from activity feed ──
+
+  void _applyFeedLocationFallback(List<ActivityLogModel> activities) {
+    // Find the most recent location_update in the feed
+    for (final log in activities) {
+      if (log.type != 'location_update') continue;
+      final lat = (log.metadata?['latitude'] as num?)?.toDouble();
+      final lng = (log.metadata?['longitude'] as num?)?.toDouble();
+      if (lat == null || lng == null || (lat == 0 && lng == 0)) continue;
+
+      final fallback = LatLng(lat, lng);
+      setState(() {
+        _liveLatLng = fallback;
+        _markers
+          ..removeWhere((m) => m.markerId.value == 'last_known')
+          ..add(Marker(
+            markerId: const MarkerId('last_known'),
+            position: fallback,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueAzure),
+            infoWindow: const InfoWindow(title: 'Last Known Location'),
+          ));
+      });
+      _fitMapToLiveLocation();
+      return;
+    }
+  }
+
+  // ── RTDB live location stream ──
+
+  void _startLiveLocationStream(String employeeId) {
+    final enterpriseId =
+        context.read<AuthProvider>().enterpriseId ?? '';
+    if (enterpriseId.isEmpty) return;
+
+    _liveLocationSubscription?.cancel();
+    _liveLocationSubscription = _realtimeDbService
+        .streamUserLiveLocation(enterpriseId, employeeId)
+        .listen((event) {
+      final data = event.snapshot.value;
+      if (data == null || data is! Map) return;
+      final lat = (data['latitude'] as num?)?.toDouble();
+      final lng = (data['longitude'] as num?)?.toDouble();
+      if (lat == null || lng == null) return;
+
+      final newLive = LatLng(lat, lng);
+      if (!mounted) return;
+
+      setState(() {
+        _liveLatLng = newLive;
+
+        // Update live marker
+        _markers.removeWhere((m) => m.markerId.value == 'live_location');
+        _markers.add(Marker(
+          markerId: const MarkerId('live_location'),
+          position: newLive,
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
+          infoWindow: const InfoWindow(title: 'Current Location'),
+        ));
+
+        // Extend polyline if route exists
+        if (_routePoints.isNotEmpty) {
+          final polylinePoints = [..._routePoints, newLive];
+          _polylines = {
+            Polyline(
+              polylineId: const PolylineId('route'),
+              points: polylinePoints,
+              color: AppColors.primary,
+              width: 4,
+            ),
+          };
+        }
+      });
+    });
+  }
+
+  // ── Live duration timer ──
+
+  void _startLiveDurationTimer() {
+    _liveDurationTimer?.cancel();
+    _liveDurationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _employeeId == null) return;
+      final stats =
+          context.read<DashboardProvider>().getEmployeeStats(_employeeId!);
+      final startMs = (stats?['sessionStartTimeMs'] as num?)?.toInt();
+      if (startMs == null || startMs == 0) {
+        if (_liveDurationDisplay != '--:--:--') {
+          setState(() => _liveDurationDisplay = '--:--:--');
+        }
+        return;
+      }
+      final elapsed = DateTime.now()
+          .difference(DateTime.fromMillisecondsSinceEpoch(startMs));
+      // Ghost session guard: if sessionStartTimeMs is > 16h old,
+      // it's stale RTDB data from a dead session — fall back to
+      // the pre-computed sessionDuration from the tracking handler.
+      const maxSessionSecs = 16 * 3600; // 16 hours
+      int totalSecs;
+      if (elapsed.inSeconds >= maxSessionSecs) {
+        // Use the sessionDuration field written by the tracking handler
+        totalSecs = (stats?['sessionDuration'] as num?)?.toInt() ?? 0;
+        if (totalSecs == 0) {
+          if (_liveDurationDisplay != '--:--:--') {
+            setState(() => _liveDurationDisplay = '--:--:--');
+          }
+          return;
+        }
+      } else {
+        totalSecs = elapsed.inSeconds.clamp(0, maxSessionSecs);
+      }
+      final h = (totalSecs ~/ 3600).toString().padLeft(2, '0');
+      final m = ((totalSecs % 3600) ~/ 60).toString().padLeft(2, '0');
+      final s = (totalSecs % 60).toString().padLeft(2, '0');
+      final display = '$h:$m:$s';
+      if (display != _liveDurationDisplay) {
+        setState(() => _liveDurationDisplay = display);
+      }
+    });
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _warmupTimer?.cancel();
     _feedSubscription?.cancel();
+    _liveLocationSubscription?.cancel();
+    _liveDurationTimer?.cancel();
+    _mapController?.dispose();
     super.dispose();
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  BUILD
+  // ═══════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -154,16 +433,10 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     final stats = _employeeId != null
         ? dashboardProvider.getEmployeeStats(_employeeId!)
         : null;
-    // Format session time from stats
-    final sessionSeconds = stats?['sessionDuration'] as int? ?? 0;
-    final hours = (sessionSeconds ~/ 3600).toString().padLeft(2, '0');
-    final minutes = ((sessionSeconds % 3600) ~/ 60).toString().padLeft(2, '0');
-    final seconds = (sessionSeconds % 60).toString().padLeft(2, '0');
-    final sessionTimeDisplay = '$hours:$minutes:$seconds';
 
-    // Format distance
     final distanceKm = (stats?['distance'] as num?)?.toDouble() ?? 0.0;
     final distanceDisplay = '${distanceKm.toStringAsFixed(1)} km';
+    final photoCount = _photos.length;
 
     return Scaffold(
       body: GradientBackground(
@@ -171,47 +444,45 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
           bottom: false,
           child: Column(
             children: [
-              AppHeader(
-                title: "${widget.name}'s History",
-                type: AppHeaderType.secondary,
-                showAvatar: false,
-              ),
+              // ── Header with status badge ──
+              _buildHeader(context, status),
 
-              // Scrollable Content
+              // ── Scrollable content ──
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 120),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Stats Row
-                      _buildStatsRow(sessionTimeDisplay, distanceDisplay),
+                      // Mini route map
+                      _buildMiniMap(),
                       const SizedBox(height: 16),
-                      _buildPresenceBanner(status),
-                      const SizedBox(height: 32),
 
-                      // Assign Task Button
-                      _buildActionButtons(context),
-                      const SizedBox(height: 32),
-
-                      // Photos Section
-                      _buildPhotosSection(),
-                      const SizedBox(height: 32),
-
-                      // Live Activity Feed Title
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Live Activity Feed',
-                          style: AppTypography.h3.copyWith(
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                      // Live stats row
+                      _buildLiveStatsRow(
+                        distanceDisplay,
+                        photoCount,
                       ),
                       const SizedBox(height: 16),
 
-                      // Activity Feed
+                      // Action buttons
+                      _buildActionButtons(context),
+                      const SizedBox(height: 28),
+
+                      // Live activity feed
+                      Text(
+                        'Live activity feed',
+                        style: AppTypography.h3.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       _buildActivityFeed(),
+                      const SizedBox(height: 28),
+
+                      // Photos section
+                      _buildPhotosSection(),
                     ],
                   ),
                 ),
@@ -223,227 +494,430 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     );
   }
 
-  Widget _buildStatsRow(String sessionTime, String distance) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  HEADER with status pill
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildHeader(BuildContext context, String status) {
+    return AppHeader(
+      title: widget.name,
+      type: AppHeaderType.secondary,
+      showAvatar: false,
+      actions: [_buildStatusPill(status)],
+    );
+  }
+
+  Widget _buildStatusPill(String status) {
+    Color bgColor;
+    Color textColor;
+    String label;
+
+    switch (status) {
+      case 'active':
+        bgColor = AppColors.badgeActiveBackground;
+        textColor = AppColors.success;
+        label = 'Active';
+        break;
+      case 'signal_lost':
+        bgColor = AppColors.badgeWarning;
+        textColor = AppColors.warning;
+        label = 'Signal Lost';
+        break;
+      default:
+        bgColor = AppColors.badgeOfflineBackground;
+        textColor = AppColors.textTertiary;
+        label = 'Offline';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.caption.copyWith(
+          color: textColor,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  MINI ROUTE MAP
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildMiniMap() {
+    final initialTarget = _liveLatLng ?? const LatLng(20.5937, 78.9629);
+
     return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: AppColors.glassPrimary,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassBorder),
-            boxShadow: AppShadows.glass,
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        height: 200,
+        width: double.infinity,
+        child: GoogleMap(
+          initialCameraPosition: CameraPosition(
+            target: initialTarget,
+            zoom: 14,
           ),
-          child: IntrinsicHeight(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Session Time
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'SESSION TIME',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textSecondary.withValues(alpha: 0.7),
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
-                        fontSize: 10,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      sessionTime,
-                      style: AppTypography.h2.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                // Divider
-                Container(width: 1, color: AppColors.glassBorder),
-                // Total Distance
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      'TOTAL DISTANCE',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textSecondary.withValues(alpha: 0.7),
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
-                        fontSize: 10,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      distance,
-                      style: AppTypography.h2.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+          onMapCreated: (controller) {
+            _mapController = controller;
+            // Fit once map is ready
+            if (_routePoints.isNotEmpty) {
+              _fitMapBounds();
+            } else if (_liveLatLng != null) {
+              _fitMapToLiveLocation();
+            }
+          },
+          polylines: _polylines,
+          markers: _markers,
+          myLocationEnabled: false,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
+          compassEnabled: false,
+          rotateGesturesEnabled: false,
+          scrollGesturesEnabled: false,
+          tiltGesturesEnabled: false,
+          zoomGesturesEnabled: false,
+          liteModeEnabled: false,
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  LIVE STATS ROW (3 cards)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildLiveStatsRow(String distance, int photoCount) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStatCard(
+            value: _liveDurationDisplay,
+            label: 'Duration',
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _buildStatCard(
+            value: distance,
+            label: 'Distance',
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _buildStatCard(
+            value: '$photoCount',
+            label: 'Photos',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatCard({required String value, required String label}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.glassBorder,
+          width: 0.5,
+        ),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPresenceBanner(String status) {
-    final isActive = status == 'active';
-    final isBreak = status == 'break';
-    final isSignalLost = status == 'signal_lost';
-
-    final color = isActive
-        ? AppColors.success
-        : isBreak || isSignalLost
-            ? AppColors.warning
-            : AppColors.textTertiary;
-    final background = isActive
-        ? AppColors.badgeActiveBackground
-        : isBreak || isSignalLost
-            ? AppColors.badgeWarning
-            : AppColors.badgeOfflineBackground;
-    final icon = isActive
-        ? AppIcons.tick_circle
-        : isBreak
-            ? AppIcons.coffee
-            : isSignalLost
-                ? AppIcons.warning_2
-                : AppIcons.close_circle;
-    final label = isActive
-        ? 'Active'
-        : isBreak
-            ? 'Break'
-            : isSignalLost
-                ? 'Signal Lost (Reconnecting...)'
-                : 'Offline';
-    final helper = isSignalLost
-        ? 'Elapsed session time keeps running until the backend marks the session auto-ended.'
-        : isActive
-            ? 'Live tracking is currently connected.'
-            : isBreak
-                ? 'Employee is still on the clock but temporarily on break.'
-                : 'No active connection is currently reported.';
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.glassPrimary,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.glassBorder),
-            boxShadow: AppShadows.glass,
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 9,
+              color: AppColors.textTertiary,
+            ),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: background,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      helper,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButtons(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildActionButton(
-            AppIcons.task_square,
-            'Assign Task',
-            () => context.push('/admin/create-task', extra: {
-              'initialAssigneeName': widget.name,
-            }),
-          ),
-          const SizedBox(width: 12),
-          _buildActionButton(AppIcons.gallery, 'View Photos', () {
-            context.push('/admin/employee-images', extra: {
-              'employeeId': _employeeId,
-            });
-          }),
         ],
       ),
     );
   }
 
-  Widget _buildActionButton(IconData icon, String label, VoidCallback onTap) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  ACTION BUTTONS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildActionButtons(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildActionButton(
+            icon: AppIcons.task_square,
+            label: 'Assign task',
+            onTap: () => context.push('/admin/create-task', extra: {
+              'initialAssigneeName': widget.name,
+            }),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildActionButton(
+            icon: AppIcons.gallery,
+            label: 'View photos',
+            onTap: () => context.push('/admin/employee-images', extra: {
+              'employeeId': _employeeId,
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppColors.glassPrimary,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.glassBorder),
-              boxShadow: AppShadows.glass,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.primary),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: AppColors.primary, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            child: Row(
-              children: [
-                Icon(icon, color: AppColors.primary, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          ],
         ),
       ),
     );
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  ACTIVITY FEED
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildActivityFeed() {
+    if (_activityLoading && _activityLogs.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: 32),
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
+      );
+    }
+
+    if (_activityLogs.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 32),
+          child: Column(
+            children: [
+              Icon(AppIcons.activity, size: 48, color: AppColors.textTertiary),
+              const SizedBox(height: 16),
+              Text(
+                'No activity in the last 24 hours',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Sort descending (newest first)
+    final sorted = List<ActivityLogModel>.from(_activityLogs)
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    return Column(
+      children: List.generate(sorted.length, (index) {
+        final log = sorted[index];
+        final isLast = index == sorted.length - 1;
+
+        IconData icon;
+        Color color;
+        switch (log.type) {
+          case 'session_start':
+          case 'session_started':
+            icon = AppIcons.clock;
+            color = AppColors.success;
+            break;
+          case 'session_end':
+          case 'session_ended':
+          case 'session_auto_ended':
+            icon = AppIcons.close_circle;
+            color = AppColors.critical;
+            break;
+          case 'location_update':
+            icon = AppIcons.location;
+            color = AppColors.primary;
+            break;
+          case 'photo_captured':
+            icon = AppIcons.camera;
+            color = AppColors.primary;
+            break;
+          case 'task_started':
+          case 'task_completed':
+            icon = AppIcons.tick_circle;
+            color = const Color(0xFF7C3AED); // purple
+            break;
+          default:
+            icon = AppIcons.activity;
+            color = AppColors.primary;
+        }
+
+        return _buildTimelineItem(
+          icon: icon,
+          color: color,
+          title: log.title,
+          time: log.formattedFeedTime,
+          description: _resolveActivityDetail(log),
+          isLast: isLast,
+          log: log,
+        );
+      }),
+    );
+  }
+
+  Widget _buildTimelineItem({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String time,
+    required String description,
+    required bool isLast,
+    required ActivityLogModel log,
+  }) {
+    final showMap = log.type == 'location_update';
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Timeline column: icon + connecting line
+          SizedBox(
+            width: 36,
+            child: Column(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 16),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      color: AppColors.glassBorder,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Content
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (showMap)
+                        GestureDetector(
+                          onTap: () => _openMaps(description),
+                          child: Container(
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              color: AppColors.glassPrimary,
+                              borderRadius: BorderRadius.circular(8),
+                              border:
+                                  Border.all(color: AppColors.glassBorder),
+                            ),
+                            child: const Icon(
+                              AppIcons.map_1,
+                              size: 13,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      if (showMap) const SizedBox(width: 6),
+                      Text(
+                        time,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.textTertiary,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      description,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  PHOTOS SECTION
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Widget _buildPhotosSection() {
     final hasOverflow = _photos.length > _collapsedPhotoCount;
@@ -474,7 +948,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
                 ),
                 child: Text(
                   '${_photos.length}',
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -510,37 +984,23 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
             ),
           )
         else
-          ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: AppColors.glassPanelGradient,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.glassBorder),
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    const spacing = 10.0;
-                    final tileSize = (constraints.maxWidth - (spacing * 2)) / 3;
-                    return Wrap(
-                      spacing: spacing,
-                      runSpacing: spacing,
-                      children: [
-                        for (final photo in visiblePhotos)
-                          SizedBox(
-                            width: tileSize,
-                            height: tileSize,
-                            child: _buildPhotoTile(photo),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const spacing = 10.0;
+              final tileSize = (constraints.maxWidth - (spacing * 2)) / 3;
+              return Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: [
+                  for (final photo in visiblePhotos)
+                    SizedBox(
+                      width: tileSize,
+                      height: tileSize,
+                      child: _buildPhotoTile(photo),
+                    ),
+                ],
+              );
+            },
           ),
         if (!_photosLoading && hasOverflow) ...[
           const SizedBox(height: 14),
@@ -664,256 +1124,23 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     );
   }
 
-  Widget _buildActivityFeed() {
-    if (_activityLoading && _activityLogs.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.only(top: 32),
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2.5),
-          ),
-        ),
-      );
-    }
-
-    if (_activityLogs.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.only(top: 32),
-          child: Column(
-            children: [
-              Icon(
-                AppIcons.activity,
-                size: 48,
-                color: AppColors.textTertiary,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No activity in the last 24 hours',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      children: List.generate(_activityLogs.length, (index) {
-        final log = _activityLogs[index];
-        final isLast = index == _activityLogs.length - 1;
-
-        // Map log type to icon & color
-        IconData icon;
-        Color color;
-        switch (log.type) {
-          case 'location_update':
-            icon = AppIcons.location;
-            color = AppColors.success;
-            break;
-          case 'task_started':
-            icon = AppIcons.task_square;
-            color = AppColors.primary;
-            break;
-          case 'task_completed':
-            icon = AppIcons.tick_circle;
-            color = AppColors.success;
-            break;
-          case 'photo_captured':
-            icon = AppIcons.camera;
-            color = AppColors.info;
-            break;
-          case 'session_started':
-            icon = AppIcons.timer_start;
-            color = AppColors.info;
-            break;
-          case 'session_ended':
-            icon = AppIcons.timer_pause;
-            color = AppColors.warning;
-            break;
-          case 'break':
-            icon = AppIcons.coffee;
-            color = AppColors.warning;
-            break;
-          default:
-            icon = AppIcons.activity;
-            color = AppColors.primary;
-        }
-
-        return _buildTimelineItem(
-          icon: icon,
-          color: color,
-          title: log.title,
-          time: log.formattedFeedTime,
-          description: _resolveActivityDetail(log),
-          isLast: isLast,
-          isOpacity: isLast,
-        );
-      }),
-    );
-  }
-
-  Widget _buildTimelineItem({
-    required IconData icon,
-    Color color = AppColors.primary,
-    required String title,
-    required String time,
-    required String description,
-    required bool isLast,
-    bool isOpacity = false,
-  }) {
-    final showMap = icon == AppIcons.location;
-    return Opacity(
-      opacity: isOpacity ? 0.8 : 1.0,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Timeline Line & Icon Placeholder space
-            SizedBox(
-              width: 24,
-              child: Stack(
-                alignment: Alignment.topCenter,
-                children: [
-                  if (!isLast)
-                    Positioned(
-                      top: 40,
-                      bottom: 0,
-                      child: Container(
-                        width: 2,
-                        color: AppColors.glassBorder,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            // Card Content
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.glassPrimary,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: AppColors.glassBorder),
-                        boxShadow: AppShadows.glass,
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Icon(
-                              icon,
-                              color: color,
-                              size: 24,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      title,
-                                      style: AppTypography.bodyMedium.copyWith(
-                                        color: AppColors.textPrimary,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Row(
-                                      children: [
-                                        if (showMap)
-                                          GestureDetector(
-                                            onTap: () => _openMaps(description),
-                                            child: Container(
-                                              width: 28,
-                                              height: 28,
-                                              decoration: BoxDecoration(
-                                                color: AppColors.glassPrimary,
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                                border: Border.all(
-                                                  color: AppColors.glassBorder,
-                                                ),
-                                              ),
-                                              child: const Icon(
-                                                AppIcons.map_1,
-                                                size: 14,
-                                                color: AppColors.primary,
-                                              ),
-                                            ),
-                                          ),
-                                        if (showMap) const SizedBox(width: 8),
-                                        Text(
-                                          time,
-                                          style: AppTypography.caption.copyWith(
-                                            color: AppColors.textSecondary
-                                                .withValues(alpha: 0.6),
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 10,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  description,
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  HELPERS
+  // ═══════════════════════════════════════════════════════════════════════════
 
   String _resolveActivityDetail(ActivityLogModel log) {
-    final metadata = log.metadata;
-    final payload = log.payload;
-
     if (log.type == 'location_update') {
+      final metadata = log.metadata;
+      final payload = log.payload;
       final metaAddress = metadata?['address']?.toString().trim() ?? '';
       final payloadAddress = payload?['address']?.toString().trim() ?? '';
       final rawDetail = log.detail.trim();
-
       for (final candidate in [metaAddress, payloadAddress, rawDetail]) {
         if (candidate.isNotEmpty &&
             !GeocodingCache.isCoordinateString(candidate)) {
           return candidate;
         }
       }
-
       final lat = (metadata?['latitude'] as num?)?.toDouble();
       final lng = (metadata?['longitude'] as num?)?.toDouble();
       if (lat != null && lng != null) {
@@ -926,7 +1153,6 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       }
       return rawDetail;
     }
-
     return log.detail.trim();
   }
 

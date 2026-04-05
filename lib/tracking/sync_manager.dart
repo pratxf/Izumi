@@ -162,7 +162,6 @@ class SyncManager {
         };
       }
 
-      final batch = _firestore.batch();
       double latestDistanceKm = 0;
       final rowIds = <int>[];
       Map<String, dynamic>? latestRow;
@@ -178,46 +177,60 @@ class SyncManager {
         latestRow = row;
       }
 
-      if (latestRow != null) {
-        final lat = (latestRow['latitude'] as num).toDouble();
-        final lng = (latestRow['longitude'] as num).toDouble();
-        final address = await _reverseGeocode(lat, lng);
+      // Write one Firestore location doc per buffered point.
+      // Firestore batch limit is 500; reserve 1 slot for the session update.
+      const maxPerBatch = 490;
+      final batches = <WriteBatch>[];
+      var currentBatch = _firestore.batch();
+      var batchCount = 0;
 
-        final locationRef = _firestore
+      for (final row in rows) {
+        if (batchCount >= maxPerBatch) {
+          batches.add(currentBatch);
+          currentBatch = _firestore.batch();
+          batchCount = 0;
+        }
+
+        final docRef = _firestore
             .collection('sessions')
             .doc(sessionId)
             .collection('locations')
             .doc();
 
-        batch.set(locationRef, {
-          'latitude': lat,
-          'longitude': lng,
-          'address': address,
+        currentBatch.set(docRef, {
+          'latitude': (row['latitude'] as num).toDouble(),
+          'longitude': (row['longitude'] as num).toDouble(),
+          'accuracy': ((row['accuracy'] as num?) ?? 0).toDouble(),
+          'speed': ((row['speed'] as num?) ?? 0).toDouble(),
+          'heading': ((row['heading'] as num?) ?? 0).toDouble(),
+          'activityType': row['activity_type'],
+          'activityConfidence': row['activity_confidence'],
+          'distanceKm':
+              ((row['cumulative_distance_km'] as num?) ?? 0).toDouble(),
           'timestamp': Timestamp.fromMillisecondsSinceEpoch(
-            latestRow['captured_at_ms'] as int,
+            row['captured_at_ms'] as int,
           ),
           'type': 'location_update',
           'title': 'Tracked Location',
-          'accuracy': ((latestRow['accuracy'] as num?) ?? 0).toDouble(),
-          'speed': ((latestRow['speed'] as num?) ?? 0).toDouble(),
-          'heading': ((latestRow['heading'] as num?) ?? 0).toDouble(),
-          'activityType': latestRow['activity_type'],
-          'activityConfidence': latestRow['activity_confidence'],
-          'distanceKm': latestDistanceKm,
-          'capturedAtMs': latestRow['captured_at_ms'],
-          'bufferedPointCount': rows.length,
+          'capturedAtMs': row['captured_at_ms'],
         });
+        batchCount++;
       }
 
-      batch.set(
+      // Add session totalDistance + lastSyncAt to the final batch
+      currentBatch.set(
           _firestore.collection('sessions').doc(sessionId),
           {
             'totalDistance': latestDistanceKm,
             'lastSyncAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true));
+      batches.add(currentBatch);
 
-      await batch.commit();
+      // Commit all batches sequentially
+      for (final b in batches) {
+        await b.commit();
+      }
       await _pendingLocationStore.deleteRowsByIds(rowIds);
       _lastFlushAt = DateTime.now();
 

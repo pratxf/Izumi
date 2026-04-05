@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:izumi/core/ui/app_icons.dart';
@@ -12,9 +13,108 @@ import '../../widgets/navigation/app_header.dart';
 
 /// Profile Screen - Glassmorphism Design
 /// User profile with settings and logout
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   final bool isAdmin;
   const ProfileScreen({super.key, this.isAdmin = false});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  bool get isAdmin => widget.isAdmin;
+
+  Future<void> _clearGhostSessions(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.4),
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: AlertDialog(
+          backgroundColor: AppColors.glassStrong,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            'Clear Ghost Sessions',
+            style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
+          ),
+          content: Text(
+            'This will force-end all stuck sessions and set signal-lost employees to offline. Continue?',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(
+                'Cancel',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(
+                'Clear',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.critical,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Show loading
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      ),
+    );
+
+    try {
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('forceEndGhostSessions');
+      final result = await callable.call();
+      final data = result.data as Map<String, dynamic>? ?? {};
+      final ended = data['ended'] ?? 0;
+
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Cleared $ended ghost session(s).'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(e.message ?? 'Failed to clear ghost sessions'),
+          backgroundColor: AppColors.critical,
+        ),
+      );
+    } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: AppColors.critical,
+        ),
+      );
+    }
+  }
 
   void _logout(BuildContext context) {
     showDialog(
@@ -355,6 +455,12 @@ class ProfileScreen extends StatelessWidget {
                   onTap: () {
                     context.push('/admin/export');
                   },
+                ),
+                _buildDivider(),
+                _buildMenuItem(
+                  icon: AppIcons.refresh,
+                  label: 'Clear Ghost Sessions',
+                  onTap: () => _clearGhostSessions(context),
                 ),
               ],
             ],

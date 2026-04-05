@@ -1,23 +1,24 @@
 import 'dart:async';
-import 'dart:ui';
+import 'dart:ui' as ui;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:go_router/go_router.dart';
-import 'package:izumi/core/ui/app_icons.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../core/ui/app_icons.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
-import '../../utils/alphabet_filter_utils.dart';
-import '../../widgets/glass/gradient_background.dart';
-import '../../widgets/navigation/app_header.dart';
 import '../../services/geocoding_cache.dart';
-import '../../widgets/inputs/text_input_field.dart';
+import '../../widgets/navigation/app_header.dart';
 
 /// Dashboard Screen - Enterprise Admin
-/// Overview with search, stats, and employee list
+/// Full-screen Google Map with floating header, search bar, and draggable
+/// bottom sheet listing all employees with live status, location, and stats.
 class DashboardScreen extends StatefulWidget {
   final VoidCallback? onAvatarTap;
 
@@ -29,11 +30,30 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen>
     with WidgetsBindingObserver {
-  final _searchController = TextEditingController();
-  String _statusFilter = 'active';
-  String? _lastLoadedEnterpriseId;
+  // Controllers
+  GoogleMapController? _mapController;
+  final DraggableScrollableController _sheetController =
+      DraggableScrollableController();
+  final TextEditingController _searchController = TextEditingController();
+  final ScrollController _employeeScrollController = ScrollController();
+
+  // State
+  String _searchQuery = '';
+  String _statusFilter = 'all';
+  String? _highlightedEmployeeId;
   bool _hasUnread = false;
+  bool _initialCameraDone = false;
+  String? _lastLoadedEnterpriseId;
+
+  // Subscriptions
   StreamSubscription? _unreadSub;
+
+  // Marker cache: "initials_colorValue" -> BitmapDescriptor
+  final Map<String, BitmapDescriptor> _markerCache = {};
+  Set<Marker> _markers = {};
+
+  // Keep track of last data hash to avoid redundant marker rebuilds
+  int _lastMarkerDataHash = 0;
 
   @override
   void initState() {
@@ -48,14 +68,15 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _resumeData();
+      _loadDashboard();
     }
   }
 
-  void _resumeData() {
-    if (!mounted) return;
-    final enterpriseId = context.read<AuthProvider>().enterpriseId;
-    if (enterpriseId != null) {
+  void _loadDashboard() {
+    final authProvider = context.read<AuthProvider>();
+    final enterpriseId = authProvider.enterpriseId;
+    if (enterpriseId != null && enterpriseId != _lastLoadedEnterpriseId) {
+      _lastLoadedEnterpriseId = enterpriseId;
       context.read<DashboardProvider>().initDashboard(enterpriseId);
     }
   }
@@ -75,477 +96,584 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
   }
 
-  void _loadDashboard() {
-    final enterpriseId = context.read<AuthProvider>().enterpriseId;
-    if (enterpriseId != null && enterpriseId != _lastLoadedEnterpriseId) {
-      _lastLoadedEnterpriseId = enterpriseId;
-      context.read<DashboardProvider>().initDashboard(enterpriseId);
-    }
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _mapController?.dispose();
+    _sheetController.dispose();
     _searchController.dispose();
+    _employeeScrollController.dispose();
     _unreadSub?.cancel();
     super.dispose();
   }
 
-  String _signalLostLabel(Map<String, dynamic>? presence) {
-    final signalLostAt = presence?['signalLostAt'];
-    if (signalLostAt is! num) return 'Signal Lost';
-    final minutes =
-        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(signalLostAt.toInt())).inMinutes;
-    if (minutes < 5) return 'Signal Lost (Reconnecting...)';
-    if (minutes < 15) return 'Signal Lost (${minutes}m ago)';
-    return 'Signal Lost (Ending session...)';
-  }
+  // ===========================================================================
+  // Marker generation
+  // ===========================================================================
 
-  String _statusFilterLabel() {
-    switch (_statusFilter) {
-      case 'signal_lost':
-        return 'signal lost';
-      default:
-        return _statusFilter;
-    }
-  }
-
-  List<UserModel> _getFilteredEmployees(DashboardProvider dashboardProvider) {
-    final query = _searchController.text.toLowerCase();
-    List<UserModel> employees = dashboardProvider.employees;
-
-    // Apply search filter
-    if (query.isNotEmpty) {
-      employees = employees.where((e) {
-        final location = dashboardProvider
-                .getEmployeeLocation(e.id)?['address']
-                ?.toString()
-                .toLowerCase() ??
-            '';
-        return e.name.toLowerCase().contains(query) || location.contains(query);
-      }).toList();
-    }
-
-    employees = sortUsersByName(employees, true);
-
-    // Apply status filter
-    if (_statusFilter == 'active') {
-      return employees
-          .where((e) => dashboardProvider.getEmployeeStatus(e.id) == 'active')
-          .toList();
-    }
-    if (_statusFilter == 'offline') {
-      return employees
-          .where((e) => dashboardProvider.getEmployeeStatus(e.id) == 'offline')
-          .toList();
-    }
-    if (_statusFilter == 'signal_lost') {
-      return employees
-          .where(
-              (e) => dashboardProvider.getEmployeeStatus(e.id) == 'signal_lost')
-          .toList();
-    }
-    return employees;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dashboardProvider = context.watch<DashboardProvider>();
-    final employees = dashboardProvider.employees;
-    final filteredEmployees = _getFilteredEmployees(dashboardProvider);
-
-    return GradientBackground(
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            AppHeader(
-              title: 'Dashboard',
-              type: AppHeaderType.primary,
-              showNotification: true,
-              hasUnread: _hasUnread,
-              showLeading: false,
-              avatarUrl:
-                  context.watch<AuthProvider>().currentUser?.profileImageUrl,
-              onNotificationTap: () {
-                context.push('/employee/notifications');
-              },
-              onAvatarTap: () => context.push('/admin/profile'),
-            ),
-
-            // Search Bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              child: GlassInputField(
-                controller: _searchController,
-                hint: 'Search employees...',
-                prefixIcon: AppIcons.search_normal,
-                onChanged: (_) => setState(() {}),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
-            ),
-
-            // Overview Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Overview',
-                    style: AppTypography.h3.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildOverviewCard(
-                          icon: AppIcons.people,
-                          label: 'Active',
-                          value: '${dashboardProvider.activeCount}',
-                          sublabel: 'Personnel online',
-                          showPulse: true,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildOverviewCard(
-                          icon: AppIcons.user_remove,
-                          label: 'Offline',
-                          value: '${dashboardProvider.offlineCount}',
-                          sublabel: 'Personnel offline',
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-
-            // All Employees Section
-            Expanded(
-              child: dashboardProvider.isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primary,
-                      ),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              RichText(
-                                text: TextSpan(
-                                  style: AppTypography.h3.copyWith(
-                                    color: AppColors.textPrimary,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  children: [
-                                    const TextSpan(text: 'All Employees '),
-                                    TextSpan(
-                                      text: '(${employees.length})',
-                                      style: TextStyle(
-                                        color: AppColors.textSecondary,
-                                        fontWeight: FontWeight.normal,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              Center(
-                                child: Wrap(
-                                  alignment: WrapAlignment.center,
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    _buildFilterPill(
-                                      label: 'Active',
-                                      selected: _statusFilter == 'active',
-                                      onTap: () => setState(
-                                          () => _statusFilter = 'active'),
-                                    ),
-                                    _buildFilterPill(
-                                      label: 'Offline',
-                                      selected: _statusFilter == 'offline',
-                                      onTap: () => setState(
-                                          () => _statusFilter = 'offline'),
-                                    ),
-                                    _buildFilterPill(
-                                      label: 'Signal Lost',
-                                      selected: _statusFilter == 'signal_lost',
-                                      onTap: () => setState(
-                                          () => _statusFilter = 'signal_lost'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Expanded(
-                          child: filteredEmployees.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    'No ${_statusFilterLabel()} employees found',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                )
-                              : ListView.separated(
-                                  padding: const EdgeInsets.only(
-                                    left: 24,
-                                    right: 24,
-                                    bottom: 120,
-                                  ),
-                                  itemCount: filteredEmployees.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 16),
-                                  itemBuilder: (context, index) {
-                                    return _buildEmployeeCard(
-                                      filteredEmployees[index],
-                                      dashboardProvider,
-                                    );
-                                  },
-                                ),
-                        ),
-                      ],
-                    ),
-            ),
-          ],
+  Future<BitmapDescriptor> _createMarker(String initials, Color color) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const size = 48.0;
+    // White border ring
+    canvas.drawCircle(
+      const Offset(size / 2, size / 2),
+      size / 2,
+      Paint()..color = Colors.white,
+    );
+    // Colored circle
+    canvas.drawCircle(
+      const Offset(size / 2, size / 2),
+      size / 2 - 2,
+      Paint()..color = color,
+    );
+    // Initials text
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: initials,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
         ),
       ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        (size - textPainter.width) / 2,
+        (size - textPainter.height) / 2,
+      ),
+    );
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(size.toInt(), size.toInt());
+    final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+  }
+
+  Future<void> _buildMarkers(DashboardProvider dp) async {
+    // Quick hash to skip redundant rebuilds
+    final hash = Object.hashAll([
+      dp.employees.length,
+      dp.liveLocationData.hashCode,
+      dp.presenceData.hashCode,
+    ]);
+    if (hash == _lastMarkerDataHash) return;
+    _lastMarkerDataHash = hash;
+
+    final newMarkers = <Marker>{};
+    final boundsPoints = <LatLng>[];
+
+    for (final employee in dp.employees) {
+      final status = dp.getEmployeeStatus(employee.id);
+      if (status == 'offline') continue;
+
+      final loc = dp.getEmployeeLocation(employee.id);
+      final lat = (loc?['latitude'] as num?)?.toDouble();
+      final lng = (loc?['longitude'] as num?)?.toDouble();
+      if (lat == null || lng == null) continue;
+
+      final color = status == 'active'
+          ? const Color(0xFF4F46E5) // indigo
+          : const Color(0xFFD97706); // amber
+
+      final cacheKey = '${employee.initials}_${color.toARGB32()}';
+      if (!_markerCache.containsKey(cacheKey)) {
+        _markerCache[cacheKey] = await _createMarker(employee.initials, color);
+      }
+
+      final position = LatLng(lat, lng);
+      boundsPoints.add(position);
+
+      newMarkers.add(
+        Marker(
+          markerId: MarkerId(employee.id),
+          position: position,
+          icon: _markerCache[cacheKey]!,
+          onTap: () => _onMarkerTapped(employee),
+        ),
+      );
+    }
+
+    if (!mounted) return;
+    setState(() => _markers = newMarkers);
+
+    // Fit camera to bounds on first load only — after stream data arrives
+    if (!_initialCameraDone &&
+        boundsPoints.isNotEmpty &&
+        _mapController != null) {
+      _initialCameraDone = true;
+      _fitMapToMarkers(boundsPoints);
+    }
+  }
+
+  void _fitMapToMarkers(List<LatLng> positions) {
+    if (positions.isEmpty || _mapController == null) return;
+    try {
+      if (positions.length == 1) {
+        _mapController!.animateCamera(
+          CameraUpdate.newLatLngZoom(positions.first, 14),
+        );
+        return;
+      }
+      double minLat = positions.first.latitude;
+      double maxLat = positions.first.latitude;
+      double minLng = positions.first.longitude;
+      double maxLng = positions.first.longitude;
+      for (final p in positions) {
+        if (p.latitude < minLat) minLat = p.latitude;
+        if (p.latitude > maxLat) maxLat = p.latitude;
+        if (p.longitude < minLng) minLng = p.longitude;
+        if (p.longitude > maxLng) maxLng = p.longitude;
+      }
+      final bounds = LatLngBounds(
+        southwest: LatLng(minLat, minLng),
+        northeast: LatLng(maxLat, maxLng),
+      );
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLngBounds(bounds, 60),
+      );
+    } catch (e) {
+      debugPrint('[DashboardScreen] map bounds error: $e');
+    }
+  }
+
+  void _onMarkerTapped(UserModel employee) {
+    final dp = context.read<DashboardProvider>();
+    final loc = dp.getEmployeeLocation(employee.id);
+    final lat = (loc?['latitude'] as num?)?.toDouble();
+    final lng = (loc?['longitude'] as num?)?.toDouble();
+
+    if (lat != null && lng != null) {
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(LatLng(lat, lng), 16),
+      );
+    }
+
+    setState(() => _highlightedEmployeeId = employee.id);
+
+    _sheetController.animateTo(
+      0.92,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOut,
     );
   }
 
-  Widget _buildOverviewCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required String sublabel,
-    bool showPulse = false,
-  }) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          height: 132,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: AppColors.glassPrimary,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassBorder),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  if (showPulse)
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: AppColors.success,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.success.withValues(alpha: 0.4),
-                            blurRadius: 8,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    Icon(icon, size: 18, color: AppColors.primary),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      label,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    value,
-                    style: AppTypography.displayLarge.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 30,
-                    ),
-                  ),
-                  Text(
-                    sublabel,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // ===========================================================================
+  // Address resolution
+  // ===========================================================================
 
-  Widget _buildFilterPill({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary : AppColors.glassStrong,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected ? AppColors.primary : AppColors.glassBorder,
-          ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.14),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : [],
-        ),
-        child: Text(
-          label,
-          style: AppTypography.caption.copyWith(
-            color: selected ? Colors.white : AppColors.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _resolveLocationAddress(
+  String _resolveAddress(
       String rawAddress, Map<String, dynamic>? locationData) {
     if (!GeocodingCache.isCoordinateString(rawAddress)) return rawAddress;
-
-    // Try to extract lat/lng and check cache
     final lat = (locationData?['latitude'] as num?)?.toDouble();
     final lng = (locationData?['longitude'] as num?)?.toDouble();
-    if (lat == null || lng == null) {
-      final parsed = GeocodingCache.parseCoordinates(rawAddress);
-      if (parsed == null) return rawAddress;
-      final cached = GeocodingCache.instance.getCached(parsed.$1, parsed.$2);
-      if (cached != null) return cached;
-      // Fire async resolve and rebuild when done
-      GeocodingCache.instance.resolve(parsed.$1, parsed.$2).then((_) {
-        if (mounted) setState(() {});
-      });
-      return '${parsed.$1.toStringAsFixed(4)}, ${parsed.$2.toStringAsFixed(4)}';
-    }
-
+    if (lat == null || lng == null) return rawAddress;
     final cached = GeocodingCache.instance.getCached(lat, lng);
     if (cached != null) return cached;
-    // Fire async resolve and rebuild when done
     GeocodingCache.instance.resolve(lat, lng).then((_) {
       if (mounted) setState(() {});
     });
     return '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}';
   }
 
-  Widget _buildEmployeeCard(
-      UserModel employee, DashboardProvider dashboardProvider) {
-    final status = dashboardProvider.getEmployeeStatus(employee.id);
-    final isActive = status == 'active';
-    final isBreak = status == 'break';
-    final isSignalLost = status == 'signal_lost';
-    final isOnClock = dashboardProvider.isEmployeeOnClock(employee.id);
+  // ===========================================================================
+  // Filtering & sorting
+  // ===========================================================================
 
-    final locationData = dashboardProvider.getEmployeeLocation(employee.id);
-    final rawAddress =
-        locationData?['address'] as String? ?? 'Location unavailable';
-    final locationAddress = _resolveLocationAddress(rawAddress, locationData);
-    final lastUpdated = locationData?['timestamp'];
-    String lastUpdatedStr = '';
-    if (lastUpdated != null) {
-      final ts = DateTime.fromMillisecondsSinceEpoch(lastUpdated is int
-          ? lastUpdated
-          : int.tryParse(lastUpdated.toString()) ?? 0);
-      final diff = DateTime.now().difference(ts);
-      if (diff.inMinutes < 1) {
-        lastUpdatedStr = 'Just now';
-      } else if (diff.inMinutes < 60) {
-        lastUpdatedStr = '${diff.inMinutes} min ago';
-      } else if (diff.inHours < 24) {
-        lastUpdatedStr = '${diff.inHours}h ago';
-      } else {
-        lastUpdatedStr = '${diff.inDays}d ago';
-      }
+  List<UserModel> _filteredEmployees(DashboardProvider dp) {
+    List<UserModel> list = _searchQuery.isEmpty
+        ? List<UserModel>.from(dp.employees)
+        : dp.searchEmployees(_searchQuery);
+
+    if (_statusFilter != 'all') {
+      list = list
+          .where((e) => dp.getEmployeeStatus(e.id) == _statusFilter)
+          .toList();
     }
 
-    final stats = dashboardProvider.getEmployeeStats(employee.id);
-    final distance = stats?['distance'] as num? ?? 0.0;
-    final durationSec = stats?['sessionDuration'] as num? ?? 0;
-    final durationMin = (durationSec / 60).round();
-    final durationStr = durationMin >= 60
-        ? '${durationMin ~/ 60}h ${durationMin % 60}m'
-        : '${durationMin}m';
+    list.sort((a, b) {
+      const order = {
+        'active': 0,
+        'signal_lost': 1,
+        'break': 2,
+        'offline': 3,
+      };
+      final sa = order[dp.getEmployeeStatus(a.id)] ?? 3;
+      final sb = order[dp.getEmployeeStatus(b.id)] ?? 3;
+      return sa.compareTo(sb);
+    });
 
-    Color statusColor = isActive
-        ? AppColors.success
-        : isBreak
-            ? AppColors.warning
-            : isSignalLost
-                ? AppColors.warningDark
-                : AppColors.textDisabled;
+    return list;
+  }
 
-    Color statusBgColor = isActive
-        ? AppColors.badgeActiveBackground
-        : isBreak
-            ? AppColors.badgeBreakBackground
-            : isSignalLost
-                ? AppColors.badgeWarning
-                : AppColors.badgeOfflineBackground;
+  String _formatDuration(int totalSeconds) {
+    if (totalSeconds <= 0) return '--:--';
+    final h = totalSeconds ~/ 3600;
+    final m = (totalSeconds % 3600) ~/ 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
 
-    String statusLabel = isActive
-        ? 'ACTIVE'
-        : isBreak
-            ? 'BREAK'
-            : isSignalLost
-                ? _signalLostLabel(dashboardProvider.presenceData[employee.id])
-                : 'OFFLINE';
+  String _formatDistance(double meters) {
+    if (meters <= 0) return '0.0 km';
+    return '${(meters / 1000).toStringAsFixed(1)} km';
+  }
+
+  // ===========================================================================
+  // Status helpers
+  // ===========================================================================
+
+  Color _statusDotColor(String status) {
+    switch (status) {
+      case 'active':
+        return AppColors.success;
+      case 'signal_lost':
+        return AppColors.warning;
+      default:
+        return AppColors.textDisabled;
+    }
+  }
+
+  Color _statusBadgeColor(String status) {
+    switch (status) {
+      case 'active':
+        return AppColors.success;
+      case 'signal_lost':
+        return AppColors.warning;
+      default:
+        return AppColors.textTertiary;
+    }
+  }
+
+  Color _statusBadgeBg(String status) {
+    switch (status) {
+      case 'active':
+        return AppColors.badgeActiveBackground;
+      case 'signal_lost':
+        return AppColors.badgeWarning;
+      default:
+        return AppColors.badgeOfflineBackground;
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'active':
+        return 'Active';
+      case 'signal_lost':
+        return 'Signal Lost';
+      default:
+        return 'Offline';
+    }
+  }
+
+  // ===========================================================================
+  // Build
+  // ===========================================================================
+
+  @override
+  Widget build(BuildContext context) {
+    final dp = context.watch<DashboardProvider>();
+    final authProvider = context.watch<AuthProvider>();
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    // Rebuild markers after frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _buildMarkers(dp);
+    });
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        children: [
+          // ---- Google Map (full screen base layer) ----
+          GoogleMap(
+            initialCameraPosition: const CameraPosition(
+              target: LatLng(20.5937, 78.9629), // India center fallback
+              zoom: 5,
+            ),
+            markers: _markers,
+            mapType: MapType.normal,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            onMapCreated: (controller) {
+              _mapController = controller;
+            },
+          ),
+
+          // ---- Floating AppHeader ----
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: AppHeader(
+              title: 'Dashboard',
+              showLeading: false,
+              showNotification: true,
+              hasUnread: _hasUnread,
+              onNotificationTap: () =>
+                  context.push('/employee/notifications'),
+              showAvatar: true,
+              avatarUrl: authProvider.currentUser?.profileImageUrl,
+              onAvatarTap: widget.onAvatarTap ??
+                  () => context.push('/admin/profile'),
+            ),
+          ),
+
+          // ---- Floating search bar ----
+          Positioned(
+            top: topPadding + 64,
+            left: 16,
+            right: 16,
+            child: Container(
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                style: AppTypography.bodyMedium,
+                decoration: InputDecoration(
+                  hintText: 'Search employees...',
+                  hintStyle: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textDisabled,
+                  ),
+                  prefixIcon: const Icon(
+                    AppIcons.search_normal,
+                    size: 20,
+                    color: AppColors.textTertiary,
+                  ),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? GestureDetector(
+                          onTap: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                          child: const Icon(
+                            AppIcons.close_circle,
+                            size: 18,
+                            color: AppColors.textDisabled,
+                          ),
+                        )
+                      : null,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 13,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ---- Draggable bottom sheet ----
+          DraggableScrollableSheet(
+            controller: _sheetController,
+            initialChildSize: 0.38,
+            minChildSize: 0.12,
+            maxChildSize: 0.92,
+            snap: true,
+            snapSizes: const [0.12, 0.38, 0.92],
+            builder: (context, scrollController) {
+              final employees = _filteredEmployees(dp);
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(20)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x1A000000),
+                      blurRadius: 16,
+                      offset: Offset(0, -4),
+                    ),
+                  ],
+                ),
+                child: ListView(
+                  controller: scrollController,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    // Drag handle
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 10, bottom: 8),
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color:
+                              AppColors.textDisabled.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+
+                    // Status overview pills
+                    _buildStatusPills(dp),
+                    const SizedBox(height: 8),
+
+                    const SizedBox(height: 4),
+
+                    // Employee list
+                    if (dp.isLoading)
+                      const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                    else if (employees.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Center(
+                          child: Text(
+                            'No employees found',
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      ...employees
+                          .map((e) => _buildEmployeeCard(dp, e)),
+
+                    // Bottom safe area
+                    SizedBox(
+                      height:
+                          MediaQuery.of(context).padding.bottom + 16,
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // Status pills row
+  // ===========================================================================
+
+  Widget _buildStatusPills(DashboardProvider dp) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          _statusPill(
+            label: 'Active',
+            count: dp.activeCount,
+            color: AppColors.primary,
+            bgColor: AppColors.primary.withValues(alpha: 0.12),
+            filterValue: 'active',
+          ),
+          const SizedBox(width: 8),
+          _statusPill(
+            label: 'Signal Lost',
+            count: dp.signalLostCount,
+            color: AppColors.warning,
+            bgColor: AppColors.warning.withValues(alpha: 0.12),
+            filterValue: 'signal_lost',
+          ),
+          const SizedBox(width: 8),
+          _statusPill(
+            label: 'Offline',
+            count: dp.offlineCount,
+            color: AppColors.textTertiary,
+            bgColor: AppColors.surfaceMuted,
+            filterValue: 'offline',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusPill({
+    required String label,
+    required int count,
+    required Color color,
+    required Color bgColor,
+    required String filterValue,
+  }) {
+    final isSelected = _statusFilter == filterValue;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _statusFilter = isSelected ? 'all' : filterValue;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withValues(alpha: 0.18) : bgColor,
+            borderRadius: BorderRadius.circular(12),
+            border: isSelected
+                ? Border.all(color: color.withValues(alpha: 0.4))
+                : null,
+          ),
+          child: Column(
+            children: [
+              Text(
+                '$count',
+                style: AppTypography.h3.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: AppTypography.small.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // Filter chips
+  // ===========================================================================
+
+  // ===========================================================================
+  // Employee card
+  // ===========================================================================
+
+  Widget _buildEmployeeCard(DashboardProvider dp, UserModel employee) {
+    final status = dp.getEmployeeStatus(employee.id);
+    final isOnClock = dp.isEmployeeOnClock(employee.id);
+    final location = dp.getEmployeeLocation(employee.id);
+    final stats = dp.getEmployeeStats(employee.id);
+
+    final rawAddress = location?['address']?.toString() ?? '';
+    final address = rawAddress.isNotEmpty
+        ? _resolveAddress(rawAddress, location)
+        : 'No location data';
+
+    final distance = (stats?['distance'] as num?)?.toDouble() ?? 0.0;
+    final duration = (stats?['sessionDuration'] as num?)?.toInt() ?? 0;
+
+    final isHighlighted = _highlightedEmployeeId == employee.id;
 
     return GestureDetector(
       onTap: () {
@@ -554,223 +682,175 @@ class _DashboardScreenState extends State<DashboardScreen>
           extra: {
             'name': employee.name,
             'isActive': isOnClock,
-            'avatarUrl':
-                employee.profileImageUrl ?? 'https://i.pravatar.cc/150?img=11',
+            'avatarUrl': employee.profileImageUrl ??
+                'https://i.pravatar.cc/150?img=11',
           },
         );
       },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.glassPrimary,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppColors.glassBorder),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isHighlighted
+                ? AppColors.primary
+                : const Color(0xFFE5E7EB),
+            width: isHighlighted ? 1.5 : 0.5,
+          ),
+          boxShadow: isHighlighted
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            // Avatar with status dot
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: Stack(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        employee.initials,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: _statusDotColor(status),
+                        shape: BoxShape.circle,
+                        border:
+                            Border.all(color: Colors.white, width: 2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: Column(
-              children: [
-                // Top row: Avatar, name, status
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Avatar with status dot
-                    Stack(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                                color: AppColors.glassBorder, width: 2),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.05),
-                                blurRadius: 4,
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: employee.profileImageUrl != null
-                                ? Image.network(
-                                    employee.profileImageUrl!,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) =>
-                                        _buildAvatarFallback(employee),
-                                  )
-                                : _buildAvatarFallback(employee),
+            const SizedBox(width: 12),
+
+            // Name, address, and status badge
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          employee.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.bodyMedium.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
                           ),
                         ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: statusColor,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppColors.glassStrong,
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 12),
-                    // Name and location
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            employee.name,
-                            style: AppTypography.bodyMedium.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(
-                                AppIcons.location,
-                                size: 14,
-                                color: AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  locationAddress,
-                                  style: AppTypography.caption.copyWith(
-                                    color: AppColors.textSecondary,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
                       ),
-                    ),
-                    // Status badge
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: isSignalLost ? 124 : 96,
-                      ),
-                      child: Container(
+                      Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
+                          horizontal: 8,
+                          vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: statusBgColor,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: statusColor.withValues(alpha: 0.3)),
+                          color: _statusBadgeBg(status),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          statusLabel,
-                          maxLines: isSignalLost ? 2 : 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: statusColor,
-                            fontSize: isSignalLost ? 9 : 10,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
+                          _statusLabel(status),
+                          style: AppTypography.small.copyWith(
+                            color: _statusBadgeColor(status),
+                            fontWeight: FontWeight.w500,
+                            fontSize: 10,
                           ),
                         ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    address,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // Distance & duration
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      AppIcons.routing_2,
+                      size: 13,
+                      color: AppColors.textTertiary,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      _formatDistance(distance),
+                      style: AppTypography.small.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
-
-                // Divider
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Container(
-                    height: 1,
-                    color: AppColors.glassBorder,
-                  ),
-                ),
-
-                // Bottom row: Stats
+                const SizedBox(height: 4),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      children: [
-                        _buildStatColumn(
-                          'DISTANCE',
-                          '${distance.toStringAsFixed(1)} km',
-                        ),
-                        const SizedBox(width: 40),
-                        _buildStatColumn('DURATION', durationStr),
-                      ],
+                    const Icon(
+                      AppIcons.timer_1,
+                      size: 13,
+                      color: AppColors.textTertiary,
                     ),
-                    if (lastUpdatedStr.isNotEmpty)
-                      Text(
-                        'Updated: $lastUpdatedStr',
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.textTertiary,
-                          fontWeight: FontWeight.w500,
-                        ),
+                    const SizedBox(width: 3),
+                    Text(
+                      _formatDuration(duration),
+                      style: AppTypography.small.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
                       ),
+                    ),
                   ],
                 ),
               ],
             ),
-          ),
+          ],
         ),
       ),
-    );
-  }
-
-  Widget _buildAvatarFallback(UserModel employee) {
-    return Container(
-      color: AppColors.surfaceMuted,
-      child: Center(
-        child: Text(
-          employee.initials,
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.primary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatColumn(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: AppColors.textTertiary,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
     );
   }
 }

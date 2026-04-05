@@ -74,7 +74,9 @@ class AnalyticsProvider extends ChangeNotifier {
       final startedAt =
           DateTime.fromMillisecondsSinceEpoch(sessionStartTimeMs).toLocal();
       final elapsed = DateTime.now().difference(startedAt).inSeconds;
-      if (elapsed >= 0) return elapsed.clamp(0, _maxSessionDurationSecs);
+      // Return 0 for ghost sessions (same logic as DashboardProvider)
+      if (elapsed >= _maxSessionDurationSecs) return 0;
+      if (elapsed >= 0) return elapsed;
     }
     final raw = (stats['sessionDuration'] as num?)?.toInt() ?? 0;
     return raw.clamp(0, _maxSessionDurationSecs);
@@ -315,7 +317,7 @@ class AnalyticsProvider extends ChangeNotifier {
     final liveStats = _activeStatsData[employeeId];
     if (liveStats != null) {
       durationSecs += _resolveLiveDurationSecs(liveStats);
-      distance += (liveStats['distance'] as num?)?.toDouble() ?? 0.0;
+      distance += _sanitizeDistance((liveStats['distance'] as num?)?.toDouble() ?? 0.0);
       photos += (liveStats['photosToday'] as num?)?.toInt() ?? 0;
       tasks += (liveStats['tasksToday'] as num?)?.toInt() ?? 0;
     }

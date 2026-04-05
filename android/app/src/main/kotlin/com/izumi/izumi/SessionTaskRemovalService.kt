@@ -3,14 +3,18 @@ package com.izumi.izumi
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
-import com.google.android.gms.tasks.Tasks
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ServerValue
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import java.util.concurrent.TimeUnit
+import com.google.firebase.firestore.SetOptions
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class SessionTaskRemovalService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
@@ -36,10 +40,15 @@ class SessionTaskRemovalService : Service() {
             !userId.isNullOrBlank() &&
             !sessionId.isNullOrBlank()
         ) {
-            autoEndSession(enterpriseId, userId, sessionId)
+            // Delay 3 seconds to let onDestroy() complete first.
+            // If onDestroy already set presence to offline, skip cleanup.
+            Handler(Looper.getMainLooper()).postDelayed({
+                safetyNetCleanup(enterpriseId, userId, sessionId)
+            }, 3000)
+        } else {
+            stopSelf()
         }
 
-        stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 
@@ -70,128 +79,119 @@ class SessionTaskRemovalService : Service() {
             .apply()
     }
 
-    private fun autoEndSession(
+    private fun safetyNetCleanup(
         enterpriseId: String,
         userId: String,
         sessionId: String,
     ) {
-        val firestore = FirebaseFirestore.getInstance()
         val rtdb = FirebaseDatabase.getInstance().reference
-        val sessionRef = firestore.collection("sessions").document(sessionId)
 
-        try {
-            val snapshot = Tasks.await(sessionRef.get(), 10, TimeUnit.SECONDS)
+        // Check if onDestroy already cleaned up by reading RTDB presence.
+        rtdb.child("presence/$enterpriseId/$userId/status").get()
+            .addOnSuccessListener { snapshot ->
+                val currentStatus = snapshot.getValue(String::class.java)
 
-            if (!snapshot.exists()) {
-                clearSessionContext()
-                return
-            }
-
-            val status = snapshot.getString("status")
-            val sessionEnterpriseId = snapshot.getString("enterpriseId")
-            val sessionEmployeeId = snapshot.getString("employeeId")
-            if (status != "active" ||
-                sessionEnterpriseId != enterpriseId ||
-                sessionEmployeeId != userId
-            ) {
-                // Session already ended (likely by Flutter onDestroy).
-                // Still clean up RTDB nodes in case onDestroy left them behind.
-                try {
-                    val updates = hashMapOf<String, Any?>(
-                        "activeStats/$enterpriseId/$userId" to null,
-                        "sessionHeartbeat/$enterpriseId/$userId" to null,
-                        "liveLocations/$enterpriseId/$userId" to null,
-                    )
-                    Tasks.await(rtdb.updateChildren(updates), 10, TimeUnit.SECONDS)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to clean up orphaned RTDB nodes: $e")
+                if (currentStatus == "offline") {
+                    // onDestroy already handled cleanup — nothing to do.
+                    Log.d(TAG, "Presence already offline, skipping safety-net cleanup")
+                    clearSessionContext()
+                    stopSelf()
+                    return@addOnSuccessListener
                 }
-                clearSessionContext()
-                return
-            }
 
-            val startTimestamp = snapshot.getTimestamp("startTime")
-            val totalDistance = snapshot.getDouble("totalDistance") ?: 0.0
-            val photosCount = snapshot.getLong("photosCount") ?: 0L
-            val tasksCompleted = snapshot.getLong("tasksCompleted") ?: 0L
-            val nowMillis = System.currentTimeMillis()
-            val totalDuration = if (startTimestamp != null) {
-                ((nowMillis - startTimestamp.toDate().time) / 1000).coerceAtLeast(0)
-            } else {
-                0
-            }
+                // Presence is still active or signal_lost — onDestroy failed.
+                // Fire-and-forget: write session end to Firestore directly (no read).
+                Log.d(TAG, "Presence is '$currentStatus', running safety-net cleanup")
 
-            // Write session update — separate from activityLog so each can
-            // succeed independently.
-            try {
-                Tasks.await(
-                    sessionRef.update(
-                        mapOf(
-                            "endTime" to FieldValue.serverTimestamp(),
-                            "status" to "auto_ended",
-                            "totalDuration" to totalDuration,
-                            "totalDistance" to totalDistance,
-                            "photosCount" to photosCount,
-                            "tasksCompleted" to tasksCompleted,
-                            "notes" to "Auto-ended because the app was removed from recent apps.",
-                            "autoEndReason" to "app_removed_from_recents",
-                            "autoEndSource" to "android_task_removed_service",
-                        ),
+                val firestore = FirebaseFirestore.getInstance()
+
+                val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+                // Fire-and-forget: end session in Firestore
+                firestore.collection("sessions").document(sessionId).set(
+                    mapOf(
+                        "endTime" to FieldValue.serverTimestamp(),
+                        "status" to "auto_ended",
+                        "autoEndReason" to "app_removed_from_recents",
+                        "autoEndSource" to "android_task_removed_service_safety_net",
+                        "recalculateOnComplete" to true,
                     ),
-                    10, TimeUnit.SECONDS,
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to update session document: $e")
-            }
+                    SetOptions.merge(),
+                ).addOnFailureListener { e ->
+                    Log.e(TAG, "Failed to write session end: $e")
+                }
 
-            // Write activityLog independently
-            try {
-                val activityRef = firestore.collection("activityLogs")
-                    .document("session_auto_ended_$sessionId")
-                Tasks.await(
-                    activityRef.set(
+                // Fire-and-forget: write activityLog
+                firestore.collection("activityLogs")
+                    .document("session_auto_ended_$sessionId").set(
                         mapOf(
                             "enterpriseId" to enterpriseId,
                             "employeeId" to userId,
                             "sessionId" to sessionId,
+                            "orgId" to enterpriseId,
                             "type" to "session_auto_ended",
                             "title" to "Session Auto-Ended",
-                            "detail" to "App was removed from recent apps.",
+                            "detail" to "Session was auto-ended (app removed from recents)",
+                            "date" to todayDate,
                             "timestamp" to FieldValue.serverTimestamp(),
                             "metadata" to mapOf(
                                 "reason" to "app_removed_from_recents",
-                                "source" to "android_task_removed_service",
+                                "source" to "android_task_removed_service_safety_net",
                             ),
                         ),
-                    ),
-                    10, TimeUnit.SECONDS,
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to write activityLog: $e")
-            }
+                        SetOptions.merge(),
+                    ).addOnFailureListener { e ->
+                        Log.e(TAG, "Failed to write activityLog: $e")
+                    }
 
-            // Clean up RTDB presence
-            try {
-                Tasks.await(
-                    rtdb.child("presence/$enterpriseId/$userId").setValue(
-                        mapOf(
-                            "status" to "offline",
-                            "lastSeen" to ServerValue.TIMESTAMP,
-                            "currentSessionId" to null,
-                        ),
-                    ),
-                    10, TimeUnit.SECONDS,
+                // Fire-and-forget: set presence to offline, clear dashboard nodes
+                val updates = hashMapOf<String, Any?>(
+                    "presence/$enterpriseId/$userId/status" to "offline",
+                    "presence/$enterpriseId/$userId/signalLostAt" to null,
+                    "presence/$enterpriseId/$userId/currentSessionId" to null,
+                    "presence/$enterpriseId/$userId/lastSeen" to ServerValue.TIMESTAMP,
+                    "activeStats/$enterpriseId/$userId" to null,
+                    "sessionHeartbeat/$enterpriseId/$userId" to null,
+                    "liveLocations/$enterpriseId/$userId" to null,
                 )
-                rtdb.child("activeStats/$enterpriseId/$userId").removeValue()
-                rtdb.child("sessionHeartbeat/$enterpriseId/$userId").removeValue()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to clean up RTDB: $e")
+                rtdb.updateChildren(updates).addOnFailureListener { e ->
+                    Log.e(TAG, "Failed to update RTDB: $e")
+                }
+
+                clearSessionContext()
+                stopSelf()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "autoEndSession failed: $e")
-        } finally {
-            clearSessionContext()
-        }
+            .addOnFailureListener { e ->
+                // RTDB read failed — proceed with cleanup anyway to avoid stuck state.
+                Log.e(TAG, "Failed to read presence, proceeding with cleanup: $e")
+
+                val firestore = FirebaseFirestore.getInstance()
+
+                firestore.collection("sessions").document(sessionId).set(
+                    mapOf(
+                        "endTime" to FieldValue.serverTimestamp(),
+                        "status" to "auto_ended",
+                        "autoEndReason" to "app_removed_from_recents",
+                        "autoEndSource" to "android_task_removed_service_safety_net",
+                        "recalculateOnComplete" to true,
+                    ),
+                    SetOptions.merge(),
+                )
+
+                val updates = hashMapOf<String, Any?>(
+                    "presence/$enterpriseId/$userId/status" to "offline",
+                    "presence/$enterpriseId/$userId/signalLostAt" to null,
+                    "presence/$enterpriseId/$userId/currentSessionId" to null,
+                    "presence/$enterpriseId/$userId/lastSeen" to ServerValue.TIMESTAMP,
+                    "activeStats/$enterpriseId/$userId" to null,
+                    "sessionHeartbeat/$enterpriseId/$userId" to null,
+                    "liveLocations/$enterpriseId/$userId" to null,
+                )
+                rtdb.updateChildren(updates)
+
+                clearSessionContext()
+                stopSelf()
+            }
     }
 
     companion object {

@@ -211,6 +211,22 @@ class AdminActivityFeedService {
 
     // ── 6. Merge and deduplicate ────────────────────────────────────────
     final mergedActivities = mergeActivityLogs(allActivities);
+
+    // Deduplicate session boundary events by type + sessionId + minute-bucket
+    // (synthetic entries have generated IDs, so ID-based dedup misses them)
+    final boundaryKeys = <String>{};
+    mergedActivities.removeWhere((log) {
+      if (log.type == 'session_started' || log.type == 'session_ended' || log.type == 'session_auto_ended') {
+        final bucket = log.timestamp.toIso8601String().substring(0, 16);
+        final key = '${log.type}_${log.sessionId}_$bucket';
+        return !boundaryKeys.add(key);
+      }
+      return false;
+    });
+
+    // Sort ascending for history timeline (oldest first)
+    mergedActivities.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
     final allPhotos = mergePhotos([
       ...rawPhotos,
       ..._loadPhotosFromActivityLogMetadata(allActivities),

@@ -93,15 +93,17 @@ class _OtpInputFieldState extends State<OtpInputField> {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: isFilled
-                          ? const Color(0xFFF0F7F1)
-                          : const Color(0xFFF5F5F5),
+                          ? AppColors.primary.withOpacity(0.08)
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: hasError
                             ? AppColors.error
                             : isActive
-                                ? const Color(0xFF2E7D32)
-                                : Colors.transparent,
+                                ? AppColors.primary
+                                : isFilled
+                                    ? AppColors.primary
+                                    : const Color(0xFFE0E0E0),
                         width: 1.5,
                       ),
                     ),

@@ -54,8 +54,7 @@ class SessionTrackingTaskHandler extends TaskHandler {
 
   // Quality filter constants per spec
   static const double _maxAccuracyMeters = 30.0;
-  static const double _minMovementMeters = 15.0;
-  static const double _maxSpeedMps = 100.0; // ~360 km/h — impossible spike
+static const double _maxSpeedMps = 100.0; // ~360 km/h — impossible spike
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -137,11 +136,13 @@ class SessionTrackingTaskHandler extends TaskHandler {
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
-    await _activitySubscription?.cancel();
+    _activitySubscription?.cancel();
     _heartbeatTimer?.cancel();
     _activityTimeoutTimer?.cancel();
 
-    // Auto-end on app removal from recents: flush buffer + end session
+    // Auto-end on app removal from recents.
+    // All Firebase writes are fire-and-forget — Android kills the process
+    // ~5 seconds after onDestroy, so we must not await network I/O.
     final sessionId = _sessionId;
     final enterpriseId = _enterpriseId;
     final employeeId = _employeeId;
@@ -161,6 +162,7 @@ class SessionTrackingTaskHandler extends TaskHandler {
           '[TrackingTaskHandler] onDestroy: context cleared or ending, '
           'skipping auto-end (normal session end).',
         );
+        unawaited(_syncManager.dispose());
         return;
       }
 
@@ -173,45 +175,38 @@ class SessionTrackingTaskHandler extends TaskHandler {
             '[TrackingTaskHandler] onDestroy: session only ${elapsed}ms old, '
             'skipping auto-end (likely a restart).',
           );
+          unawaited(_syncManager.dispose());
           return;
         }
       }
 
-      // Flush remaining location buffer
-      try {
-        await _syncManager.flushPendingLocations(
-          reason: 'app_removed_flush',
-          allowOfflineQueue: true,
-        );
-      } catch (e, st) {
-        debugPrint('[TrackingTaskHandler] onDestroy flush failed: $e\n$st');
-      }
+      // Skip location buffer flush — too slow for Android's kill window.
+      // Pending SQLite locations are acceptable to lose on task removal.
 
-      // Write session end to Firestore — separate from activityLog so each
-      // can succeed independently.
+      // Fire-and-forget: write session end to Firestore
       final now = DateTime.now();
       final durationSecs = _sessionDurationSeconds();
-      try {
-        await _firestore.collection('sessions').doc(sessionId).update({
+      unawaited(
+        _firestore.collection('sessions').doc(sessionId).set({
           'endTime': Timestamp.fromDate(now),
           'status': 'auto_ended',
           'totalDuration': durationSecs,
           'totalDistance': _totalDistanceKm,
           'autoEndReason': 'app_removed',
           'autoEndSource': 'foreground_task_onDestroy',
-        });
-      } catch (e, st) {
-        debugPrint('[TrackingTaskHandler] onDestroy session update failed: $e\n$st');
-      }
+        }, SetOptions(merge: true)).catchError((e) {
+          debugPrint('[TrackingTaskHandler] onDestroy session write failed: $e');
+        }),
+      );
 
-      // Write activityLog independently
-      try {
-        await _firestore.collection('activityLogs').doc('session_auto_ended_$sessionId').set({
+      // Fire-and-forget: write activityLog
+      unawaited(
+        _firestore.collection('activityLogs').doc('session_auto_ended_$sessionId').set({
           'enterpriseId': enterpriseId,
           'employeeId': employeeId,
           'sessionId': sessionId,
           'orgId': enterpriseId,
-          'type': 'session_end',
+          'type': 'session_auto_ended',
           'title': 'Session Auto-Ended',
           'detail': 'Session ended because the app was closed',
           'timestamp': FieldValue.serverTimestamp(),
@@ -222,26 +217,35 @@ class SessionTrackingTaskHandler extends TaskHandler {
             'distanceKm': _totalDistanceKm,
             'endReason': 'app_removed',
           },
-        }, SetOptions(merge: true));
-      } catch (e, st) {
-        debugPrint('[TrackingTaskHandler] onDestroy activityLog write failed: $e\n$st');
-      }
+        }, SetOptions(merge: true)).catchError((e) {
+          debugPrint('[TrackingTaskHandler] onDestroy activityLog write failed: $e');
+        }),
+      );
 
-      // Atomic RTDB cleanup: set presence to signal_lost AND remove
-      // activeStats/sessionHeartbeat/liveLocations so the dashboard timer
-      // stops immediately. Using multi-path update for atomicity.
-      try {
-        await _database.ref().update({
-          'presence/$enterpriseId/$employeeId/status': 'signal_lost',
-          'presence/$enterpriseId/$employeeId/signalLostAt': ServerValue.timestamp,
+      // Fire-and-forget: cancel onDisconnect handler before writing presence
+      // so the signal_lost ghost write doesn't fire after our cleanup.
+      unawaited(
+        _database.ref('presence/$enterpriseId/$employeeId')
+            .onDisconnect().cancel().catchError((e) {
+          debugPrint('[TrackingTaskHandler] onDestroy onDisconnect cancel failed: $e');
+        }),
+      );
+
+      // Fire-and-forget: set presence to offline (not signal_lost — this is
+      // a clean auto-end, not an unexpected death) and clear dashboard nodes.
+      unawaited(
+        _database.ref().update({
+          'presence/$enterpriseId/$employeeId/status': 'offline',
+          'presence/$enterpriseId/$employeeId/signalLostAt': null,
+          'presence/$enterpriseId/$employeeId/currentSessionId': null,
           'presence/$enterpriseId/$employeeId/lastSeen': ServerValue.timestamp,
           'activeStats/$enterpriseId/$employeeId': null,
           'sessionHeartbeat/$enterpriseId/$employeeId': null,
           'liveLocations/$enterpriseId/$employeeId': null,
-        });
-      } catch (e, st) {
-        debugPrint('[TrackingTaskHandler] onDestroy RTDB update failed: $e\n$st');
-      }
+        }).catchError((e) {
+          debugPrint('[TrackingTaskHandler] onDestroy RTDB update failed: $e');
+        }),
+      );
 
       // Send local push notification to employee
       try {
@@ -277,15 +281,15 @@ class SessionTrackingTaskHandler extends TaskHandler {
         debugPrint('[TrackingTaskHandler] onDestroy notification failed: $e');
       }
 
-      // Clear session state from SQLite
-      try {
-        await _pendingLocationStore.markSessionEnding();
-      } catch (e) {
-        debugPrint('[TrackingTaskHandler] onDestroy markSessionEnding failed: $e');
-      }
+      // Fire-and-forget: clear session state from SQLite
+      unawaited(
+        _pendingLocationStore.markSessionEnding().catchError((e) {
+          debugPrint('[TrackingTaskHandler] onDestroy markSessionEnding failed: $e');
+        }),
+      );
     }
 
-    await _syncManager.dispose();
+    unawaited(_syncManager.dispose());
   }
 
   // ── Firebase init ──
@@ -497,7 +501,7 @@ class SessionTrackingTaskHandler extends TaskHandler {
 
       if (!_isUsableFix(position)) return;
 
-      // Distance and movement filter
+      // Distance and speed spike filter
       if (_lastPosition != null) {
         final meters = Geolocator.distanceBetween(
           _lastPosition!.latitude,
@@ -505,9 +509,6 @@ class SessionTrackingTaskHandler extends TaskHandler {
           position.latitude,
           position.longitude,
         );
-
-        // Discard if movement less than 15m from last accepted point
-        if (meters < _minMovementMeters) return;
 
         // Impossible speed spike detection
         final timeDiffSecs = position.timestamp

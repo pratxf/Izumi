@@ -34,7 +34,13 @@
     <application
         android:label="izumi"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules">
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyA1PvodTpaM5j3J1TKCRaZ89l9SIQ6nssU" />
         <meta-data
             android:name="izumi_foreground_notification_icon"
             android:resource="@drawable/ic_stat_izumi" />

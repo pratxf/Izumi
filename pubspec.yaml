@@ -3,7 +3,7 @@ name: izumi
 description: Izumi BioSciences
 publish_to: 'none'
 
-version: 1.0.52+52
+version: 1.0.54+54
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -48,6 +48,9 @@ dependencies:
 
   # App Check (skips reCAPTCHA for phone auth)
   firebase_app_check: ^0.3.1
+
+  # Maps
+  google_maps_flutter: ^2.10.0
 
   # Location services
   geolocator: ^13.0.2
