@@ -1,272 +1,362 @@
 <div align="center">
 
-# Izumi
+<img src="assets/branding/launcher_icon.png" width="120" alt="Izumi Logo" />
 
-**Field Workforce Management & Intelligence Platform**
+# IZUMI
 
-[![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
-[![Firebase](https://img.shields.io/badge/Firebase-Backend-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com)
-[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-green)]()
-[![License](https://img.shields.io/badge/License-Proprietary-red)]()
+### Field Workforce Management & Intelligence Platform
+
+[![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://flutter.dev)
+[![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com)
+[![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)](https://dart.dev)
+[![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Google Maps](https://img.shields.io/badge/Google%20Maps-4285F4?style=for-the-badge&logo=googlemaps&logoColor=white)](https://developers.google.com/maps)
+
+<br />
+
+[![Android](https://img.shields.io/badge/Android-3DDC84?style=flat-square&logo=android&logoColor=white)]()
+[![iOS](https://img.shields.io/badge/iOS-000000?style=flat-square&logo=apple&logoColor=white)]()
+[![Node.js](https://img.shields.io/badge/Cloud%20Functions-Node%2022-339933?style=flat-square&logo=node.js&logoColor=white)]()
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)]()
+
+<br />
+
+**Real-time GPS tracking** &nbsp;&bull;&nbsp; **Live map dashboards** &nbsp;&bull;&nbsp; **Photo intelligence** &nbsp;&bull;&nbsp; **Enterprise analytics**
+
+<br />
+
+<img src="https://img.shields.io/badge/version-1.0.54-4F46E5?style=flat-square" />
+<img src="https://img.shields.io/badge/build-passing-22C55E?style=flat-square" />
+<img src="https://img.shields.io/badge/license-proprietary-EF4444?style=flat-square" />
 
 ---
-
-*Real-time GPS tracking, live dashboards, photo intelligence, and analytics for distributed field teams.*
 
 </div>
 
+<br />
+
+## What is Izumi?
+
+Izumi gives enterprises **complete real-time visibility** into their distributed field workforce. Whether you're managing sales reps across cities, agricultural field agents in rural areas, or delivery fleets on the road &mdash; Izumi tracks where your people are, what they're doing, and how they're performing.
+
+> *One app for the field team. One dashboard for the enterprise.*
+
+<br />
+
+## Highlights
+
+<table>
+<tr>
+<td width="50%">
+
+### For Admins
+- Live map with employee markers (active / signal lost / offline)
+- Draggable bottom sheet with status filters and search
+- Real-time route visualization per employee
+- Analytics with daily bar charts and progress tracking
+- One-click ghost session cleanup
+- Task assignment and photo review
+
+</td>
+<td width="50%">
+
+### For Field Employees
+- One-tap session start with GPS tracking
+- Activity-aware polling (walking / driving / stationary)
+- Geotagged photo capture with categories
+- Task completion workflow
+- Personal activity history and timeline
+- Offline-resilient &mdash; works without internet
+
+</td>
+</tr>
+</table>
+
+<br />
+
 ---
 
-## Overview
-
-Izumi is a full-stack mobile platform built for enterprises managing field workforces — sales teams, delivery fleets, agricultural field agents, and service technicians. It provides real-time visibility into where employees are, what they're doing, and how they're performing.
-
-### Key Capabilities
-
-| Feature | Description |
-|---------|-------------|
-| **Live GPS Tracking** | Sub-minute location updates with activity-aware polling (walking, driving, stationary) |
-| **Session Management** | Clock-in/out with automatic session lifecycle, crash recovery, and ghost session prevention |
-| **Live Dashboard** | Google Maps with real-time employee markers, status indicators, and draggable employee list |
-| **Photo Intelligence** | Geotagged field photos with category tagging, customer association, and thumbnail generation |
-| **Analytics Engine** | Daily/weekly/monthly breakdowns with per-employee duration, distance, and productivity metrics |
-| **Activity Timeline** | Chronological feed of all field events — sessions, locations, photos, tasks |
-| **Task Assignment** | Create and assign tasks to field employees with real-time completion tracking |
-| **Team Chat** | Group messaging with image sharing, location sharing, and read receipts |
-| **Offline Resilience** | SQLite buffer for GPS data, offline job queue for photos and messages |
-| **Multi-Role Access** | Admin, Team Lead, and Employee roles with role-based routing and permissions |
-
----
+<br />
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Flutter App (Dart)                       │
-├──────────┬──────────┬──────────┬──────────┬─────────────────────┤
-│ Provider │ GoRouter │ Foreground│ SQLite  │  Google Maps        │
-│  State   │   Nav    │  Service │ Buffer  │  Flutter Plugin     │
-├──────────┴──────────┴──────────┴──────────┴─────────────────────┤
-│                     Firebase Backend                            │
-├──────────┬──────────┬──────────┬──────────┬─────────────────────┤
-│Firestore │  RTDB   │ Storage  │  Auth   │  Cloud Functions     │
-│ Sessions │ Presence │  Photos  │  JWT    │  Triggers +          │
-│ Logs     │ Live Loc │  Exports │  Claims │  Schedulers          │
-│ Photos   │ Stats   │          │         │  Callables           │
-└──────────┴──────────┴──────────┴──────────┴─────────────────────┘
+                           ┌──────────────────────────────────┐
+                           │         IZUMI MOBILE APP         │
+                           │           Flutter + Dart          │
+                           └──────────┬───────────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    │                 │                 │
+              ┌─────▼─────┐   ┌──────▼──────┐   ┌─────▼─────┐
+              │  Provider  │   │  Foreground  │   │  SQLite   │
+              │   State    │   │   Service    │   │  Buffer   │
+              │ Management │   │ GPS + Activity│   │ Offline   │
+              └─────┬─────┘   └──────┬──────┘   └─────┬─────┘
+                    │                │                 │
+                    └────────────────┼─────────────────┘
+                                     │
+                    ┌────────────────▼────────────────┐
+                    │        FIREBASE BACKEND         │
+                    ├────────┬────────┬───────┬───────┤
+                    │        │        │       │       │
+               Firestore   RTDB   Storage   Auth   Functions
+               ─────────  ──────  ───────  ──────  ─────────
+               Sessions   Presence Photos   JWT    Triggers
+               Logs       Live Loc Exports  Claims Schedulers
+               Photos     Stats            Roles  Callables
+               Tasks      Heartbeat
+               Chat
+                    │
+                    └────────────────────────────────────┘
 ```
+
+<br />
 
 ### Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | Flutter 3.x, Dart, Provider, GoRouter |
-| **Maps** | Google Maps Flutter, Geolocator, Geocoding |
-| **Backend** | Firebase (Firestore, Realtime Database, Auth, Storage, Cloud Functions) |
-| **Tracking** | Android Foreground Service, Activity Recognition, SQLite batch sync |
-| **Charts** | fl_chart |
-| **Notifications** | FCM + Flutter Local Notifications |
-| **Native** | Kotlin (Android session guard), Swift (iOS) |
+<table>
+<tr>
+<td><strong>Frontend</strong></td>
+<td>Flutter 3.x &bull; Dart &bull; Provider &bull; GoRouter &bull; Google Maps Flutter &bull; fl_chart</td>
+</tr>
+<tr>
+<td><strong>Backend</strong></td>
+<td>Cloud Firestore &bull; Realtime Database &bull; Firebase Auth &bull; Cloud Storage &bull; Cloud Functions v2</td>
+</tr>
+<tr>
+<td><strong>Tracking</strong></td>
+<td>Android Foreground Service &bull; Activity Recognition &bull; SQLite batch sync &bull; Geolocator &bull; Geocoding</td>
+</tr>
+<tr>
+<td><strong>Native</strong></td>
+<td>Kotlin (SessionTaskRemovalService, BootReceiver) &bull; Swift (iOS lifecycle)</td>
+</tr>
+<tr>
+<td><strong>Notifications</strong></td>
+<td>FCM &bull; Flutter Local Notifications &bull; Force logout via remote message</td>
+</tr>
+</table>
+
+<br />
 
 ---
 
-## App Screens
+<br />
 
-### Admin Screens
+## Core Features
 
-| Screen | Purpose |
-|--------|---------|
-| **Dashboard** | Full-screen map with live employee markers, draggable bottom sheet with status filters and employee list |
-| **Analytics** | Enterprise-wide metrics with daily bar charts, employee performance cards, period selectors (Today/Week/Month/Custom) |
-| **Employee Detail** | Live route map, real-time duration timer, distance/photos stats, activity feed (last 24h) |
-| **Employee Activity** | Historical route visualization, session-grouped timeline, photo captures, date range navigation |
-| **Management** | Group and user management with CRUD operations |
-| **Chat** | Group conversations with text, image, and location messages |
+### Live Dashboard &mdash; *see everyone, everywhere*
 
-### Employee Screens
+Full-screen Google Maps with custom employee markers. Active employees glow indigo. Signal-lost employees glow amber. Tap a marker to zoom in and highlight their card. Drag the bottom sheet up for the full employee list with search, status filters, distance, and duration.
 
-| Screen | Purpose |
-|--------|---------|
-| **Home** | Session start/stop, live tracking status, current location display |
-| **Camera** | Geotagged photo capture with category and customer tagging |
-| **Tasks** | Assigned task list with completion workflow |
-| **History** | Personal activity timeline and session history |
-| **Gallery** | Photo library with date grouping and category filters |
+<br />
 
----
+### GPS Tracking Engine &mdash; *built for the real world*
 
-## Tracking Engine
+The tracking system is designed to survive every Android OEM's battery optimization. It adapts polling frequency based on what the employee is doing:
 
-The GPS tracking system is designed for reliability across all Android OEMs (Samsung, Xiaomi, Motorola, Oppo, etc.):
+| Activity | Poll Interval | Accuracy | Use Case |
+|----------|:------------:|:--------:|----------|
+| **Stationary** | 5 min | Medium | Employee at a store or office |
+| **Walking** | 60s | Medium | On-foot field visits |
+| **Driving** | 20s | High | In-vehicle transit |
+
+Every GPS fix passes through:
+1. **Accuracy filter** &mdash; rejects fixes worse than 30m
+2. **Speed spike filter** &mdash; rejects impossible speeds (> 360 km/h)
+3. **SQLite buffer** &mdash; stored locally, flushed to Firestore in batches
+4. **RTDB live update** &mdash; real-time position visible on admin dashboard
+
+<br />
+
+### Session Lifecycle &mdash; *no ghost sessions, ever*
 
 ```
-Session Start
-    │
-    ├─► Foreground Service launched (persistent notification)
-    ├─► Activity Recognition started (STILL / WALKING / DRIVING)
-    ├─► RTDB presence set to "active"
-    ├─► onDisconnect handler set to "signal_lost"
-    │
-    ▼
-Polling Loop (adaptive interval)
-    │
-    ├─► STILL → 5 min interval, medium accuracy
-    ├─► WALKING → 60s interval, medium accuracy
-    ├─► DRIVING → 20s interval, high accuracy
-    │
-    ├─► GPS fix → accuracy filter (≤30m) → speed filter (≤100 m/s)
-    ├─► Write to SQLite pending_locations buffer
-    ├─► Flush to Firestore every 20 locations or 20 minutes
-    ├─► Update RTDB liveLocation + activeStats
-    │
-    ▼
-Session End (manual or auto)
-    │
-    ├─► Final GPS snapshot + location flush
-    ├─► Firestore session doc updated (endTime, duration, distance)
-    ├─► RTDB presence → "offline", cleanup activeStats/heartbeat/liveLocations
-    ├─► Local push notification to employee
-    └─► Cloud Function computes daily summary + trusted distance
+ START                    TRACKING                         END
+  ━━━━                    ━━━━━━━━                        ━━━━
+   │                         │                              │
+   ├─ Reset RTDB stats       ├─ Adaptive GPS polling        ├─ Final flush
+   ├─ Clear stale data       ├─ SQLite buffer writes        ├─ Firestore update
+   ├─ Create Firestore doc   ├─ Periodic Firestore flush    ├─ RTDB → offline
+   ├─ Write activity log     ├─ RTDB live location          ├─ Cancel onDisconnect
+   ├─ Set presence active    ├─ Heartbeat (25 min)          ├─ Push notification
+   ├─ Setup onDisconnect     │                              ├─ Activity log
+   └─ Start foreground svc   │                              └─ Stop foreground svc
 ```
 
-### Crash Recovery
+<br />
 
-| Scenario | Recovery Mechanism |
-|----------|-------------------|
-| App swiped from recents | `onDestroy()` fire-and-forget cleanup (< 2s), sets presence to offline |
-| onDestroy fails | `SessionTaskRemovalService.kt` safety net (3s delay, checks RTDB first) |
-| Phone loses internet | RTDB `onDisconnect` sets "signal_lost", server sweep auto-ends after 15 min |
-| App crashes | SQLite session state restored on restart, pending locations preserved |
-| Phone reboots | `BootReceiver` checks for orphaned active sessions |
+### Crash Recovery Matrix
+
+| Scenario | What Happens | Recovery Time |
+|----------|-------------|:------------:|
+| App swiped from recents | `onDestroy` fires, sets offline, ends session | **< 5 seconds** |
+| `onDestroy` killed by OS | `SessionTaskRemovalService.kt` safety net | **< 8 seconds** |
+| Phone loses internet | RTDB `onDisconnect` &rarr; signal_lost &rarr; server sweep | **15 minutes** |
+| App force-stopped / crashes | SQLite state restored on next launch | **Next app open** |
+| Phone reboots | `BootReceiver` detects orphaned session | **On boot** |
+| All else fails | Admin presses "Clear Ghost Sessions" | **Instant** |
+
+<br />
+
+### Analytics &mdash; *measure what matters*
+
+- **Period selectors**: Today / Week / Month / Custom date range
+- **Enterprise summary**: Total hours, kilometers, photos across all employees
+- **Daily bar chart**: Hours per day with fl_chart visualization
+- **Employee cards**: Duration, distance, photos with relative progress bars
+- **Drill-down**: Full activity timeline per employee with session grouping
+
+<br />
+
+### Activity Timeline &mdash; *every event, in order*
+
+```
+ Session Started      ●───── 9:00 AM    Gohana, Shiv Nagar, Panipat
+                      │
+ Tracked Location     ●───── 9:15 AM    NH 709AD, Panipat
+                      │
+ Tracked Location     ●───── 9:30 AM    653456, Huda, Panipat
+                      │
+ Photo Captured       ●───── 9:45 AM    farmer  ·  Rajesh Kumar
+                      │
+ Tracked Location     ●───── 10:00 AM   92JF+M6V, Panipat
+                      │
+ Session Ended        ●───── 11:30 AM   Duration: 2h 30m  ·  15.6 km
+```
+
+Each event is backfilled from Firestore sessions, locations, and photos. Future events are written automatically by Cloud Function triggers.
+
+<br />
 
 ---
+
+<br />
 
 ## Cloud Functions
 
-| Function | Trigger | Purpose |
-|----------|---------|---------|
-| `onSessionStarted` | Firestore write | Writes `session_started` activity log |
-| `onSessionEnded` | Firestore write | Writes `session_ended` activity log |
-| `onSessionComplete` | Firestore update | Computes trusted distance, creates daily summary |
-| `onSessionLocationCreated` | Firestore create | Writes `location_update` activity log with geocoded address |
-| `onPhotoDocumentCreated` | Firestore create | Generates thumbnail, writes `photo_captured` activity log |
-| `onPresenceOffline` | RTDB write | Auto-ends session if heartbeat stale > 1 hour |
-| `sweepSignalLostSessions` | Scheduled (10 min) | Ends signal-lost sessions > 15 min, force-ends sessions > 16 hours |
-| `sanitizeActiveStats` | Scheduled (10 min) | Validates distance calculations, corrects implausible jumps |
-| `dailySummaryAggregator` | Scheduled | Aggregates daily employee metrics |
-| `forceEndGhostSessions` | Callable (admin) | One-click cleanup of all stuck/ghost sessions |
-| `backfillActivityLogs` | Callable (admin) | Backfills missing timeline data from sessions/photos |
+<table>
+<tr>
+<th>Function</th>
+<th>Trigger</th>
+<th>What it does</th>
+</tr>
+<tr><td><code>onSessionStarted</code></td><td>Firestore create</td><td>Writes <code>session_started</code> to activity timeline</td></tr>
+<tr><td><code>onSessionEnded</code></td><td>Firestore update</td><td>Writes <code>session_ended</code> with duration and distance</td></tr>
+<tr><td><code>onSessionComplete</code></td><td>Firestore update</td><td>Computes trusted distance via Haversine, creates daily summary</td></tr>
+<tr><td><code>onSessionLocationCreated</code></td><td>Firestore create</td><td>Writes <code>location_update</code> with geocoded address</td></tr>
+<tr><td><code>onPhotoDocumentCreated</code></td><td>Firestore create</td><td>Generates thumbnail, writes <code>photo_captured</code> log</td></tr>
+<tr><td><code>onPresenceOffline</code></td><td>RTDB write</td><td>Auto-ends session if heartbeat stale > 1 hour</td></tr>
+<tr><td><code>sweepSignalLostSessions</code></td><td>Cron (10 min)</td><td>Ends signal-lost > 15 min, force-ends > 16 hours</td></tr>
+<tr><td><code>sanitizeActiveStats</code></td><td>Cron (10 min)</td><td>Detects and corrects implausible distance jumps</td></tr>
+<tr><td><code>dailySummaryAggregator</code></td><td>Cron</td><td>Aggregates daily employee performance metrics</td></tr>
+<tr><td><code>forceEndGhostSessions</code></td><td>Callable</td><td>Admin one-click cleanup of all stuck sessions</td></tr>
+<tr><td><code>backfillActivityLogs</code></td><td>Callable</td><td>Generates missing timeline data from historical sessions</td></tr>
+</table>
+
+<br />
 
 ---
+
+<br />
 
 ## Project Structure
 
 ```
-lib/
-├── core/
-│   ├── constants/          # Colors, typography, spacing, shadows
-│   └── ui/                 # Icon definitions
-├── models/                 # Data models (User, Session, Photo, Task, etc.)
-├── providers/              # State management (ChangeNotifier providers)
-├── repositories/           # Firestore CRUD operations
-├── screens/
-│   ├── admin/              # Dashboard, Analytics, Employee Detail, Management
-│   ├── employee/           # Home, Camera, Tasks, History, Profile
-│   └── shared/             # Chat, Notifications
-├── services/               # RTDB service, activity feed, geocoding, location
-├── tracking/               # Foreground service, task handler, sync manager, SQLite store
-├── widgets/                # Reusable UI components (glass panels, buttons, inputs)
-└── router/                 # GoRouter configuration with role-based guards
-
-functions/src/
-├── auth/                   # User creation trigger
-├── sessions/               # Session lifecycle triggers
-├── photos/                 # Photo processing triggers
-├── tasks/                  # Task assignment/completion triggers
-├── chat/                   # Chat message triggers
-├── scheduled/              # Cron jobs (sweep, sanitize, aggregate, cleanup)
-├── callable/               # Admin tools (export, cleanup, backfill, migrations)
-└── utils/                  # Shared utilities (notifications, activity log writer)
-
-android/
-└── app/src/main/kotlin/    # SessionTaskRemovalService, BootReceiver, MainActivity
+izumi/
+│
+├── lib/
+│   ├── core/                   Design system (colors, typography, icons)
+│   ├── models/                 Data models (User, Session, Photo, Task, Chat)
+│   ├── providers/              State management (8 ChangeNotifier providers)
+│   ├── repositories/           Firestore CRUD layer
+│   ├── screens/
+│   │   ├── admin/              Dashboard, Analytics, Employee Detail, Management
+│   │   ├── employee/           Home, Camera, Tasks, History, Profile, Gallery
+│   │   └── shared/             Chat, Notifications
+│   ├── services/               RTDB, activity feed, geocoding, location
+│   ├── tracking/               Foreground service, GPS handler, sync manager
+│   ├── widgets/                Glass panels, buttons, inputs, navigation
+│   └── router/                 GoRouter with role-based guards
+│
+├── android/
+│   └── .../kotlin/             SessionTaskRemovalService, BootReceiver
+│
+├── ios/
+│   └── Runner/                 AppDelegate with Maps SDK
+│
+└── functions/src/
+    ├── sessions/               Session lifecycle triggers
+    ├── photos/                 Photo processing + thumbnail generation
+    ├── scheduled/              Sweep, sanitize, aggregate, cleanup
+    ├── callable/               Admin tools (export, ghost cleanup, backfill)
+    └── utils/                  Notifications, activity log writer
 ```
+
+<br />
 
 ---
 
-## Getting Started
+<br />
 
-### Prerequisites
-
-- Flutter SDK 3.x+
-- Android Studio / VS Code
-- Firebase project with Firestore, RTDB, Auth, Storage, Cloud Functions
-- Google Maps API key (Maps SDK for Android + iOS enabled)
-- Node.js 22+ (for Cloud Functions)
-
-### Setup
+## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/pratxf/Izumi.git
-cd Izumi
+# Clone
+git clone https://github.com/pratxf/Izumi.git && cd Izumi
 
-# Install Flutter dependencies
+# Flutter
 flutter pub get
 
-# Install Cloud Functions dependencies
+# Cloud Functions
 cd functions && npm install && cd ..
 
 # Configure Firebase
 flutterfire configure
 
-# Add Google Maps API key
-# Android: android/app/src/main/AndroidManifest.xml
-# iOS: ios/Runner/AppDelegate.swift
-
-# Run the app
+# Run
 flutter run
 ```
 
-### Build
+### Build for Production
 
 ```bash
-# Android APK
-flutter build apk --release
-
-# Android App Bundle (Play Store)
-flutter build appbundle --release
-
-# iOS
-flutter build ios --release
+flutter build apk --release          # Android APK
+flutter build appbundle --release     # Play Store bundle
+flutter build ios --release           # iOS
 ```
 
-### Deploy Cloud Functions
+### Deploy Functions
 
 ```bash
-cd functions
-npm run build
-firebase deploy --only functions
+cd functions && npm run build && firebase deploy --only functions
 ```
 
----
+<br />
 
-## Environment
+### Environment Setup
 
-| Config | Location |
-|--------|----------|
-| Firebase options | `lib/firebase_options.dart` (auto-generated) |
-| Android manifest | `android/app/src/main/AndroidManifest.xml` |
-| iOS config | `ios/Runner/AppDelegate.swift` |
-| Cloud Functions | `functions/src/` |
+| What | Where |
+|------|-------|
+| Firebase config | `lib/firebase_options.dart` |
+| Maps API key (Android) | `android/app/src/main/AndroidManifest.xml` |
+| Maps API key (iOS) | `ios/Runner/AppDelegate.swift` |
 | Firestore indexes | `firestore.indexes.json` |
-| Firestore rules | `firestore.rules` |
-| RTDB rules | `database.rules.json` |
+| Cloud Functions | `functions/src/` |
+
+<br />
 
 ---
+
+<br />
 
 <div align="center">
 
-**Built by [@pratxf](https://github.com/pratxf)**
+### Built with precision by **[@pratxf](https://github.com/pratxf)**
+
+<br />
+
+<sub>Izumi &mdash; because knowing where your team is shouldn't be guesswork.</sub>
 
 </div>
