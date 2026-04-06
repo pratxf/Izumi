@@ -875,9 +875,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
               ),
             ),
             Positioned(
-              left: 20,
-              right: 20,
-              bottom: 28,
+              left: 12,
+              bottom: 12,
               child: _buildPreviewGeoTagCard(),
             ),
           ],
@@ -892,37 +891,38 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final longitude = sessionProvider.currentLng;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(10),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 320),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          constraints: const BoxConstraints(maxWidth: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.28),
-            borderRadius: BorderRadius.circular(20),
+            color: Colors.black.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.12),
             ),
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 24,
+                height: 24,
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   AppIcons.location,
                   color: Colors.white,
-                  size: 20,
+                  size: 13,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
+              const SizedBox(width: 6),
+              Flexible(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -931,23 +931,26 @@ class _PreviewScreenState extends State<PreviewScreen> {
                       widget.location,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.bodyMedium.copyWith(
+                      style: AppTypography.small.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
+                        fontSize: 10,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 2),
                     Text(
                       'Lat ${latitude.toStringAsFixed(5)}  •  Lng ${longitude.toStringAsFixed(5)}',
                       style: AppTypography.small.copyWith(
                         color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 8,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 1),
                     Text(
                       _formatFullPreviewTimestamp(widget.timestamp),
                       style: AppTypography.small.copyWith(
                         color: Colors.white.withValues(alpha: 0.72),
+                        fontSize: 8,
                       ),
                     ),
                   ],

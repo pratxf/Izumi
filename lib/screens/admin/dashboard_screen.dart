@@ -308,18 +308,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     return list;
   }
 
-  String _formatDuration(int totalSeconds) {
-    if (totalSeconds <= 0) return '--:--';
-    final h = totalSeconds ~/ 3600;
-    final m = (totalSeconds % 3600) ~/ 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
-  }
-
-  String _formatDistance(double meters) {
-    if (meters <= 0) return '0.0 km';
-    return '${(meters / 1000).toStringAsFixed(1)} km';
-  }
-
   // ===========================================================================
   // Status helpers
   // ===========================================================================
@@ -663,15 +651,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     final status = dp.getEmployeeStatus(employee.id);
     final isOnClock = dp.isEmployeeOnClock(employee.id);
     final location = dp.getEmployeeLocation(employee.id);
-    final stats = dp.getEmployeeStats(employee.id);
-
     final rawAddress = location?['address']?.toString() ?? '';
     final address = rawAddress.isNotEmpty
         ? _resolveAddress(rawAddress, location)
         : 'No location data';
-
-    final distance = (stats?['distance'] as num?)?.toDouble() ?? 0.0;
-    final duration = (stats?['sessionDuration'] as num?)?.toInt() ?? 0;
 
     final isHighlighted = _highlightedEmployeeId == employee.id;
 
@@ -753,43 +736,19 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
             const SizedBox(width: 12),
 
-            // Name, address, and status badge
+            // Name and address
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          employee.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.bodyMedium.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _statusBadgeBg(status),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _statusLabel(status),
-                          style: AppTypography.small.copyWith(
-                            color: _statusBadgeColor(status),
-                            fontWeight: FontWeight.w500,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ),
-                    ],
+                  Text(
+                    employee.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodyMedium.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -805,48 +764,24 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
             const SizedBox(width: 8),
 
-            // Distance & duration
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      AppIcons.routing_2,
-                      size: 13,
-                      color: AppColors.textTertiary,
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      _formatDistance(distance),
-                      style: AppTypography.small.copyWith(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+            // Status badge
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 5,
+              ),
+              decoration: BoxDecoration(
+                color: _statusBadgeBg(status),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _statusLabel(status),
+                style: AppTypography.small.copyWith(
+                  color: _statusBadgeColor(status),
+                  fontWeight: FontWeight.w500,
+                  fontSize: 10,
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      AppIcons.timer_1,
-                      size: 13,
-                      color: AppColors.textTertiary,
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      _formatDuration(duration),
-                      style: AppTypography.small.copyWith(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ],
         ),

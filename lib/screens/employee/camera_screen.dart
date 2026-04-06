@@ -130,8 +130,8 @@ class _CameraScreenState extends State<CameraScreen> {
             child: _buildCameraHeader(context),
           ),
           Positioned(
-            left: 20,
-            bottom: 120,
+            left: 12,
+            bottom: 12,
             child: _buildGeoTagCard(),
           ),
           Positioned(
@@ -399,15 +399,15 @@ class _CameraScreenState extends State<CameraScreen> {
     return GestureDetector(
       onTap: () => _openMap(lat, lng),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 280),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            constraints: const BoxConstraints(maxWidth: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.28),
-              borderRadius: BorderRadius.circular(16),
+              color: Colors.black.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.12),
               ),
@@ -417,19 +417,19 @@ class _CameraScreenState extends State<CameraScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 34,
-                  height: 34,
+                  width: 24,
+                  height: 24,
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(
                     AppIcons.location,
                     color: Colors.white,
-                    size: 18,
+                    size: 13,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 6),
                 Flexible(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -439,23 +439,26 @@ class _CameraScreenState extends State<CameraScreen> {
                         locationName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTypography.bodySmall.copyWith(
+                        style: AppTypography.small.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Lat ${lat.toStringAsFixed(5)}  •  Lng ${lng.toStringAsFixed(5)}',
-                        style: AppTypography.small.copyWith(
-                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 10,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
+                        'Lat ${lat.toStringAsFixed(5)}  •  Lng ${lng.toStringAsFixed(5)}',
+                        style: AppTypography.small.copyWith(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 8,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
                         dateStr,
                         style: AppTypography.small.copyWith(
                           color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 8,
                         ),
                       ),
                     ],

@@ -312,8 +312,8 @@ class _ChatCameraScreenState extends State<ChatCameraScreen> {
 
           // Geotag overlay
           Positioned(
-            left: 20,
-            bottom: 118,
+            left: 12,
+            bottom: 12,
             child: _buildGeoTagCard(),
           ),
 
@@ -437,8 +437,8 @@ class _ChatCameraScreenState extends State<ChatCameraScreen> {
                         fit: BoxFit.cover,
                       ),
                       Positioned(
-                        left: 20,
-                        bottom: 118,
+                        left: 12,
+                        bottom: 12,
                         child: _buildGeoTagCard(),
                       ),
                     ],
@@ -884,15 +884,15 @@ class _ChatCameraScreenState extends State<ChatCameraScreen> {
     return GestureDetector(
       onTap: () => _openMap(_lat, _lng),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 280),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            constraints: const BoxConstraints(maxWidth: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.28),
-              borderRadius: BorderRadius.circular(16),
+              color: Colors.black.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.12),
               ),
@@ -902,19 +902,19 @@ class _ChatCameraScreenState extends State<ChatCameraScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 34,
-                  height: 34,
+                  width: 24,
+                  height: 24,
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(
                     AppIcons.location,
                     color: Colors.white,
-                    size: 18,
+                    size: 13,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 6),
                 Flexible(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -924,23 +924,26 @@ class _ChatCameraScreenState extends State<ChatCameraScreen> {
                         _locationName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTypography.bodySmall.copyWith(
+                        style: AppTypography.small.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Lat ${_lat.toStringAsFixed(5)}  •  Lng ${_lng.toStringAsFixed(5)}',
-                        style: AppTypography.small.copyWith(
-                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 10,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
+                        'Lat ${_lat.toStringAsFixed(5)}  •  Lng ${_lng.toStringAsFixed(5)}',
+                        style: AppTypography.small.copyWith(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 8,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
                         dateStr,
                         style: AppTypography.small.copyWith(
                           color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 8,
                         ),
                       ),
                     ],
