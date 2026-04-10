@@ -23,6 +23,7 @@ class DashboardProvider extends ChangeNotifier {
   Map<String, Map<String, dynamic>> _activeStatsData = {};
   Map<String, DailySummaryModel> _todaySummaries = {};
   bool _isLoading = false;
+  bool _initialized = false;
   String? _error;
   String? _enterpriseId;
   Timer? _refreshTimer;
@@ -38,6 +39,7 @@ class DashboardProvider extends ChangeNotifier {
   Map<String, Map<String, dynamic>> get liveLocationData => _liveLocationData;
   Map<String, Map<String, dynamic>> get activeStatsData => _activeStatsData;
   bool get isLoading => _isLoading;
+  bool get isInitialized => _initialized;
   String? get error => _error;
 
   int get activeCount => _employees
@@ -68,6 +70,9 @@ class DashboardProvider extends ChangeNotifier {
 
   // Initialize dashboard with all streams
   Future<void> initDashboard(String enterpriseId) async {
+    // Idempotent — skip if already initialized for this enterprise
+    if (_initialized && _enterpriseId == enterpriseId) return;
+
     // Cancel any existing subscriptions to prevent orphaned listeners
     // if this is called multiple times without dispose.
     _summarySubscription?.cancel();
@@ -78,6 +83,7 @@ class DashboardProvider extends ChangeNotifier {
     _liveClockTimer?.cancel();
 
     _enterpriseId = enterpriseId;
+    _initialized = true;
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -242,7 +248,7 @@ class DashboardProvider extends ChangeNotifier {
 
   // If both heartbeat (lastSeen) and live-location are older than this,
   // the service was likely killed without calling onDestroy.
-  static const Duration _heartbeatStaleGrace = Duration(minutes: 35);
+  static const Duration _heartbeatStaleGrace = Duration(minutes: 40);
 
   // Get employee status from RTDB presence
   String getEmployeeStatus(String userId) {

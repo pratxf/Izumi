@@ -1550,11 +1550,18 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
       final lng = (metadata?['longitude'] as num?)?.toDouble();
       if (lat != null && lng != null) {
         final cached = GeocodingCache.instance.getCached(lat, lng);
-        if (cached != null) return cached;
-        GeocodingCache.instance.resolve(lat, lng).then((_) {
-          if (mounted) setState(() {});
-        });
-        return '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}';
+        if (cached != null && !GeocodingCache.isCoordinateString(cached)) {
+          return cached;
+        }
+        // Only trigger geocoding if we haven't already attempted for this
+        // coordinate (getCached returns null for never-attempted, returns
+        // the coordinate fallback string for failed attempts).
+        if (cached == null) {
+          GeocodingCache.instance.resolve(lat, lng).then((_) {
+            if (mounted) setState(() {});
+          });
+        }
+        return GeocodingCache.formatCoordinates(lat, lng);
       }
       return rawDetail;
     }

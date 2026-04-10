@@ -20,7 +20,7 @@ interface SessionDocument {
   employeeId: string;
   startTime: admin.firestore.Timestamp;
   endTime?: admin.firestore.Timestamp;
-  status: "active" | "completed";
+  status: "active" | "completed" | "auto_ended";
   totalDuration: number;
   totalDistance: number;
   photosCount: number;
@@ -148,8 +148,12 @@ export const onSessionComplete = onDocumentUpdated(
       return;
     }
 
-    // Only proceed when the status transitions to 'completed'
-    if (beforeData.status === "completed" || afterData.status !== "completed") {
+    // Proceed when the status transitions to 'completed' or 'auto_ended'
+    const isTerminal =
+      afterData.status === "completed" || afterData.status === "auto_ended";
+    const wasAlreadyTerminal =
+      beforeData.status === "completed" || beforeData.status === "auto_ended";
+    if (!isTerminal || wasAlreadyTerminal) {
       return;
     }
 

@@ -3,7 +3,8 @@ import { logger } from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import { sendNotification } from "../utils/send_notification";
 
-const SIGNAL_LOST_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
+const SIGNAL_LOST_MAX_AGE_MS = 35 * 60 * 1000; // 35 min — must exceed heartbeat interval (25 min) + margin
+const STALE_HEARTBEAT_MAX_AGE_MS = 40 * 60 * 1000; // 40 min — heartbeat (25 min) + GPS poll window (5 min) + margin
 const MAX_SESSION_DURATION_MS = 16 * 60 * 60 * 1000; // 16 hours
 
 type PresenceNode = {
@@ -66,8 +67,15 @@ export const sweepSignalLostSessions = onSchedule(
           continue;
         }
 
-        // For signal_lost: check signalLostAt age
-        // For active/break: check lastSeen (heartbeat) staleness
+        // ── Staleness detection ────────────────────────────────────────
+        // sessionHeartbeat is the PRIMARY liveness signal — it fires every
+        // 25 min from the foreground service and proves the service is alive.
+        // liveLocations can stall indoors (GPS failures) without the service
+        // dying, so it must NEVER trigger auto-end on its own.
+        //
+        // Auto-end requires BOTH:
+        //   1. sessionHeartbeat stale beyond STALE_HEARTBEAT_MAX_AGE_MS (40 min)
+        //   2. presence.lastSeen stale beyond SIGNAL_LOST_MAX_AGE_MS (35 min)
         let isStale = false;
         let effectiveStaleTime = now;
 
@@ -78,36 +86,31 @@ export const sweepSignalLostSessions = onSchedule(
             effectiveStaleTime = presence.signalLostAt;
           }
         } else if (status === "active" || status === "break") {
-          // Check multiple staleness signals — if ALL are stale, end the session
           const presenceLastSeen = presence.lastSeen ?? 0;
 
-          // Also check sessionHeartbeat and liveLocations for freshness
+          // Read sessionHeartbeat — the authoritative liveness signal
           let heartbeatLastSeen = 0;
-          let liveLocationUpdatedAt = 0;
           try {
             const hbSnap = await rtdb
               .ref(`sessionHeartbeat/${enterpriseId}/${userId}/lastSeen`)
               .get();
             heartbeatLastSeen = (hbSnap.val() as number) ?? 0;
           } catch (_) {}
-          try {
-            const llSnap = await rtdb
-              .ref(`liveLocations/${enterpriseId}/${userId}/updatedAt`)
-              .get();
-            liveLocationUpdatedAt = (llSnap.val() as number) ?? 0;
-          } catch (_) {}
 
-          // Use the most recent signal from any source
-          const mostRecent = Math.max(
-            presenceLastSeen,
-            heartbeatLastSeen,
-            liveLocationUpdatedAt,
-          );
-          const mostRecentAgeMs = now - mostRecent;
+          // If heartbeat is fresh, the service is alive — skip regardless
+          // of liveLocations age (GPS can fail indoors).
+          if (heartbeatLastSeen > 0 &&
+              (now - heartbeatLastSeen) < STALE_HEARTBEAT_MAX_AGE_MS) {
+            continue;
+          }
 
-          if (mostRecent > 0 && mostRecentAgeMs >= SIGNAL_LOST_MAX_AGE_MS) {
+          // Heartbeat is stale — check presence as second confirmation
+          const presenceAgeMs = presenceLastSeen > 0 ? now - presenceLastSeen : Infinity;
+          if (presenceAgeMs >= SIGNAL_LOST_MAX_AGE_MS) {
             isStale = true;
-            effectiveStaleTime = mostRecent;
+            // Use the most recent of the two stale signals as effective time
+            effectiveStaleTime = Math.max(presenceLastSeen, heartbeatLastSeen);
+            if (effectiveStaleTime === 0) effectiveStaleTime = now;
           }
         }
 
@@ -115,7 +118,7 @@ export const sweepSignalLostSessions = onSchedule(
           continue;
         }
 
-        // Re-check latest presence to avoid race conditions
+        // ── Re-check with latest data to avoid race conditions ─────────
         const latestPresenceSnap = await rtdb
           .ref(`presence/${enterpriseId}/${userId}`)
           .get();
@@ -123,31 +126,31 @@ export const sweepSignalLostSessions = onSchedule(
         if (!latestPresence) {
           continue;
         }
-        // If status changed since we read, skip
         if (latestPresence.status === "offline") {
           continue;
         }
-        // Revalidate: check all freshness signals with latest data
-        let latestMostRecent = latestPresence.lastSeen ?? 0;
+
+        // Revalidate: heartbeat is still the primary signal
+        let latestHeartbeat = 0;
         try {
           const hbSnap2 = await rtdb
             .ref(`sessionHeartbeat/${enterpriseId}/${userId}/lastSeen`)
             .get();
-          const hb2 = (hbSnap2.val() as number) ?? 0;
-          if (hb2 > latestMostRecent) latestMostRecent = hb2;
+          latestHeartbeat = (hbSnap2.val() as number) ?? 0;
         } catch (_) {}
-        try {
-          const llSnap2 = await rtdb
-            .ref(`liveLocations/${enterpriseId}/${userId}/updatedAt`)
-            .get();
-          const ll2 = (llSnap2.val() as number) ?? 0;
-          if (ll2 > latestMostRecent) latestMostRecent = ll2;
-        } catch (_) {}
-        // Only skip if we have a RECENT signal — zero means no data = definitely stale
-        if (latestMostRecent > 0 && (now - latestMostRecent) < SIGNAL_LOST_MAX_AGE_MS) {
+
+        // If heartbeat became fresh since first check, skip
+        if (latestHeartbeat > 0 &&
+            (now - latestHeartbeat) < STALE_HEARTBEAT_MAX_AGE_MS) {
           continue;
         }
-        // If latestMostRecent is 0, fall through — no heartbeat data means stale
+
+        // Also recheck presence
+        const latestPresenceLastSeen = latestPresence.lastSeen ?? 0;
+        if (latestPresenceLastSeen > 0 &&
+            (now - latestPresenceLastSeen) < SIGNAL_LOST_MAX_AGE_MS) {
+          continue;
+        }
 
         let sessionRef: admin.firestore.DocumentReference | null = null;
         if (latestPresence.currentSessionId) {

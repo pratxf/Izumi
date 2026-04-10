@@ -83,11 +83,18 @@ class GeocodingCache {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return false;
     if (trimmed.startsWith('Lat:')) return true;
-    // Matches patterns like "26.5590, 72.8818" or "26.5590,72.8818"
-    if (RegExp(r'^\d+\.\d+,\s*\d+\.\d+$').hasMatch(trimmed)) return true;
+    // Matches patterns like "26.5590, 72.8818" or "-26.5590, 72.8818"
+    if (RegExp(r'^-?\d+\.\d+,\s*-?\d+\.\d+$').hasMatch(trimmed)) return true;
     // Matches "Lat: 26.5590, Lng: 72.8818"
-    if (RegExp(r'^Lat:\s*[\d.]+,\s*Lng:\s*[\d.]+$').hasMatch(trimmed)) return true;
+    if (RegExp(r'^Lat:\s*-?[\d.]+,\s*Lng:\s*-?[\d.]+$').hasMatch(trimmed)) return true;
     return false;
+  }
+
+  /// Formats coordinates as a human-readable string with compass directions.
+  static String formatCoordinates(double lat, double lng) {
+    final latDir = lat >= 0 ? 'N' : 'S';
+    final lngDir = lng >= 0 ? 'E' : 'W';
+    return '${lat.abs().toStringAsFixed(4)}°$latDir, ${lng.abs().toStringAsFixed(4)}°$lngDir';
   }
 
   /// Extract lat/lng from a coordinate string.
@@ -95,16 +102,16 @@ class GeocodingCache {
   static (double, double)? parseCoordinates(String value) {
     final trimmed = value.trim();
 
-    // "Lat: 26.5590, Lng: 72.8818"
-    final latLngMatch = RegExp(r'Lat:\s*([\d.]+),\s*Lng:\s*([\d.]+)').firstMatch(trimmed);
+    // "Lat: 26.5590, Lng: 72.8818" or "Lat: -26.5590, Lng: 72.8818"
+    final latLngMatch = RegExp(r'Lat:\s*(-?[\d.]+),\s*Lng:\s*(-?[\d.]+)').firstMatch(trimmed);
     if (latLngMatch != null) {
       final lat = double.tryParse(latLngMatch.group(1)!);
       final lng = double.tryParse(latLngMatch.group(2)!);
       if (lat != null && lng != null) return (lat, lng);
     }
 
-    // "26.5590, 72.8818"
-    final simpleMatch = RegExp(r'^([\d.]+),\s*([\d.]+)$').firstMatch(trimmed);
+    // "26.5590, 72.8818" or "-26.5590, 72.8818"
+    final simpleMatch = RegExp(r'^(-?[\d.]+),\s*(-?[\d.]+)$').firstMatch(trimmed);
     if (simpleMatch != null) {
       final lat = double.tryParse(simpleMatch.group(1)!);
       final lng = double.tryParse(simpleMatch.group(2)!);

@@ -172,21 +172,18 @@ class AdminActivityFeedService {
       debugPrint('[FeedService] _loadPhotosForSessions failed: $e');
     }
 
-    // ── 5. Enterprise-wide photo fallback ─────────────────────────────
-    // When all employee/session-scoped queries fail (often due to missing
-    // Firestore composite indexes), query by enterprise ID (which works
-    // reliably) and filter by employee+date in memory.
+    // ── 5. Enterprise-wide photo sweep ──────────────────────────────
+    // Always run the enterprise query to catch photos stored under old
+    // (pre-migration) employeeIds that employee/session-scoped queries miss.
+    // mergePhotos() deduplicates by document ID so duplicates are safe.
     List<PhotoModel> enterpriseFallbackPhotos = const [];
     final resolvedEnterpriseId = enterpriseId ??
         (sessions.isNotEmpty ? sessions.first.enterpriseId : null) ??
         (rawActivityLogs.isNotEmpty ? rawActivityLogs.first.enterpriseId : null);
-    if (rawPhotos.isEmpty &&
-        photosFromActivityLogs.isEmpty &&
-        sessionBackedPhotos.isEmpty &&
-        resolvedEnterpriseId != null &&
-        resolvedEnterpriseId.isNotEmpty) {
+    if (resolvedEnterpriseId != null && resolvedEnterpriseId.isNotEmpty) {
       try {
         final empIdSet = normalizedIds.toSet();
+        final sessionIdSet = sessionIds.toSet();
         enterpriseFallbackPhotos =
             (await _photoRepo.getPhotosByEnterprise(
               resolvedEnterpriseId,
@@ -194,13 +191,15 @@ class AdminActivityFeedService {
               endDate: rangeEnd,
               limit: 500,
             ))
-                .where((photo) => empIdSet.contains(photo.employeeId))
+                .where((photo) =>
+                    empIdSet.contains(photo.employeeId) ||
+                    sessionIdSet.contains(photo.sessionId))
                 .toList();
         debugPrint(
-          '[FeedService] enterprise photo fallback: ${enterpriseFallbackPhotos.length} photos',
+          '[FeedService] enterprise photo sweep: ${enterpriseFallbackPhotos.length} photos',
         );
       } catch (e) {
-        debugPrint('[FeedService] enterprise photo fallback failed: $e');
+        debugPrint('[FeedService] enterprise photo sweep failed: $e');
       }
     }
 
@@ -551,12 +550,7 @@ class AdminActivityFeedService {
   }
 
   List<ActivityLogModel> mergeActivityLogs(List<ActivityLogModel> logs) {
-    final merged = <String, ActivityLogModel>{};
-    for (final log in logs) {
-      merged[log.id] = log;
-    }
-    return _dedupeLocationLogs(merged.values.toList()
-      ..sort((a, b) => b.timestamp.compareTo(a.timestamp)));
+    return _dedupeAndThinLocationLogs(logs);
   }
 
   List<PhotoModel> mergePhotos(List<PhotoModel> photos) {
@@ -568,36 +562,71 @@ class AdminActivityFeedService {
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
   }
 
-  List<ActivityLogModel> _dedupeLocationLogs(List<ActivityLogModel> logs) {
-    final seenKeys = <String>{};
-    final deduped = <ActivityLogModel>[];
-
+  /// Deduplicates activity logs by ID, then thins location_update entries
+  /// to one per 20-minute window per session. Within each window, prefers
+  /// entries with a named address over raw coordinates.
+  ///
+  /// This runs AFTER merge (which combines all sources: activityLogs collection,
+  /// session subcollection fallback, synthetic boundary logs) so thinning
+  /// applies uniformly regardless of where the entry originated.
+  List<ActivityLogModel> _dedupeAndThinLocationLogs(List<ActivityLogModel> logs) {
+    // Phase 1: deduplicate by ID
+    final byId = <String, ActivityLogModel>{};
     for (final log in logs) {
-      final key = _activityDedupKey(log);
-      if (!seenKeys.add(key)) continue;
-      deduped.add(log);
+      byId[log.id] = log;
     }
-    return deduped;
+    final deduped = byId.values.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp)); // ascending for thinning
+
+    // Phase 2: thin location_update entries to one per 20-min window per session.
+    // Track the last kept location timestamp per session.
+    final lastKeptBySession = <String, DateTime>{};
+    final thinned = <ActivityLogModel>[];
+
+    for (final log in deduped) {
+      if (log.type != 'location_update') {
+        thinned.add(log);
+        continue;
+      }
+
+      final sessionId = log.sessionId ?? '';
+
+      // Within the current window, decide whether to keep this entry
+      final lastKept = lastKeptBySession[sessionId];
+      if (lastKept != null &&
+          log.timestamp.difference(lastKept).abs() < _locationDisplayInterval) {
+        // Same window — replace previous entry if this one has a better address
+        final lastIndex = thinned.lastIndexWhere(
+          (l) => l.type == 'location_update' && (l.sessionId ?? '') == sessionId,
+        );
+        if (lastIndex >= 0) {
+          final existing = thinned[lastIndex];
+          if (_hasRawCoordinateDetail(existing) && !_hasRawCoordinateDetail(log)) {
+            thinned[lastIndex] = log;
+          }
+        }
+        continue;
+      }
+
+      // New window — keep this entry
+      lastKeptBySession[sessionId] = log.timestamp;
+      thinned.add(log);
+    }
+
+    return thinned;
   }
 
-  String _activityDedupKey(ActivityLogModel log) {
-    if (log.type != "location_update") {
-      return "id:${log.id}";
-    }
-    final minuteBucket = DateTime(
-      log.timestamp.year,
-      log.timestamp.month,
-      log.timestamp.day,
-      log.timestamp.hour,
-      log.timestamp.minute,
-    );
-    final lat =
-        (log.metadata?["latitude"] as num?)?.toDouble().toStringAsFixed(5) ?? "";
-    final lng =
-        (log.metadata?["longitude"] as num?)?.toDouble().toStringAsFixed(5) ?? "";
-    final detail = log.detail.trim().toLowerCase();
-    final sessionId = log.sessionId ?? "";
-    return "location|$sessionId|$minuteBucket|$lat|$lng|$detail";
+  /// Returns true if a location entry's detail is raw coordinates rather
+  /// than a resolved place name.
+  bool _hasRawCoordinateDetail(ActivityLogModel log) {
+    final detail = log.detail.trim();
+    if (detail.isEmpty) return true;
+    if (detail.startsWith('Lat:')) return true;
+    // Starts with digit or minus sign → likely raw "29.7231, 77.5642"
+    final firstChar = detail.codeUnitAt(0);
+    if (firstChar >= 48 && firstChar <= 57) return true; // 0-9
+    if (firstChar == 45) return true; // minus sign
+    return false;
   }
 
   List<String> _normalizeIds(Iterable<String> ids) {

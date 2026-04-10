@@ -92,7 +92,7 @@ Every GPS fix is validated before acceptance:
 
 | Filter | Threshold | Purpose |
 |--------|-----------|---------|
-| Accuracy | <= 30m | Reject poor GPS fixes |
+| Accuracy | <= 100m | Reject poor GPS fixes |
 | Movement | >= 15m | Discard stationary noise |
 | Speed | <= 100 m/s (~360 km/h) | Reject impossible jumps |
 
@@ -239,6 +239,8 @@ The dashboard provider detects dead sessions using two signals:
 
 If BOTH are stale, status is set to `signal_lost` regardless of RTDB presence status.
 
-The server-side sweep (`sweepSignalLostSessions`) runs every 30 minutes and auto-ends:
-- Sessions with `signal_lost` status > 1 hour
-- Sessions with `active` status but stale `lastSeen` > 1 hour
+The server-side sweep (`sweepSignalLostSessions`) runs every **10 minutes** and auto-ends:
+- Sessions with `signal_lost` status > **15 min**
+- Sessions with `active`/`break` status where ALL of presence, heartbeat, and location are stale > **15 min**
+- Any session exceeding **16 hours** (hard cutoff)
+- Also cleans up orphaned RTDB nodes without a matching Firestore session

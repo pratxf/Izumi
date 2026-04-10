@@ -150,8 +150,13 @@ Shows detailed timeline for a single employee over a date range.
 **Data Loading via `AdminActivityFeedService.loadRangeFeed()`:**
 
 ```
-Step 1: Load sessions (by employee IDs + date range)
-        Fallback: unfiltered + client-side date filtering
+Step 1: Load sessions via SessionQueryHelper (5 fallback layers):
+        1. Employee-scoped query with date range
+        2. Employee-scoped unfiltered, filter in memory
+        3. Enterprise-wide query with date range
+        4. Enterprise-wide unfiltered, filter in memory
+        5. DailySummary-based session discovery (last resort)
+        Results cached via QueryCache (TTL: 2 min)
 
 Step 2: Load activity logs (parallel queries)
         - By employee IDs + date range
@@ -171,6 +176,9 @@ Step 6: Enterprise-wide photo fallback (query by enterpriseId, filter client-sid
 
 Step 7: Merge, deduplicate, sort by timestamp
 ```
+
+**Location Display Thinning:**
+- Location entries are thinned to one per 20-minute interval (`_locationDisplayInterval`) to avoid flooding the feed
 
 **Deduplication:**
 - Location logs: Grouped by minute-bucket + coordinates + detail + session ID
@@ -418,13 +426,22 @@ deviceSessions/{userId}
 | Heartbeat interval | 25 min | tracking_task_handler.dart |
 | Buffer flush threshold | 20 locations | sync_manager.dart |
 | Periodic flush interval | 20 min | sync_manager.dart |
-| GPS accuracy filter | <= 30m | tracking_task_handler.dart |
+| GPS accuracy filter | <= 100m | tracking_task_handler.dart |
 | Movement filter | >= 15m | tracking_task_handler.dart |
 | Speed spike filter | <= 100 m/s | tracking_task_handler.dart |
 | Live location grace | 25 min | dashboard_provider.dart |
 | Heartbeat stale grace | 35 min | dashboard_provider.dart |
-| Signal lost max age | 1 hour | sweep_signal_lost_sessions.ts |
+| Signal lost max age | 15 min | sweep_signal_lost_sessions.ts |
+| Stale heartbeat max age | 15 min | sweep_signal_lost_sessions.ts |
+| Max session duration | 16 hours | sweep_signal_lost_sessions.ts |
 | Presence offline heartbeat stale | 1 hour | on_presence_offline.ts |
 | Daily summary schedule | 23:59 IST | daily_summary_aggregator.ts |
+| Sweep signal lost schedule | Every 10 min | sweep_signal_lost_sessions.ts |
+| Sanitize active stats schedule | Every 10 min | sanitize_active_stats.ts |
+| Export cleanup schedule | Saturday 02:00 IST | cleanup_old_exports.ts |
+| Analytics integrity check | Every 6 hours | check_analytics_integrity.ts |
+| Location display thinning | 20 min | admin_activity_feed_service.dart |
+| Query cache TTL | 2 min | query_cache.dart |
+| Session query fallback layers | 5 | session_query_helper.dart |
 | Geocoding timeout | 5s | sync_manager.dart, tracking_task_handler.dart |
 | Geocoding cache precision | ~11m (4 decimal) | geocoding_cache.dart |

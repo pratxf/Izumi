@@ -32,6 +32,20 @@ class SessionTaskRemovalService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+
+        // Check if the user intentionally backgrounded the app (back button
+        // with active session). The foreground service is still running —
+        // do not auto-end.
+        val intentionalBackground = prefs.getBoolean(KEY_INTENTIONAL_BG, false)
+        // Always clear the flag so it never stays true permanently
+        prefs.edit().remove(KEY_INTENTIONAL_BG).apply()
+        if (intentionalBackground) {
+            Log.d(TAG, "Intentional background — skipping auto-end, service still running")
+            stopSelf()
+            super.onTaskRemoved(rootIntent)
+            return
+        }
+
         val enterpriseId = prefs.getString(KEY_ENTERPRISE_ID, null)
         val userId = prefs.getString(KEY_USER_ID, null)
         val sessionId = prefs.getString(KEY_SESSION_ID, null)
@@ -200,6 +214,7 @@ class SessionTaskRemovalService : Service() {
         private const val KEY_ENTERPRISE_ID = "enterprise_id"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_SESSION_ID = "session_id"
+        private const val KEY_INTENTIONAL_BG = "intentional_background"
 
         private const val ACTION_START = "com.izumi.izumi.action.START_SESSION_GUARD"
         private const val ACTION_STOP = "com.izumi.izumi.action.STOP_SESSION_GUARD"

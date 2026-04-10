@@ -100,9 +100,10 @@ What it does:
 **Trigger:** Firestore document updated -- `status` changed to `completed` or `auto_ended`
 
 What it does:
-1. Creates activity log (`type: session_end`)
-2. Sends notifications to admin, team lead, and (for auto_end) the employee
-3. Includes duration and distance in notification payload
+1. Upserts `dailySummary` with session stats
+2. Creates activity log (`type: session_end` or `session_auto_ended`)
+3. Sends notifications to admin, team lead, and (for auto_end) the employee
+4. Includes duration and distance in notification payload
 
 #### `onSessionComplete`
 **File:** `functions/src/sessions/on_session_complete.ts`
@@ -115,14 +116,19 @@ What it does:
    - Rejects speeds > 120 km/h
 3. Calculates total session duration
 4. Gathers unique location names visited
-5. Creates/updates `/dailySummaries/{employeeId}_{YYYY-MM-DD}`
-6. All dates computed in IST (UTC+5:30)
+5. Creates/updates `/dailySummaries/{employeeId}_{YYYY-MM-DD}` (merges with existing to avoid double-counting)
+6. Runs in transaction to handle retries safely
+7. All dates computed in IST (UTC+5:30)
 
 #### `onPresenceOffline`
 **File:** `functions/src/sessions/on_presence_offline.ts`
-**Trigger:** RTDB node updated at `presence/{enterpriseId}/{userId}`
+**Trigger:** RTDB node written at `presence/{enterpriseId}/{userId}`
 
-What it does: When user goes offline, removes entries from `activeStats`, `sessionHeartbeat`, and `liveLocations` in RTDB.
+What it does: When presence changes, checks if the user's session should be auto-ended.
+1. Checks if `sessionHeartbeat` is stale (>= 60 min) — avoids killing sessions where app is running in background
+2. If stale: updates Firestore session to `auto_ended` (reason: `app_killed_or_disconnected`)
+3. Creates activity log entry
+4. Cleans up RTDB: removes `activeStats`, `sessionHeartbeat`
 
 #### `onSessionLocationCreated`
 **File:** `functions/src/sessions/on_session_location_created.ts`
@@ -188,9 +194,26 @@ What it does:
 
 #### `onGroupUpdated`
 **File:** `functions/src/chat/on_group_updated.ts`
-**Trigger:** Firestore document updated at `/chatGroups/{groupId}`
+**Trigger:** Firestore document updated at `/groups/{groupId}`
 
-What it does: Creates activity log for group updates.
+What it does: Syncs group membership changes to linked chat groups.
+1. Finds linked chatGroup by `linkedGroupId` or group name
+2. Normalizes `memberIds` + `leadIds` + `createdBy`
+3. Updates chatGroup if membership changed
+4. Deduplicates and updates `linkedGroupId`
+
+### 2.5b Activity Log Trigger
+
+#### `enrichLocationUpdate`
+**File:** `functions/src/logs/enrich_location_update.ts`
+**Trigger:** Firestore document created at `/activityLogs/{logId}`
+
+What it does:
+1. Filters to `type: location_update` only
+2. Extracts latitude, longitude from metadata
+3. Appends precise coordinate line to detail (if not already present)
+4. Adds `preciseCoordinates` to metadata
+5. Retry disabled (`retry: false`)
 
 ---
 
@@ -214,11 +237,11 @@ All run in asia-south1 with 300s timeout.
 
 | Job | Schedule | What It Does |
 |-----|----------|--------------|
-| `dailySummaryAggregator` | `29 18 * * *` (23:59 IST) | End-of-day reconciliation. Queries all completed sessions for today, aggregates per-employee stats, writes/overwrites `dailySummaries` docs. Uses 450-doc batches. 512MiB memory. |
-| `sweepSignalLostSessions` | `*/30 * * * *` (every 30 min) | Auto-ends stale sessions. Checks RTDB presence, heartbeat, and location staleness. Auto-ends if: signal lost >60 min, no heartbeat >60 min, or session >16 hours. Cleans up RTDB nodes. Notifies employee. |
-| `checkAnalyticsIntegrity` | `0 */6 * * *` (every 6 hours) | Audits data consistency. Verifies activity logs exist for sessions, photos, tasks. Checks active sessions have recent location updates (30min grace). Logs inconsistencies. |
-| `sanitizeActiveStats` | Periodic | Removes stale entries from `activeStats` in RTDB. |
-| `cleanupOldExports` | Periodic | Removes old export files from Cloud Storage. |
+| `dailySummaryAggregator` | `29 18 * * *` (23:59 IST) | End-of-day reconciliation. Queries all completed sessions for today, aggregates per-employee stats, writes/overwrites `dailySummaries` docs. Uses 450-doc batches. 512MiB memory. Retry: 2. |
+| `sweepSignalLostSessions` | `*/10 * * * *` (every 10 min) | Auto-ends stale sessions. **Signal lost sweep:** ends sessions in `signal_lost` status >15 min. **Stale heartbeat:** ends active/break sessions if ALL of presence, heartbeat, and location are stale >15 min. **Max duration:** force-ends sessions >16 hours. **Orphan cleanup:** removes orphaned RTDB nodes without Firestore session. Cleans up RTDB, notifies employee. 512MiB. |
+| `checkAnalyticsIntegrity` | `0 */6 * * *` (every 6 hours) | Audits data consistency (7-day lookback). Verifies activity logs exist for sessions, photos, tasks. Checks active sessions have recent location updates (30min grace). Logs inconsistencies but takes no corrective action. 512MiB. |
+| `sanitizeActiveStats` | `*/10 * * * *` (every 10 min) | Corrects active session distance calculations. Reads locations subcollection, recalculates trusted distance via Haversine with sanity checks. Corrects RTDB `activeStats` and session `totalDistance` if delta >0.5 km. 512MiB. |
+| `cleanupOldExports` | `30 20 * * 6` (Saturday 02:00 IST) | Deletes export files older than 30 days from `enterprises/{eid}/exports/` and `reports/` directories. 256MiB. |
 
 ---
 
@@ -274,14 +297,34 @@ General-purpose admin maintenance operations.
 #### `syncLinkedChatGroups`
 **File:** `functions/src/callable/sync_linked_chat_groups.ts`
 **Authorization:** Admin only
+**Parameters:** `{dryRun?: boolean}` (default: true)
 
-Syncs member lists between groups and their linked chat groups.
+Syncs member lists between groups and their linked chat groups. Normalizes members (group memberIds + leadIds + createdBy). Updates chatGroup if membership or linkedGroupId changed.
+
+#### `forceEndGhostSessions`
+**File:** `functions/src/callable/force_end_ghost_sessions.ts`
+**Authorization:** Admin only
+
+Force-ends all signal_lost ghost sessions. Iterates RTDB presence nodes with status=signal_lost or stale heartbeat, finds active Firestore session, sets status→auto_ended, creates activity log, cleans up RTDB. Returns count and session list. 512MiB.
+
+#### `forceEndAllSessions`
+**File:** `functions/src/callable/force_end_all_sessions.ts`
+**Authorization:** Admin only
+
+Force-ends ALL active/signal_lost sessions across enterprise. Sets each to auto_ended (reason: admin_force_end_all), creates activity logs, cleans up RTDB per user, sends notification to each employee. 512MiB.
+
+#### `backfillActivityLogs`
+**File:** `functions/src/callable/backfill_activity_logs.ts`
+**Authorization:** Admin only
+**Parameters:** `{daysBack?: number}` (default: 30)
+
+Backfills missing activity logs for recent sessions/photos. Creates missing session_started, session_ended, location_update, and photo_captured logs with deterministic IDs (idempotent). Caches employee names for efficiency. 1GiB memory, 540s timeout.
 
 #### Migration Callables
-- `migrateOrphanedTasks` -- reattach orphaned tasks
-- `migrateGroupMemberIds` -- update group member references
-- `migrateHistoricalAnalytics` -- backfill activity logs
-- `migrateHistoricalPhotos` -- bulk update photo references
+- `migrateOrphanedTasks` -- reattach orphaned tasks by matching `assignedToName`
+- `migrateGroupMemberIds` -- repair stale group memberIds/leadIds referencing old pre-created IDs. Supports `dryRun` and `removeOrphans` params.
+- `migrateHistoricalAnalytics` -- backfill historical session/photo/task activity logs. Deterministic IDs, idempotent. 540s, 512MiB.
+- `migrateHistoricalPhotos` -- backfill photo docs and create missing photo_captured logs. 540s, 512MiB.
 
 ---
 
@@ -638,15 +681,20 @@ Behavior:
 
 | Service | What It Does |
 |---------|-------------|
-| `firestore_service.dart` | All Firestore CRUD and stream operations |
-| `realtime_db_service.dart` | RTDB reads/writes for presence, live locations, heartbeat |
-| `storage_service.dart` | Cloud Storage upload/download |
-| `auth_service.dart` | Firebase Auth, token management, role routing |
-| `notification_service.dart` | Local notification handling, FCM token management |
-| `location_service.dart` | GPS tracking, background location |
-| `image_processing_service.dart` | Camera capture, watermarking, upload |
-| `connectivity_monitor.dart` | Network state, presence heartbeat |
-| `admin_activity_feed_service.dart` | Activity log queries for admin dashboard |
+| `firestore_service.dart` | All Firestore CRUD, stream, and batch operations |
+| `realtime_db_service.dart` | RTDB reads/writes for presence, live locations, active stats, heartbeat |
+| `storage_service.dart` | Cloud Storage upload/download for photos, profiles, chat images |
+| `auth_service.dart` | Firebase Auth, phone/email sign-in, token management, role claims |
+| `notification_service.dart` | FCM token management, local push notifications, topic subscriptions |
+| `location_service.dart` | GPS tracking, permissions, reverse geocoding, distance calculation |
+| `image_processing_service.dart` | Photo compression, thumbnail generation (15s full + 10s thumb timeouts) |
+| `connectivity_monitor.dart` | Singleton network state monitor with online/offline stream |
+| `admin_activity_feed_service.dart` | Activity log queries with session/photo/location merging and deduplication |
+| `session_query_helper.dart` | Optimized session queries with 5-layer fallback chain |
+| `query_cache.dart` | Singleton cache for session and photo query results (2 min TTL) |
+| `geocoding_cache.dart` | Singleton reverse geocoding cache with ~11m precision key rounding |
+| `permission_service.dart` | Location, camera, storage, battery optimization permission handling |
+| `battery_optimization_service.dart` | OEM battery optimization detection and settings launcher |
 
 ---
 

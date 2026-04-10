@@ -52,6 +52,14 @@ class MainActivity : FlutterActivity() {
                     stopService(intent)
                     result.success(null)
                 }
+                "setIntentionalBackground" -> {
+                    val value = call.argument<Boolean>("value") ?: false
+                    getSharedPreferences("izumi_session_task_guard", MODE_PRIVATE)
+                        .edit()
+                        .putBoolean("intentional_background", value)
+                        .apply()
+                    result.success(null)
+                }
                 "isIgnoringBatteryOptimizations" -> {
                     val powerManager =
                         getSystemService(Context.POWER_SERVICE) as PowerManager

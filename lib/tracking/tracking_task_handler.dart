@@ -44,6 +44,8 @@ class SessionTrackingTaskHandler extends TaskHandler {
   String? _employeeName;
   int? _startedAtMs;
 
+  int? _taskStartedAtMs; // when this task handler instance started (for restart guard)
+
   Position? _lastPosition;
   double _totalDistanceKm = 0;
   Duration _pollInterval = const Duration(minutes: 1);
@@ -56,10 +58,12 @@ class SessionTrackingTaskHandler extends TaskHandler {
   // Indoor/desk workers can have GPS accuracy worse than 30m — use a generous
   // threshold so stationary sessions still record location data.
   static const double _maxAccuracyMeters = 100.0;
-  static const double _maxSpeedMps = 100.0; // ~360 km/h — impossible spike
+  static const double _maxSpeedMps = 55.6; // 200 km/h — covers all realistic vehicles with margin
+  static const double _minMovementMeters = 15.0; // discard GPS jitter
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    _taskStartedAtMs = DateTime.now().millisecondsSinceEpoch;
     await _ensureFirebase();
     _firestore = FirebaseFirestore.instance;
     _database = FirebaseDatabase.instance;
@@ -170,14 +174,17 @@ class SessionTrackingTaskHandler extends TaskHandler {
         return;
       }
 
-      // Safety: don't auto-end sessions that just started (< 30s ago).
-      final startMs = _startedAtMs;
-      if (startMs != null) {
-        final elapsed = DateTime.now().millisecondsSinceEpoch - startMs;
+      // Safety: don't auto-end if this task handler instance just started
+      // (< 30s ago). Uses _taskStartedAtMs (when onStart ran), not
+      // _startedAtMs (session start time), so it correctly skips auto-end
+      // when the OEM restarts the foreground service mid-session.
+      final taskStartMs = _taskStartedAtMs;
+      if (taskStartMs != null) {
+        final elapsed = DateTime.now().millisecondsSinceEpoch - taskStartMs;
         if (elapsed < 30000) {
           debugPrint(
-            '[TrackingTaskHandler] onDestroy: session only ${elapsed}ms old, '
-            'skipping auto-end (likely a restart).',
+            '[TrackingTaskHandler] onDestroy: task handler only ${elapsed}ms old, '
+            'skipping auto-end (likely an OEM restart).',
           );
           unawaited(_syncManager.dispose());
           return;
@@ -505,7 +512,7 @@ class SessionTrackingTaskHandler extends TaskHandler {
 
       if (!_isUsableFix(position)) return;
 
-      // Distance and speed spike filter
+      // Distance quality filters (order: movement → timestamp → speed → accumulate)
       if (_lastPosition != null) {
         final meters = Geolocator.distanceBetween(
           _lastPosition!.latitude,
@@ -514,15 +521,19 @@ class SessionTrackingTaskHandler extends TaskHandler {
           position.longitude,
         );
 
-        // Impossible speed spike detection
+        // 1. Minimum movement filter — discard GPS jitter
+        if (meters < _minMovementMeters) return;
+
+        // 2. Timestamp validity — reject fixes with duplicate/invalid timestamps
         final timeDiffSecs = position.timestamp
             .difference(_lastPosition!.timestamp)
             .inSeconds
             .abs();
-        if (timeDiffSecs > 0) {
-          final speedMps = meters / timeDiffSecs;
-          if (speedMps > _maxSpeedMps) return;
-        }
+        if (timeDiffSecs <= 0) return;
+
+        // 3. Speed spike detection
+        final speedMps = meters / timeDiffSecs;
+        if (speedMps > _maxSpeedMps) return;
 
         _totalDistanceKm += meters / 1000;
       }

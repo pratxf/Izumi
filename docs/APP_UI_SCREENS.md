@@ -648,14 +648,18 @@ Glassmorphism design system | GoRouter navigation | Provider state management
 | Widget | File | Purpose |
 |--------|------|---------|
 | `EmployeeCard` | `employee_card.dart` | Employee profile card with status |
-| `StatCard` | `stat_card.dart` | Statistics display card |
-| `TaskCard` | `task_card.dart` | Task information card |
+| `StatCard` | `stat_card.dart` | Statistics display card with icon, label, value |
+| `CompactStatCard` | `stat_card.dart` | Smaller variant of StatCard |
+| `TaskCard` | `task_card.dart` | Task information card with priority and due date |
 
 ### Glass/Design System
 | Widget | File | Purpose |
 |--------|------|---------|
 | `GradientBackground` | `gradient_background.dart` | App-wide gradient background wrapper |
+| `GradientScaffold` | `gradient_background.dart` | Scaffold with gradient background |
+| `ScrollableContentPanel` | `gradient_background.dart` | Scrollable content wrapper |
 | `GlassPanel` | `glass_panel.dart` | Glassmorphism panel container |
+| `GlassCard` | `glass_panel.dart` | Extended glass panel variant |
 | `GlassChip` | `glass_chip.dart` | Filter/tag chip with glass effect |
 | `GlassBadge` | `glass_badge.dart` | Status badge with glass effect |
 | `GlassIconButton` | `glass_icon_button.dart` | Icon button with glass styling |
@@ -665,10 +669,11 @@ Glassmorphism design system | GoRouter navigation | Provider state management
 ### Inputs
 | Widget | File | Purpose |
 |--------|------|---------|
-| `TextInputField` | `text_input_field.dart` | Standard text input with glassmorphism |
+| `GlassInputField` | `text_input_field.dart` | Base glass-style text input with prefix/suffix |
+| `TextInputField` | `text_input_field.dart` | Extended glass input with label, icon, error states |
 | `OtpInputField` | `otp_input_field.dart` | 6-digit OTP input with auto-submit |
 | `PhoneInputField` | `phone_input_field.dart` | Phone number input with country code |
-| `AlphabetFilter` | `alphabet_filter.dart` | A-Z filter widget for lists |
+| `AlphabetFilter` | `alphabet_filter.dart` | Sort toggle button (A-Z ascending/descending) |
 
 ### Navigation
 | Widget | File | Purpose |
@@ -705,7 +710,18 @@ Welcome (/) --> OTP or Enterprise Login --> Dashboard (/admin/dashboard)
              /admin/tasks    /admin/analytics  /admin/management       /admin/chat
                    |               |               |                       |
              Create Task    Employee Activity   Add User / Groups    Conversation
-           /admin/create-task                  /admin/add-user
+           /admin/create-task                  /admin/add-user        /chat/conversation
+
+Other Admin Routes:
+  /admin/employee/:id       Employee Detail (real-time stats, photos, activity)
+  /admin/employee-images    Enterprise-wide image gallery
+  /admin/export             CSV data export
+  /admin/profile            Admin profile (reuses ProfileScreen with isAdmin flag)
+  /admin/edit-profile       Admin edit profile (reuses EditProfileScreen)
+  /admin/create-group       Create team group
+  /admin/edit-group         Edit team group
+  /admin/create-chat-group  Create chat group
+  /admin/edit-chat-group    Edit chat group
 ```
 
 ### Team Lead Flow
@@ -721,6 +737,21 @@ Welcome (/) --> OTP --> Home (/employee/home)
      Create Task              Employee Detail
    /admin/create-task    /employee/team-lead-detail
 ```
+
+### Shared Chat Routes (No Shell)
+```
+/chat/conversation    ChatConversationScreen (shared by employee and admin)
+/chat/camera          ChatCameraScreen (capture and send geotagged photos)
+```
+
+### Screen Reuse
+| Screen | Employee Route | Admin Route | Differentiator |
+|--------|---------------|-------------|----------------|
+| ProfileScreen | `/employee/profile` | `/admin/profile` | `isAdmin` flag |
+| EditProfileScreen | `/employee/edit-profile` | `/admin/edit-profile` | None (same behavior) |
+| MonitorScreen | `/employee/monitor` | `/admin/tasks` | `isAdmin`, `showFilter` flags |
+| ChatGroupsScreen | `/employee/chat` | `/admin/chat` | Role-based create button |
+| CreateTaskScreen | — | `/admin/create-task` | `isTeamLead` param for team leads |
 
 ### Deep Link Triggers (from Notifications)
 | Notification Type | Employee Route | Admin Route |

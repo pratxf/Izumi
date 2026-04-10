@@ -77,6 +77,15 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Ensure DashboardProvider is initialized so the stats row
+      // (distance/duration/photos) has RTDB streams running, regardless
+      // of whether the user visited the dashboard tab first.
+      final dashboardProvider = context.read<DashboardProvider>();
+      final enterpriseId = context.read<AuthProvider>().enterpriseId;
+      if (!dashboardProvider.isInitialized && enterpriseId != null) {
+        dashboardProvider.initDashboard(enterpriseId);
+      }
+
       final id = GoRouterState.of(context).pathParameters['id'];
       if (id != null) {
         _employeeId = id;

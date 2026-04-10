@@ -52,4 +52,22 @@ class SessionTaskGuard {
       );
     }
   }
+
+  /// Signal that the user intentionally backgrounded the app (via back button
+  /// with an active session). When set, [SessionTaskRemovalService] skips
+  /// auto-end because the foreground service is still running.
+  ///
+  /// Safe to call on non-Android platforms — does nothing.
+  static Future<void> setIntentionalBackground(bool value) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('setIntentionalBackground', {
+        'value': value,
+      });
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[SessionTaskGuard] setIntentionalBackground failed: $error\n$stackTrace',
+      );
+    }
+  }
 }

@@ -59,3 +59,4 @@ export { adminCleanup } from "./callable/admin_cleanup";
 export { forceEndGhostSessions } from "./callable/force_end_ghost_sessions";
 export { forceEndAllSessions } from "./callable/force_end_all_sessions";
 export { backfillActivityLogs } from "./callable/backfill_activity_logs";
+export { backfillSessionDistances } from "./callable/backfill_session_distances";

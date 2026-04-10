@@ -568,13 +568,18 @@ class SessionProvider extends ChangeNotifier {
       );
 
       // ── Upsert daily summary so analytics reflect this session ────────
+      // Write totalDistance as 0 here — the Cloud Function (onSessionComplete)
+      // recalculates trusted distance from the location trail and writes the
+      // corrected value. The end-of-day aggregator also overwrites at 23:59 IST.
+      // This avoids a race where the inflated client distance is persisted
+      // before the server-side correction fires.
       unawaited(
         _dailySummaryRepo.upsertFromSession(
           employeeId: employeeId,
           enterpriseId: enterpriseId,
           sessionId: session.id,
           totalDuration: totalDurationSecs,
-          totalDistance: _distance,
+          totalDistance: 0,
           photosCount: session.photosCount,
           tasksCompleted: session.tasksCompleted,
         ).catchError((e) {
