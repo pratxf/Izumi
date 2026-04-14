@@ -4,7 +4,7 @@ import * as admin from "firebase-admin";
 import { sendNotification } from "../utils/send_notification";
 
 /**
- * Force-end ALL active/signal_lost sessions across the enterprise.
+ * Force-end ALL active sessions across the enterprise.
  *
  * For every employee with a non-offline RTDB presence OR an active Firestore
  * session:
@@ -44,12 +44,12 @@ export const forceEndAllSessions = onCall(
     }> = [];
 
     // ── 1. Find all active Firestore sessions ──
-    const [activeSessions, signalLostSessions] = await Promise.all([
-      db.collection("sessions").where("status", "==", "active").get(),
-      db.collection("sessions").where("status", "==", "signal_lost").get(),
-    ]);
+    const activeSessions = await db
+      .collection("sessions")
+      .where("status", "==", "active")
+      .get();
 
-    const allSessions = [...activeSessions.docs, ...signalLostSessions.docs];
+    const allSessions = [...activeSessions.docs];
     const processedUserKeys = new Set<string>();
 
     for (const sessionDoc of allSessions) {
@@ -115,7 +115,6 @@ export const forceEndAllSessions = onCall(
             status: "offline",
             lastSeen: admin.database.ServerValue.TIMESTAMP,
             currentSessionId: null,
-            signalLostAt: null,
           }),
           rtdb.ref(`activeStats/${enterpriseId}/${userId}`).remove(),
           rtdb.ref(`sessionHeartbeat/${enterpriseId}/${userId}`).remove(),
@@ -168,7 +167,6 @@ export const forceEndAllSessions = onCall(
               status: "offline",
               lastSeen: admin.database.ServerValue.TIMESTAMP,
               currentSessionId: null,
-              signalLostAt: null,
             }),
             rtdb.ref(`activeStats/${enterpriseId}/${userId}`).remove(),
             rtdb.ref(`sessionHeartbeat/${enterpriseId}/${userId}`).remove(),

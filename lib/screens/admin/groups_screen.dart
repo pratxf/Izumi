@@ -32,10 +32,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
     final enterpriseId = context.read<AuthProvider>().enterpriseId;
     if (enterpriseId != null) {
       context.read<GroupProvider>().streamGroups(enterpriseId);
-      final userProvider = context.read<UserProvider>();
-      if (userProvider.employees.isEmpty) {
-        userProvider.streamUsers(enterpriseId);
-      }
+      // Employee list is owned by EnterpriseProvider (splash-gated bootstrap).
     }
   }
 

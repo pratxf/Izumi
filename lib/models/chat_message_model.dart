@@ -24,6 +24,7 @@ class ChatMessageModel {
   final String? replyToType;
   final String? replyToImageUrl;
   final UploadStatus uploadStatus;
+  final String? errorMessage;
 
   const ChatMessageModel({
     required this.id,
@@ -46,6 +47,7 @@ class ChatMessageModel {
     this.replyToType,
     this.replyToImageUrl,
     this.uploadStatus = UploadStatus.success,
+    this.errorMessage,
   });
 
   bool get isText => type == 'text';
@@ -127,6 +129,7 @@ class ChatMessageModel {
     String? replyToType,
     String? replyToImageUrl,
     UploadStatus? uploadStatus,
+    String? errorMessage,
   }) {
     return ChatMessageModel(
       id: id ?? this.id,
@@ -149,6 +152,7 @@ class ChatMessageModel {
       replyToType: replyToType ?? this.replyToType,
       replyToImageUrl: replyToImageUrl ?? this.replyToImageUrl,
       uploadStatus: uploadStatus ?? this.uploadStatus,
+      errorMessage: errorMessage ?? this.errorMessage,
     );
   }
 }

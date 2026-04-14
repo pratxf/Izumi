@@ -350,16 +350,16 @@ class SyncManager {
       return;
     }
 
-    // Restore presence only — do NOT flush here. Location data will be
-    // flushed at the next 20-minute periodic timer to keep feed intervals
-    // consistent. Flushing on every connectivity toggle caused sub-20-minute
-    // gaps in the admin feed.
+    // Restore presence, then immediately flush any pending locations that
+    // were buffered while offline. Offline-first session writes rely on
+    // this flush firing as soon as connectivity is back.
     await _realtimeDatabase.ref('presence/$enterpriseId/$employeeId').update({
       'status': 'active',
-      'signalLostAt': null,
       'currentSessionId': sessionId,
       'lastSeen': ServerValue.timestamp,
     });
+
+    unawaited(flushPendingLocations(reason: reason));
   }
 
   bool _hasNetwork(List<ConnectivityResult> results) {

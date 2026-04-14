@@ -44,7 +44,7 @@ class OfflineQueueManager {
   static const Duration _baseRetryDelay = Duration(seconds: 30);
   static const int _maxRetryExponent = 6;
   static const int _maxRetryAttempts = 10;
-  static const Duration _staleProcessingTimeout = Duration(minutes: 1);
+  static const Duration _staleProcessingTimeout = Duration(seconds: 30);
 
   final OfflineJobStore _jobStore = OfflineJobStore.instance;
   final ChatRepository _chatRepository = ChatRepository();
@@ -80,11 +80,65 @@ class OfflineQueueManager {
       }
     });
 
-    await _recoverStaleProcessingJobs();
+    // One-time startup cleanup — runs BEFORE the first processQueue() call.
+    // 1. Orphaned `processing` jobs (app was killed mid-send) → reset to
+    //    pending with retryCount=0 so they get a clean retry.
+    // 2. `error` jobs past the retry cap → mark permanently failed so they
+    //    cannot block newer pending jobs.
+    await _cleanupStuckJobsOnStartup();
 
     if (_isOnline) {
       unawaited(processQueue(reason: 'startup'));
     }
+  }
+
+  Future<void> _cleanupStuckJobsOnStartup() async {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    final processingJobs = await _jobStore.getJobsByStatuses(
+      const [OfflineJobStatus.processing],
+    );
+    for (final job in processingJobs) {
+      await _jobStore.upsertJob(
+        job.copyWith(
+          status: OfflineJobStatus.pending,
+          retryCount: 0,
+          nextAttemptAtMs: nowMs,
+          clearLastAttemptAtMs: true,
+        ),
+      );
+    }
+
+    final errorJobs = await _jobStore.getJobsByStatuses(
+      const [OfflineJobStatus.error],
+    );
+    for (final job in errorJobs) {
+      if (job.retryCount >= _maxRetryAttempts) {
+        await _jobStore.upsertJob(
+          job.copyWith(status: OfflineJobStatus.failed),
+        );
+      }
+    }
+  }
+
+  /// One-time cleanup for chat jobs that are permanently failed or stuck.
+  /// Safe to call from any chat screen's initState — deletes rows from the
+  /// SQLite queue so they no longer surface in the UI as error bubbles.
+  Future<int> clearFailedChatJobs() async {
+    final jobs = await _jobStore.getJobsByStatuses(
+      const [OfflineJobStatus.failed, OfflineJobStatus.error],
+    );
+    var deleted = 0;
+    for (final job in jobs) {
+      if (job.type != OfflineJobType.chat) continue;
+      final isPermanentlyFailed = job.status == OfflineJobStatus.failed ||
+          job.retryCount >= _maxRetryAttempts;
+      if (isPermanentlyFailed) {
+        await _jobStore.deleteJob(job.id);
+        deleted++;
+      }
+    }
+    return deleted;
   }
 
   Future<void> processQueue({String reason = 'manual'}) async {
@@ -220,6 +274,15 @@ class OfflineQueueManager {
     );
 
     for (final job in jobs) {
+      // Defensive: if a job somehow remains in `error` state past the retry
+      // cap, mark it permanently failed so it cannot stall the queue or be
+      // picked up ahead of newer pending jobs.
+      if (job.retryCount >= _maxRetryAttempts) {
+        await _jobStore.upsertJob(
+          job.copyWith(status: OfflineJobStatus.failed),
+        );
+        continue;
+      }
       if (job.status == OfflineJobStatus.pending) {
         return job;
       }
@@ -376,7 +439,7 @@ class OfflineQueueManager {
     }
 
     final message = _chatMessageFromPayload(job);
-    await _chatRepository.sendMessage(groupId, message, documentId: job.id);
+    await _chatRepository.sendMessage(groupId, message);
     return message.copyWith(uploadStatus: UploadStatus.success);
   }
 

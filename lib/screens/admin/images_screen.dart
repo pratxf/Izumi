@@ -41,11 +41,8 @@ class _ImagesScreenState extends State<ImagesScreen> {
     if (enterpriseId != null) {
       _lastLoadedEnterpriseId = enterpriseId;
       context.read<PhotoProvider>().streamPhotosForEnterprise(enterpriseId);
-      // Ensure employees are loaded for the dropdown filter
-      final dashboardProvider = context.read<DashboardProvider>();
-      if (dashboardProvider.employees.isEmpty) {
-        dashboardProvider.initDashboard(enterpriseId);
-      }
+      // Employee list (dropdown filter) is owned by EnterpriseProvider —
+      // already populated by the splash-gated bootstrap.
     }
   }
 

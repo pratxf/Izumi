@@ -5,13 +5,22 @@ import '../models/user_model.dart';
 import '../models/group_model.dart';
 import '../models/task_model.dart';
 import '../repositories/group_repository.dart';
-import '../repositories/user_repository.dart';
 import '../repositories/task_repository.dart';
+import 'enterprise_provider.dart';
 
 class TeamProvider extends ChangeNotifier {
   final GroupRepository _groupRepo = GroupRepository();
-  final UserRepository _userRepo = UserRepository();
   final TaskRepository _taskRepo = TaskRepository();
+
+  /// Reference to the enterprise-wide employee directory. Owned by
+  /// [EnterpriseProvider] — this provider never fetches employees itself.
+  EnterpriseProvider? _enterprise;
+
+  /// Attach the [EnterpriseProvider] that owns the employee list. Must be
+  /// called before [initTeam]. Idempotent.
+  void attachEnterprise(EnterpriseProvider enterprise) {
+    _enterprise = enterprise;
+  }
 
   GroupModel? _group;
   List<UserModel> _teamMembers = [];
@@ -61,7 +70,9 @@ class TeamProvider extends ChangeNotifier {
     _group = groups.where((g) => g.leadIds.contains(leadId)).firstOrNull;
 
     if (_group != null) {
-      final allUsers = await _userRepo.getUsersByEnterprise(enterpriseId);
+      // Employees are owned by EnterpriseProvider — already loaded by the
+      // splash-gated bootstrap. Filter down to this group's members.
+      final allUsers = _enterprise?.employees ?? const <UserModel>[];
       _teamMembers = allUsers
           .where((u) => _group!.memberIds.contains(u.id))
           .toList();

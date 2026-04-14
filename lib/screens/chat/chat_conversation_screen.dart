@@ -1,4 +1,5 @@
-﻿import 'dart:ui';
+﻿import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:izumi/core/ui/app_icons.dart';
@@ -11,6 +12,7 @@ import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
 import '../../repositories/group_repository.dart';
 import '../../providers/auth_provider.dart';
+import '../../offline_queue/offline_queue_manager.dart';
 import '../../providers/chat_provider.dart';
 import '../../services/permission_service.dart';
 import '../../widgets/navigation/app_header.dart';
@@ -41,10 +43,20 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   int? _resolvedMemberCount;
   bool _isResolvingMemberCount = false;
 
+  final GlobalKey _listKey = GlobalKey();
+  final Map<int, GlobalKey> _itemKeys = {};
+  DateTime? _floatingDate;
+  bool _floatingVisible = false;
+  Timer? _floatingHideTimer;
+
   @override
   void initState() {
     super.initState();
     _chatProvider = context.read<ChatProvider>();
+    // Safety net: purge any permanently-failed chat jobs from the offline
+    // queue so old stuck messages don't surface as error bubbles or block
+    // new sends. No-op when the queue is clean.
+    unawaited(OfflineQueueManager.instance.clearFailedChatJobs());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = context.read<AuthProvider>().currentUser?.id ?? '';
       _chatProvider.openChat(widget.groupId);
@@ -64,6 +76,51 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         _scrollController.position.maxScrollExtent - 100) {
       context.read<ChatProvider>().loadMoreMessages();
     }
+    _updateFloatingDate();
+  }
+
+  void _updateFloatingDate() {
+    final listCtx = _listKey.currentContext;
+    if (listCtx == null) return;
+    final listBox = listCtx.findRenderObject() as RenderBox?;
+    if (listBox == null || !listBox.attached) return;
+    final listTopGlobal = listBox.localToGlobal(Offset.zero).dy;
+    final listBottomGlobal = listTopGlobal + listBox.size.height;
+
+    final messages = context.read<ChatProvider>().messages;
+    if (messages.isEmpty) return;
+
+    // Reverse list: larger index = higher (older) on screen. We want the
+    // topmost visible message — the one whose bottom edge is just below the
+    // viewport top.
+    int? topVisibleIndex;
+    for (final entry in _itemKeys.entries) {
+      if (entry.key >= messages.length) continue;
+      final ctx = entry.value.currentContext;
+      if (ctx == null) continue;
+      final box = ctx.findRenderObject() as RenderBox?;
+      if (box == null || !box.attached) continue;
+      final top = box.localToGlobal(Offset.zero).dy;
+      final bottom = top + box.size.height;
+      if (bottom > listTopGlobal && top < listBottomGlobal) {
+        if (topVisibleIndex == null || entry.key > topVisibleIndex) {
+          topVisibleIndex = entry.key;
+        }
+      }
+    }
+
+    if (topVisibleIndex == null) return;
+    final date = messages[topVisibleIndex].createdAt;
+    if (!mounted) return;
+    setState(() {
+      _floatingDate = date;
+      _floatingVisible = true;
+    });
+    _floatingHideTimer?.cancel();
+    _floatingHideTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() => _floatingVisible = false);
+    });
   }
 
   Future<void> _resolveMemberCount() async {
@@ -112,6 +169,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
 
   @override
   void dispose() {
+    _floatingHideTimer?.cancel();
     _textController.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -263,7 +321,65 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
 
           // Messages list
           Expanded(
-            child: chatProvider.error != null && messages.isEmpty
+            child: Stack(
+              children: [
+                _buildMessagesList(chatProvider, messages, userId),
+                _buildFloatingDatePill(),
+              ],
+            ),
+          ),
+
+          // Reply bar + Input bar
+          if (canSend) ...[
+            if (chatProvider.replyingTo != null) _buildReplyBar(chatProvider),
+            _buildInputBar(chatProvider),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingDatePill() {
+    final date = _floatingDate;
+    if (date == null) return const SizedBox.shrink();
+    return Positioned(
+      top: AppSpacing.sm,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: _floatingVisible ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 200),
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.xs,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+              ),
+              child: Text(
+                _formatDate(date),
+                style: AppTypography.small.copyWith(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessagesList(
+    ChatProvider chatProvider,
+    List<ChatMessageModel> messages,
+    String userId,
+  ) {
+    return chatProvider.error != null && messages.isEmpty
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(AppSpacing.xxxl),
@@ -302,6 +418,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                         ),
                       )
                     : ListView.builder(
+                        key: _listKey,
                         controller: _scrollController,
                         reverse: true,
                         padding: const EdgeInsets.symmetric(
@@ -311,10 +428,13 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                         itemCount:
                             messages.length + (chatProvider.isLoading ? 1 : 0),
                         itemBuilder: (context, index) {
+                          final itemKey =
+                              _itemKeys.putIfAbsent(index, () => GlobalKey());
                           // Loading indicator at the end (top of chat)
                           if (index == messages.length) {
-                            return const Padding(
-                              padding: EdgeInsets.all(AppSpacing.lg),
+                            return Padding(
+                              key: itemKey,
+                              padding: const EdgeInsets.all(AppSpacing.lg),
                               child: Center(
                                 child: SizedBox(
                                   width: 20,
@@ -361,6 +481,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                                           message.senderId);
 
                               return Column(
+                                key: itemKey,
                                 children: [
                                   if (dateSeparator != null) dateSeparator,
                                   ChatImageGroupBubble(
@@ -392,6 +513,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                                       message.senderId);
 
                           return Column(
+                            key: itemKey,
                             children: [
                               if (dateSeparator != null) dateSeparator,
                               ChatMessageBubble(
@@ -412,17 +534,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                             ],
                           );
                         },
-                      ),
-          ),
-
-          // Reply bar + Input bar
-          if (canSend) ...[
-            if (chatProvider.replyingTo != null) _buildReplyBar(chatProvider),
-            _buildInputBar(chatProvider),
-          ],
-        ],
-      ),
-    );
+                      );
   }
 
   Widget _buildReplyBar(ChatProvider chatProvider) {
@@ -607,13 +719,14 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
             vertical: AppSpacing.xs,
           ),
           decoration: BoxDecoration(
-            color: AppColors.glassStrong,
+            color: AppColors.divider,
             borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
           ),
           child: Text(
             _formatDate(date),
             style: AppTypography.small.copyWith(
-              color: AppColors.textTertiary,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
@@ -658,8 +771,17 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     return group;
   }
 
+  /// Converts [dt] to IST (Asia/Kolkata, UTC+5:30) for date comparisons
+  /// so that day boundaries are calculated in the user's local business
+  /// timezone regardless of device locale.
+  DateTime _toIst(DateTime dt) {
+    return dt.toUtc().add(const Duration(hours: 5, minutes: 30));
+  }
+
   bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
+    final ai = _toIst(a);
+    final bi = _toIst(b);
+    return ai.year == bi.year && ai.month == bi.month && ai.day == bi.day;
   }
 
   bool _hasGroupingBlockingCaption(ChatMessageModel message) {
@@ -667,13 +789,14 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   }
 
   String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final d = DateTime(date.year, date.month, date.day);
+    final nowIst = _toIst(DateTime.now());
+    final dIst = _toIst(date);
+    final today = DateTime(nowIst.year, nowIst.month, nowIst.day);
+    final d = DateTime(dIst.year, dIst.month, dIst.day);
 
     if (d == today) return 'Today';
     if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
-    return DateFormat('MMM d, yyyy').format(date);
+    return DateFormat('d MMM yyyy').format(dIst);
   }
 }
 

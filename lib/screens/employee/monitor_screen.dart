@@ -61,13 +61,10 @@ class _MonitorScreenState extends State<MonitorScreen> {
     final taskProvider = context.read<TaskProvider>();
     taskProvider.streamEnterpriseTasks(enterpriseId);
 
-    // Load groups and employees for team lead view
+    // Load groups for team lead view. Employees come from EnterpriseProvider
+    // (splash-gated bootstrap), so no per-screen fetch is needed.
     if (!widget.isAdmin) {
       context.read<GroupProvider>().loadGroups(enterpriseId);
-      final dashboardProvider = context.read<DashboardProvider>();
-      if (dashboardProvider.employees.isEmpty) {
-        dashboardProvider.initDashboard(enterpriseId);
-      }
     }
   }
 

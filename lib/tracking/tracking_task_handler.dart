@@ -11,6 +11,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
 import 'pending_location_store.dart';
@@ -37,6 +38,10 @@ class SessionTrackingTaskHandler extends TaskHandler {
   StreamSubscription<ar.Activity>? _activitySubscription;
   Timer? _heartbeatTimer;
   Timer? _activityTimeoutTimer;
+  Timer? _sevenPmReminderTimer;
+
+  /// Fixed ID for the daily 7 PM IST session reminder so it can be cancelled.
+  static const int sevenPmReminderNotificationId = 9001;
 
   String? _enterpriseId;
   String? _employeeId;
@@ -58,7 +63,7 @@ class SessionTrackingTaskHandler extends TaskHandler {
   // Indoor/desk workers can have GPS accuracy worse than 30m — use a generous
   // threshold so stationary sessions still record location data.
   static const double _maxAccuracyMeters = 100.0;
-  static const double _maxSpeedMps = 55.6; // 200 km/h — covers all realistic vehicles with margin
+  static const double _maxSpeedMps = 19.4; // 70 km/h — max realistic speed for field employees on motorcycles
   static const double _minMovementMeters = 15.0; // discard GPS jitter
 
   @override
@@ -83,7 +88,90 @@ class SessionTrackingTaskHandler extends TaskHandler {
       const Duration(minutes: 25),
       (_) => unawaited(_sendHeartbeat()),
     );
+    _scheduleSevenPmReminder();
     await _pollLocation(reason: 'service_start');
+  }
+
+  // ── 7 PM IST daily session reminder ──
+  //
+  // Computes ms until the next 19:00 IST (Asia/Kolkata, UTC+05:30) and
+  // schedules a one-shot Timer. When it fires, a local notification is
+  // shown and the timer re-schedules itself for 24 h later.
+  //
+  // All math is done in UTC to avoid device-local-time drift.
+
+  void _scheduleSevenPmReminder() {
+    _sevenPmReminderTimer?.cancel();
+
+    final delay = _msUntilNextSevenPmIst();
+    _sevenPmReminderTimer = Timer(delay, () async {
+      await _showSevenPmReminderNotification();
+      // Re-schedule for the following day.
+      _scheduleSevenPmReminder();
+    });
+  }
+
+  Duration _msUntilNextSevenPmIst() {
+    // IST is fixed UTC+05:30 — no DST.
+    const istOffsetMs = (5 * 60 + 30) * 60 * 1000;
+    final nowUtcMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+    final nowIstMs = nowUtcMs + istOffsetMs;
+
+    // Interpret the shifted ms as a UTC DateTime whose calendar fields
+    // represent the IST wall-clock date/time.
+    final nowIst = DateTime.fromMillisecondsSinceEpoch(nowIstMs, isUtc: true);
+
+    // Build today's 7 PM wall-clock time in IST.
+    var target19Ist = DateTime.utc(
+      nowIst.year,
+      nowIst.month,
+      nowIst.day,
+      19,
+      0,
+      0,
+    );
+
+    // If it's already past 7 PM IST today, schedule for tomorrow.
+    if (!target19Ist.isAfter(nowIst)) {
+      target19Ist = target19Ist.add(const Duration(days: 1));
+    }
+
+    // Convert the IST wall-clock target back to real UTC ms.
+    final targetUtcMs = target19Ist.millisecondsSinceEpoch - istOffsetMs;
+    final delayMs = targetUtcMs - nowUtcMs;
+    return Duration(milliseconds: delayMs.clamp(0, 24 * 3600 * 1000));
+  }
+
+  Future<void> _showSevenPmReminderNotification() async {
+    try {
+      final plugin = FlutterLocalNotificationsPlugin();
+      await plugin.initialize(
+        const InitializationSettings(
+          android: AndroidInitializationSettings('ic_stat_izumi'),
+          iOS: DarwinInitializationSettings(),
+        ),
+      );
+      await plugin.show(
+        sevenPmReminderNotificationId,
+        'Active session reminder',
+        'You have an active session running. '
+            'Please end your session if you\u2019re done for the day.',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'izumi_session_alerts',
+            'Session Alerts',
+            channelDescription:
+                'Notifications about session lifecycle events',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: 'ic_stat_izumi',
+          ),
+          iOS: DarwinNotificationDetails(),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[TrackingTaskHandler] 7 PM reminder notification failed: $e');
+    }
   }
 
   @override
@@ -147,6 +235,15 @@ class SessionTrackingTaskHandler extends TaskHandler {
     _activitySubscription?.cancel();
     _heartbeatTimer?.cancel();
     _activityTimeoutTimer?.cancel();
+    _sevenPmReminderTimer?.cancel();
+
+    // Cancel any pending 7 PM reminder so it doesn't fire after session ends.
+    unawaited(() async {
+      try {
+        await FlutterLocalNotificationsPlugin()
+            .cancel(sevenPmReminderNotificationId);
+      } catch (_) {}
+    }());
 
     // Auto-end on app removal from recents.
     // All Firebase writes are fire-and-forget — Android kills the process
@@ -189,6 +286,30 @@ class SessionTrackingTaskHandler extends TaskHandler {
           unawaited(_syncManager.dispose());
           return;
         }
+      }
+
+      // Check if user intentionally backgrounded — skip auto-end if so.
+      // The flag is set by the PopScope "Exit" dialog in the shells via
+      // [SessionTaskGuard.setIntentionalBackground], stored in Flutter's
+      // SharedPreferences. Always cleared after reading so it never persists
+      // across multiple OEM-kill cycles.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final intentionalBackground =
+            prefs.getBool('intentional_background') ?? false;
+        if (intentionalBackground) {
+          await prefs.remove('intentional_background');
+          debugPrint(
+            '[TrackingTaskHandler] onDestroy: intentional background — '
+            'skipping auto-end.',
+          );
+          unawaited(_syncManager.dispose());
+          return;
+        }
+      } catch (e) {
+        debugPrint('[TrackingTaskHandler] onDestroy: prefs read failed: $e');
+        // Fall through to auto-end on prefs failure — safer than letting a
+        // genuinely-killed session linger.
       }
 
       // Skip location buffer flush — too slow for Android's kill window.
@@ -234,7 +355,7 @@ class SessionTrackingTaskHandler extends TaskHandler {
       );
 
       // Fire-and-forget: cancel onDisconnect handler before writing presence
-      // so the signal_lost ghost write doesn't fire after our cleanup.
+      // so the offline write doesn't double-fire after our cleanup.
       unawaited(
         _database.ref('presence/$enterpriseId/$employeeId')
             .onDisconnect().cancel().catchError((e) {
@@ -242,12 +363,10 @@ class SessionTrackingTaskHandler extends TaskHandler {
         }),
       );
 
-      // Fire-and-forget: set presence to offline (not signal_lost — this is
-      // a clean auto-end, not an unexpected death) and clear dashboard nodes.
+      // Fire-and-forget: set presence to offline and clear dashboard nodes.
       unawaited(
         _database.ref().update({
           'presence/$enterpriseId/$employeeId/status': 'offline',
-          'presence/$enterpriseId/$employeeId/signalLostAt': null,
           'presence/$enterpriseId/$employeeId/currentSessionId': null,
           'presence/$enterpriseId/$employeeId/lastSeen': ServerValue.timestamp,
           'activeStats/$enterpriseId/$employeeId': null,
@@ -653,7 +772,6 @@ class SessionTrackingTaskHandler extends TaskHandler {
         try {
           await _database.ref().update({
             'presence/$_enterpriseId/$_employeeId/status': 'offline',
-            'presence/$_enterpriseId/$_employeeId/signalLostAt': null,
             'presence/$_enterpriseId/$_employeeId/currentSessionId': null,
             'presence/$_enterpriseId/$_employeeId/lastSeen':
                 ServerValue.timestamp,
@@ -661,7 +779,7 @@ class SessionTrackingTaskHandler extends TaskHandler {
             'sessionHeartbeat/$_enterpriseId/$_employeeId': null,
             'liveLocations/$_enterpriseId/$_employeeId': null,
           });
-          // Cancel onDisconnect so it doesn't write signal_lost after cleanup
+          // Cancel onDisconnect so it doesn't double-fire after cleanup
           await _database
               .ref('presence/$_enterpriseId/$_employeeId')
               .onDisconnect()
@@ -691,7 +809,6 @@ class SessionTrackingTaskHandler extends TaskHandler {
       }),
       _database.ref('presence/$_enterpriseId/$_employeeId').update({
         'status': 'active',
-        'signalLostAt': null,
         'currentSessionId': _sessionId,
         'lastSeen': ServerValue.timestamp,
       }),

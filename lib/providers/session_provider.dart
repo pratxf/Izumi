@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/session_location_model.dart';
 import '../models/session_model.dart';
@@ -335,7 +337,7 @@ class SessionProvider extends ChangeNotifier {
           status: 'active',
           currentSessionId: sessionId,
         ),
-        _rtdb.setupSignalLostOnDisconnect(
+        _rtdb.setupOfflineOnDisconnect(
           enterpriseId: enterpriseId,
           userId: employeeId,
           currentSessionId: sessionId,
@@ -494,6 +496,28 @@ class SessionProvider extends ChangeNotifier {
               userId: employeeId,
             )),
       ]);
+
+      // Safety-net: cancel any pending 7 PM reminder so it doesn't fire
+      // after the user has manually ended the session. The foreground
+      // service's own onDestroy cancels the same ID, but it may not run
+      // immediately on all OEMs.
+      unawaited(() async {
+        try {
+          await FlutterLocalNotificationsPlugin().cancel(9001);
+        } catch (_) {}
+      }());
+
+      // Safety-net: clear the intentional_background flag so it never
+      // persists past a real session end. The flag is normally cleared
+      // by tracking_task_handler.onDestroy after being read, but on a
+      // graceful manual end onDestroy may run with the flag still set
+      // (the user could have backgrounded earlier in the session).
+      unawaited(() async {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('intentional_background');
+        } catch (_) {}
+      }());
 
       final now = DateTime.now();
       final finalAddress = _currentLocation.isNotEmpty

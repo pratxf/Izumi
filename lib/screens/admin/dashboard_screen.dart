@@ -296,12 +296,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     list.sort((a, b) {
       const order = {
         'active': 0,
-        'signal_lost': 1,
-        'break': 2,
-        'offline': 3,
+        'break': 1,
+        'offline': 2,
       };
-      final sa = order[dp.getEmployeeStatus(a.id)] ?? 3;
-      final sb = order[dp.getEmployeeStatus(b.id)] ?? 3;
+      final sa = order[dp.getEmployeeStatus(a.id)] ?? 2;
+      final sb = order[dp.getEmployeeStatus(b.id)] ?? 2;
       return sa.compareTo(sb);
     });
 
@@ -316,8 +315,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     switch (status) {
       case 'active':
         return AppColors.success;
-      case 'signal_lost':
-        return AppColors.warning;
       default:
         return AppColors.textDisabled;
     }
@@ -327,8 +324,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     switch (status) {
       case 'active':
         return AppColors.success;
-      case 'signal_lost':
-        return AppColors.warning;
       default:
         return AppColors.textTertiary;
     }
@@ -338,8 +333,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     switch (status) {
       case 'active':
         return AppColors.badgeActiveBackground;
-      case 'signal_lost':
-        return AppColors.badgeWarning;
       default:
         return AppColors.badgeOfflineBackground;
     }
@@ -349,8 +342,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     switch (status) {
       case 'active':
         return 'Active';
-      case 'signal_lost':
-        return 'Signal Lost';
       default:
         return 'Offline';
     }
@@ -569,14 +560,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             color: AppColors.primary,
             bgColor: AppColors.primary.withValues(alpha: 0.12),
             filterValue: 'active',
-          ),
-          const SizedBox(width: 8),
-          _statusPill(
-            label: 'Signal Lost',
-            count: dp.signalLostCount,
-            color: AppColors.warning,
-            bgColor: AppColors.warning.withValues(alpha: 0.12),
-            filterValue: 'signal_lost',
           ),
           const SizedBox(width: 8),
           _statusPill(

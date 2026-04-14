@@ -5,19 +5,17 @@ import 'package:firebase_database/firebase_database.dart';
 import '../models/daily_summary_model.dart';
 import '../repositories/daily_summary_repository.dart';
 import '../models/user_model.dart';
-import '../repositories/user_repository.dart';
 import '../services/realtime_db_service.dart';
+import 'enterprise_provider.dart';
 
 class DashboardProvider extends ChangeNotifier {
-  // Background location updates can legitimately arrive ~20 minutes apart,
-  // so the dashboard should not mark a user offline too aggressively.
-  static const Duration _liveLocationActiveGrace = Duration(minutes: 25);
-
-  final UserRepository _userRepo = UserRepository();
   final DailySummaryRepository _summaryRepo = DailySummaryRepository();
   final RealtimeDbService _rtdb = RealtimeDbService();
 
-  List<UserModel> _employees = [];
+  /// Reference to the enterprise-wide employee directory. Owned by
+  /// [EnterpriseProvider] — this provider never fetches employees itself.
+  EnterpriseProvider? _enterprise;
+
   Map<String, Map<String, dynamic>> _presenceData = {};
   Map<String, Map<String, dynamic>> _liveLocationData = {};
   Map<String, Map<String, dynamic>> _activeStatsData = {};
@@ -34,7 +32,10 @@ class DashboardProvider extends ChangeNotifier {
   StreamSubscription<DatabaseEvent>? _statsSubscription;
   Timer? _liveClockTimer;
 
-  List<UserModel> get employees => _employees;
+  /// Employees are owned by [EnterpriseProvider]. Returns an empty list if
+  /// [attachEnterprise] has not been called yet (shouldn't happen under the
+  /// splash-gated bootstrap flow).
+  List<UserModel> get employees => _enterprise?.employees ?? const [];
   Map<String, Map<String, dynamic>> get presenceData => _presenceData;
   Map<String, Map<String, dynamic>> get liveLocationData => _liveLocationData;
   Map<String, Map<String, dynamic>> get activeStatsData => _activeStatsData;
@@ -42,24 +43,34 @@ class DashboardProvider extends ChangeNotifier {
   bool get isInitialized => _initialized;
   String? get error => _error;
 
-  int get activeCount => _employees
+  int get activeCount => employees
       .where((employee) => getEmployeeStatus(employee.id) == 'active')
       .length;
-  int get breakCount => _employees
+  int get breakCount => employees
       .where((employee) => getEmployeeStatus(employee.id) == 'break')
       .length;
-  int get signalLostCount => _employees
-      .where((employee) => getEmployeeStatus(employee.id) == 'signal_lost')
-      .length;
-  int get offlineCount => _employees
+  int get offlineCount => employees
       .where((employee) => getEmployeeStatus(employee.id) == 'offline')
       .length;
 
-  // Lightweight refresh of just the employee list (no stream restart)
-  Future<void> refreshEmployees(String enterpriseId) async {
-    _employees = await _userRepo.getUsersByEnterprise(enterpriseId);
-    _employees = _employees.where((u) => u.activeRole != 'admin').toList();
+  /// Attach the [EnterpriseProvider] that owns the employee list. Must be
+  /// called before [initDashboard]. Idempotent.
+  void attachEnterprise(EnterpriseProvider enterprise) {
+    if (identical(_enterprise, enterprise)) return;
+    _enterprise?.removeListener(_onEnterpriseChanged);
+    _enterprise = enterprise;
+    _enterprise?.addListener(_onEnterpriseChanged);
+  }
+
+  void _onEnterpriseChanged() {
+    // Employee list changed upstream — propagate so computed counts rebuild.
     notifyListeners();
+  }
+
+  /// Delegates to [EnterpriseProvider.refresh]. Kept for API compatibility
+  /// with callers that previously asked the dashboard to refresh employees.
+  Future<void> refreshEmployees(String _) async {
+    await _enterprise?.refresh();
   }
 
   void initWithEnterpriseId(String enterpriseId) {
@@ -108,22 +119,22 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   Future<void> _loadEmployeesAndStreams(String enterpriseId) async {
-    // Start RTDB streams immediately — they emit data independently of
-    // the employee list. This shaves 1-2s off first dashboard paint.
+    // Employees are owned by EnterpriseProvider — already loaded by the
+    // splash-gated bootstrap before this method runs. Just start the
+    // dashboard-specific RTDB streams.
     _streamTodaySummaries(enterpriseId);
     _streamPresence(enterpriseId);
     _streamLiveLocations(enterpriseId);
     _streamActiveStats(enterpriseId);
     _startRefreshTimer();
-
-    _employees = await _userRepo.getUsersByEnterprise(enterpriseId);
-    _employees = _employees.where((u) => u.activeRole != 'admin').toList();
   }
 
   void _startRefreshTimer() {
     _refreshTimer?.cancel();
+    // Periodic employee-list refresh (picks up new hires, role changes) —
+    // delegated to EnterpriseProvider, the single source of truth.
     _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      if (_enterpriseId != null) refreshEmployees(_enterpriseId!);
+      unawaited(_enterprise?.refresh());
     });
   }
 
@@ -246,64 +257,20 @@ class DashboardProvider extends ChangeNotifier {
     });
   }
 
-  // If both heartbeat (lastSeen) and live-location are older than this,
-  // the service was likely killed without calling onDestroy.
-  static const Duration _heartbeatStaleGrace = Duration(minutes: 40);
-
-  // Get employee status from RTDB presence
+  /// Get employee status from RTDB presence. Reads `presence.status` directly
+  /// — no staleness heuristics. Status is exactly one of: active, break, offline.
   String getEmployeeStatus(String userId) {
     final rawPresenceStatus = _presenceData[userId]?['status'];
     final presenceStatus = rawPresenceStatus?.toString().toLowerCase();
-    final liveLocation = _liveLocationData[userId];
-    final updatedAt = liveLocation?['updatedAt'];
-    final presenceLastSeen = _presenceData[userId]?['lastSeen'];
 
-    if (presenceStatus == 'signal_lost' || presenceStatus == 'location_lost') {
-      return 'signal_lost';
-    }
-
-    if (presenceStatus == 'break') {
-      // If break but heartbeat is stale, the service was likely killed.
-      if (!_isRecentTimestamp(presenceLastSeen, _heartbeatStaleGrace) &&
-          !_isRecentTimestamp(updatedAt, _heartbeatStaleGrace)) {
-        return 'signal_lost';
-      }
-      return 'break';
-    }
-
-    // Respect explicit offline status — don't override with stale location data.
-    // Also treat null/missing presence as offline so that cleared or absent
-    // presence nodes don't fall through to the live-location freshness check.
-    if (presenceStatus == 'offline' || presenceStatus == null) return 'offline';
-
-    // A fresh live-location ping is the strongest signal that the user is
-    // still active in the field, even if presence briefly got stuck.
-    if (_isRecentTimestamp(updatedAt, _liveLocationActiveGrace)) {
-      return 'active';
-    }
-
-    if (presenceStatus == 'active') {
-      // Presence says active but location is stale. Check if the heartbeat
-      // (lastSeen) is also stale — if so, the foreground service was likely
-      // killed without calling onDestroy (common on OEM Android ROMs).
-      if (!_isRecentTimestamp(presenceLastSeen, _heartbeatStaleGrace)) {
-        return 'signal_lost';
-      }
-      return 'active';
-    }
-
+    if (presenceStatus == 'active') return 'active';
+    if (presenceStatus == 'break') return 'break';
     return 'offline';
   }
 
   bool isEmployeeOnClock(String userId) {
     final status = getEmployeeStatus(userId);
-    return status == 'active' || status == 'break' || status == 'signal_lost';
-  }
-
-  bool _isRecentTimestamp(dynamic value, Duration maxAge) {
-    if (value is! num) return false;
-    final timestamp = DateTime.fromMillisecondsSinceEpoch(value.toInt());
-    return DateTime.now().difference(timestamp) <= maxAge;
+    return status == 'active' || status == 'break';
   }
 
   // Get employee live location
@@ -322,9 +289,8 @@ class DashboardProvider extends ChangeNotifier {
     // RTDB activeStats deletion — skipping RTDB for offline employees
     // prevents brief double-counting during this race window.
     final employeeStatus = getEmployeeStatus(userId);
-    final isOnClock = employeeStatus == 'active' ||
-        employeeStatus == 'break' ||
-        employeeStatus == 'signal_lost';
+    final isOnClock =
+        employeeStatus == 'active' || employeeStatus == 'break';
     final liveStats = (stats != null && isOnClock) ? stats : null;
 
     final distance = _sanitizeDistance(summary?.totalDistance ?? 0.0) +
@@ -359,9 +325,9 @@ class DashboardProvider extends ChangeNotifier {
 
   // Search employees
   List<UserModel> searchEmployees(String query) {
-    if (query.isEmpty) return _employees;
+    if (query.isEmpty) return employees;
     final lowerQuery = query.toLowerCase();
-    return _employees.where((e) {
+    return employees.where((e) {
       final location =
           _liveLocationData[e.id]?['address']?.toString().toLowerCase() ?? '';
       return e.name.toLowerCase().contains(lowerQuery) ||
@@ -371,6 +337,7 @@ class DashboardProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _enterprise?.removeListener(_onEnterpriseChanged);
     _summarySubscription?.cancel();
     _presenceSubscription?.cancel();
     _locationSubscription?.cancel();

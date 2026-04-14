@@ -11,6 +11,7 @@ import '../../models/activity_log_model.dart';
 import '../../models/photo_model.dart';
 import '../../models/task_model.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../providers/enterprise_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../services/admin_activity_feed_service.dart';
 import '../../widgets/glass/glass_panel.dart';
@@ -41,7 +42,7 @@ class _TeamLeadEmployeeDetailScreenState
     extends State<TeamLeadEmployeeDetailScreen> {
   final AdminActivityFeedService _feedService = AdminActivityFeedService();
   StreamSubscription? _feedSubscription;
-  Timer? _refreshTimer;
+  Timer? _warmupTimer;
 
   List<ActivityLogModel> _activities = [];
   List<PhotoModel> _photos = [];
@@ -50,41 +51,47 @@ class _TeamLeadEmployeeDetailScreenState
   @override
   void initState() {
     super.initState();
-    // Start feed immediately — no dependency on DashboardProvider loading first
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startFeedStreamDirect();
-    });
-    // Auto-refresh every 60 seconds
-    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      _startFeedStreamDirect();
-    });
-    // Safety timeout — never show skeleton forever
-    Future.delayed(const Duration(seconds: 15), () {
-      if (mounted && _feedLoading) {
-        setState(() => _feedLoading = false);
-      }
+      _startFeed();
     });
   }
 
   @override
   void dispose() {
     _feedSubscription?.cancel();
-    _refreshTimer?.cancel();
+    _warmupTimer?.cancel();
     super.dispose();
   }
 
-  void _startFeedStreamDirect() {
+  void _startFeed() {
     if (widget.employeeId == null) return;
-    _feedSubscription?.cancel();
 
-    // Start stream immediately with the known employee ID
-    _startStream([widget.employeeId!]);
+    // Resolve migration IDs upfront so we open the Firestore stream ONCE
+    // with the full ID set. Splitting this into "start with [currentUid] →
+    // then restart with full list" causes the first subscription's first
+    // emission to be cancelled before it can propagate, leaving the user
+    // staring at an empty state during the cold-start window.
+    //
+    // EnterpriseProvider is guaranteed populated by the splash gate.
+    List<String> linkedIds;
+    try {
+      linkedIds = context
+          .read<EnterpriseProvider>()
+          .resolveLinkedIds(widget.employeeId!);
+    } catch (_) {
+      linkedIds = [widget.employeeId!];
+    }
 
-    // Resolve migration IDs in background and upgrade stream if more found
-    _resolveMigrationIdsInBackground();
-  }
+    // 15s — gives Firestore enough time to warm up on cold start (App Check
+    // attestation + WebSocket open can take 3-8s) before we give up and
+    // force the empty-state UI. Cancelled by the listener on first emission.
+    _warmupTimer?.cancel();
+    _warmupTimer = Timer(const Duration(seconds: 15), () {
+      if (mounted && _feedLoading) {
+        setState(() => _feedLoading = false);
+      }
+    });
 
-  void _startStream(List<String> linkedIds) {
     _feedSubscription?.cancel();
     _feedSubscription = _feedService
         .streamRecentFeed(
@@ -94,34 +101,25 @@ class _TeamLeadEmployeeDetailScreenState
         )
         .listen((feed) {
       if (!mounted) return;
+      // Flip loading off ONLY when this emission has real data, or the
+      // warmup timer already gave up. A cold-start empty emission must
+      // not prematurely show the empty state — real data could still be
+      // arriving.
+      final hasData = feed.activities.isNotEmpty || feed.photos.isNotEmpty;
+      final doneLoading = hasData || !_feedLoading;
       setState(() {
         _activities = feed.activities;
         _photos = feed.photos;
-        _feedLoading = false;
+        if (doneLoading) {
+          _warmupTimer?.cancel();
+          _feedLoading = false;
+        }
       });
     }, onError: (_) {
       if (!mounted) return;
+      _warmupTimer?.cancel();
       setState(() => _feedLoading = false);
     });
-  }
-
-  void _resolveMigrationIdsInBackground() {
-    try {
-      final dashboard = context.read<DashboardProvider>();
-      final allEmployees = dashboard.employees;
-      if (allEmployees.isEmpty) return;
-      final linked = _feedService.resolveLinkedEmployeeIds(
-        widget.employeeId!,
-        allEmployees,
-      );
-      if (linked.length > 1) {
-        // More IDs found — restart stream with full set
-        _startStream(linked);
-      }
-    } catch (_) {
-      // Migration ID resolution failed — stream already running
-      // with primary ID, no action needed
-    }
   }
 
   @override
@@ -243,9 +241,6 @@ class _TeamLeadEmployeeDetailScreenState
       case 'break':
         statusColor = AppColors.warning;
         statusLabel = 'On Break';
-      case 'signal_lost':
-        statusColor = AppColors.warningDark;
-        statusLabel = 'Signal Lost';
       default:
         statusColor = AppColors.textTertiary;
         statusLabel = 'Offline';

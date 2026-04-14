@@ -65,15 +65,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         await teamProvider.initTeam(enterpriseId, userId);
       }
     } else {
-      final dashboardProvider = context.read<DashboardProvider>();
-      final groupProvider = context.read<GroupProvider>();
-      if (dashboardProvider.employees.isEmpty) {
-        await dashboardProvider.initDashboard(enterpriseId);
-      } else {
-        await dashboardProvider.refreshEmployees(enterpriseId);
-      }
-
-      groupProvider.loadGroups(enterpriseId);
+      // Employee list is owned by EnterpriseProvider and populated during
+      // the splash-gated bootstrap. Just load groups for the picker.
+      context.read<GroupProvider>().loadGroups(enterpriseId);
     }
 
     if (!mounted) return;

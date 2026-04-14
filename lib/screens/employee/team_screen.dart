@@ -40,11 +40,8 @@ class _TeamScreenState extends State<TeamScreen> {
 
     if (userId != null && enterpriseId != null) {
       context.read<TeamProvider>().initTeam(enterpriseId, userId);
-      // Initialize dashboard streams for live presence, location & stats
-      final dashboardProvider = context.read<DashboardProvider>();
-      if (dashboardProvider.employees.isEmpty) {
-        dashboardProvider.initDashboard(enterpriseId);
-      }
+      // Employee list comes from EnterpriseProvider (splash-gated bootstrap).
+      // DashboardProvider RTDB streams are started by _setupEnterpriseBootstrap.
     }
   }
 
@@ -318,7 +315,6 @@ class _TeamScreenState extends State<TeamScreen> {
     final address = location?['address'] as String? ?? 'Unknown location';
     final isActive = status == 'active';
     final isBreak = status == 'break';
-    final isSignalLost = status == 'signal_lost';
     final isOnClock = dashboardProvider.isEmployeeOnClock(member.id);
 
     Color statusColor;
@@ -329,9 +325,6 @@ class _TeamScreenState extends State<TeamScreen> {
     } else if (isBreak) {
       statusColor = AppColors.warning;
       statusLabel = 'BREAK';
-    } else if (isSignalLost) {
-      statusColor = AppColors.warningDark;
-      statusLabel = 'SIGNAL LOST';
     } else {
       statusColor = AppColors.textTertiary;
       statusLabel = 'OFFLINE';

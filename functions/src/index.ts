@@ -42,7 +42,6 @@ export { dailySummaryAggregator } from "./scheduled/daily_summary_aggregator";
 export { checkAnalyticsIntegrity } from "./scheduled/check_analytics_integrity";
 export { cleanupOldExports } from "./scheduled/cleanup_old_exports";
 export { sanitizeActiveStats } from "./scheduled/sanitize_active_stats";
-export { sweepSignalLostSessions } from "./scheduled/sweep_signal_lost_sessions";
 
 // ── HTTPS Callable Functions ───────────────────────────────────────────────
 export { exportReport } from "./callable/export_report";
@@ -56,7 +55,6 @@ export { updateUserRole } from "./callable/update_user_role";
 export { syncLinkedChatGroups } from "./callable/sync_linked_chat_groups";
 export { deleteUser } from "./callable/delete_user";
 export { adminCleanup } from "./callable/admin_cleanup";
-export { forceEndGhostSessions } from "./callable/force_end_ghost_sessions";
 export { forceEndAllSessions } from "./callable/force_end_all_sessions";
 export { backfillActivityLogs } from "./callable/backfill_activity_logs";
 export { backfillSessionDistances } from "./callable/backfill_session_distances";

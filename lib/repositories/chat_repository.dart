@@ -164,19 +164,14 @@ class ChatRepository {
 
   Future<void> sendMessage(
     String groupId,
-    ChatMessageModel message, {
-    String? documentId,
-  }) async {
+    ChatMessageModel message,
+  ) async {
     final db = _firestoreService.instance;
-    final messagesRef = db
+    await db
         .collection(_collection)
         .doc(groupId)
-        .collection(_messagesSubcollection);
-    if (documentId != null) {
-      await messagesRef.doc(documentId).set(message.toFirestore());
-    } else {
-      await messagesRef.add(message.toFirestore());
-    }
+        .collection(_messagesSubcollection)
+        .add(message.toFirestore());
   }
 
   // ── Delete Message ──────────────────────────────────────────────────

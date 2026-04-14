@@ -14,7 +14,7 @@ import '../../models/daily_summary_model.dart';
 import '../../models/photo_model.dart';
 import '../../models/session_model.dart';
 import '../../providers/analytics_provider.dart';
-import '../../providers/dashboard_provider.dart';
+import '../../providers/enterprise_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../repositories/session_repository.dart';
 import '../../services/admin_activity_feed_service.dart';
@@ -336,16 +336,13 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
   }
 
   List<String> _linkedIds() {
-    final analytics = context.read<AnalyticsProvider>();
-    final employees = analytics.employees.isNotEmpty
-        ? analytics.employees
-        : context.read<DashboardProvider>().employees;
-    final ids = _feedService.resolveLinkedEmployeeIds(
-      widget.employeeId,
-      employees,
-      additionalIds: widget.linkedEmployeeIds,
-    );
-    return ids.isEmpty ? [widget.employeeId] : ids;
+    // EnterpriseProvider is the single source of truth for the employee list
+    // and migration chain index (O(1) lookup, guaranteed populated by the
+    // splash-gated bootstrap).
+    return context.read<EnterpriseProvider>().resolveLinkedIds(
+          widget.employeeId,
+          additionalIds: widget.linkedEmployeeIds,
+        );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

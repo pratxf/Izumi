@@ -8,9 +8,9 @@ import '../models/user_model.dart';
 import '../repositories/daily_summary_repository.dart';
 import '../repositories/activity_log_repository.dart';
 import '../repositories/photo_repository.dart';
-import '../repositories/user_repository.dart';
 import '../services/realtime_db_service.dart';
 import '../services/session_query_helper.dart';
+import 'enterprise_provider.dart';
 
 class AnalyticsProvider extends ChangeNotifier {
   bool _disposed = false;
@@ -18,13 +18,15 @@ class AnalyticsProvider extends ChangeNotifier {
   final SessionQueryHelper _sessionHelper = SessionQueryHelper();
   final ActivityLogRepository _logRepo = ActivityLogRepository();
   final PhotoRepository _photoRepo = PhotoRepository();
-  final UserRepository _userRepo = UserRepository();
   final RealtimeDbService _rtdb = RealtimeDbService();
+
+  /// Reference to the enterprise-wide employee directory. Owned by
+  /// [EnterpriseProvider] — this provider never fetches employees itself.
+  EnterpriseProvider? _enterprise;
 
   String _selectedPeriod = 'Today';
   DateTime? _customStart;
   DateTime? _customEnd;
-  List<UserModel> _employees = [];
   Map<String, List<DailySummaryModel>> _employeeSummaries = {};
   final Map<String, List<ActivityLogModel>> _employeeLogs = {};
   Map<String, Map<String, dynamic>> _activeStatsData = {};
@@ -52,7 +54,24 @@ class AnalyticsProvider extends ChangeNotifier {
   String get selectedPeriod => _selectedPeriod;
   DateTime? get customStart => _customStart;
   DateTime? get customEnd => _customEnd;
-  List<UserModel> get employees => _employees;
+  /// Employees are owned by [EnterpriseProvider]. Returns an empty list if
+  /// [attachEnterprise] has not been called yet (shouldn't happen under the
+  /// splash-gated bootstrap flow).
+  List<UserModel> get employees => _enterprise?.employees ?? const [];
+
+  /// Attach the [EnterpriseProvider] that owns the employee list. Must be
+  /// called before [loadAnalytics]. Idempotent.
+  void attachEnterprise(EnterpriseProvider enterprise) {
+    if (identical(_enterprise, enterprise)) return;
+    _enterprise?.removeListener(_onEnterpriseChanged);
+    _enterprise = enterprise;
+    _enterprise?.addListener(_onEnterpriseChanged);
+  }
+
+  void _onEnterpriseChanged() {
+    // Employee list changed upstream — re-propagate so dependent UIs rebuild.
+    if (!_disposed) notifyListeners();
+  }
   Map<String, List<DailySummaryModel>> get employeeSummaries =>
       _employeeSummaries;
   Map<String, List<SessionModel>> get employeeSessions => _employeeSessions;
@@ -120,9 +139,8 @@ class AnalyticsProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Load employees
-      _employees = await _userRepo.getUsersByEnterprise(enterpriseId);
-      _employees = _employees.where((u) => u.activeRole != 'admin').toList();
+      // Employees are owned by EnterpriseProvider — already loaded by the
+      // splash-gated bootstrap. No fetch needed here.
 
       // Determine date range based on period
       final dateRange = _getDateRange();
@@ -475,7 +493,7 @@ class AnalyticsProvider extends ChangeNotifier {
     var changed = true;
     while (changed) {
       changed = false;
-      for (final employee in _employees) {
+      for (final employee in employees) {
         final migratedFrom = employee.migratedFrom;
         final isLinked = relatedIds.contains(employee.id) ||
             (migratedFrom != null && relatedIds.contains(migratedFrom));
@@ -494,7 +512,7 @@ class AnalyticsProvider extends ChangeNotifier {
 
     String? exact;
     String? linked;
-    for (final employee in _employees) {
+    for (final employee in employees) {
       final url = employee.profileImageUrl?.trim();
       if (url == null || url.isEmpty) continue;
       if (employee.id == employeeId) {
@@ -512,6 +530,7 @@ class AnalyticsProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _enterprise?.removeListener(_onEnterpriseChanged);
     _summarySubscription?.cancel();
     _logSubscription?.cancel();
     _activeStatsSubscription?.cancel();

@@ -449,10 +449,31 @@ class ChatMessageBubble extends StatelessWidget {
       case UploadStatus.error:
         return GestureDetector(
           onTap: onRetry,
-          child: const Icon(
-            AppIcons.refresh_circle,
-            size: 14,
-            color: AppColors.error,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                AppIcons.refresh_circle,
+                size: 14,
+                color: AppColors.error,
+              ),
+              if (message.errorMessage != null &&
+                  message.errorMessage!.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: Text(
+                    message.errorMessage!,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.error,
+                      fontSize: 10,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ],
           ),
         );
     }

@@ -21,45 +21,6 @@ class MainActivity : FlutterActivity() {
         )
         lifecycleChannel.setMethodCallHandler { call, result ->
             when (call.method) {
-                "startSessionTaskGuard" -> {
-                    val enterpriseId = call.argument<String>("enterpriseId")
-                    val userId = call.argument<String>("userId")
-                    val sessionId = call.argument<String>("sessionId")
-
-                    if (enterpriseId.isNullOrBlank() ||
-                        userId.isNullOrBlank() ||
-                        sessionId.isNullOrBlank()
-                    ) {
-                        result.error(
-                            "invalid_args",
-                            "enterpriseId, userId, and sessionId are required.",
-                            null,
-                        )
-                        return@setMethodCallHandler
-                    }
-
-                    val intent = SessionTaskRemovalService.startIntent(
-                        this,
-                        enterpriseId,
-                        userId,
-                        sessionId,
-                    )
-                    startService(intent)
-                    result.success(null)
-                }
-                "stopSessionTaskGuard" -> {
-                    val intent = SessionTaskRemovalService.stopIntent(this)
-                    stopService(intent)
-                    result.success(null)
-                }
-                "setIntentionalBackground" -> {
-                    val value = call.argument<Boolean>("value") ?: false
-                    getSharedPreferences("izumi_session_task_guard", MODE_PRIVATE)
-                        .edit()
-                        .putBoolean("intentional_background", value)
-                        .apply()
-                    result.success(null)
-                }
                 "isIgnoringBatteryOptimizations" -> {
                     val powerManager =
                         getSystemService(Context.POWER_SERVICE) as PowerManager

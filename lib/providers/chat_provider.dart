@@ -663,8 +663,9 @@ class ChatProvider extends ChangeNotifier {
       return;
     }
 
+    final errorText = event.error?.toString();
     if (event.status == UploadStatus.error) {
-      _error = event.error?.toString();
+      _error = errorText;
     }
 
     final existing = _optimisticMessagesByRequestId[event.jobId];
@@ -675,8 +676,12 @@ class ChatProvider extends ChangeNotifier {
     if (message != null && (existing != null || !alreadyMerged)) {
       _optimisticMessagesByRequestId[event.jobId] = existing?.copyWith(
             uploadStatus: event.status,
+            errorMessage: errorText,
           ) ??
-          message.copyWith(uploadStatus: event.status);
+          message.copyWith(
+            uploadStatus: event.status,
+            errorMessage: errorText,
+          );
     }
 
     _updateOptimisticMessageStatus(event.jobId, event.status);

@@ -21,6 +21,7 @@ import 'providers/dashboard_provider.dart';
 import 'providers/analytics_provider.dart';
 import 'providers/team_provider.dart';
 import 'providers/chat_provider.dart';
+import 'providers/enterprise_provider.dart';
 import 'services/connectivity_monitor.dart';
 import 'tracking/tracking_foreground_service.dart';
 
@@ -35,6 +36,13 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Note: Firestore has `persistenceEnabled: true` by default on Android and
+  // iOS, so offline-first session writes + the OfflineQueueManager work out
+  // of the box. We deliberately do NOT override [FirebaseFirestore.instance.settings]
+  // here — setting `cacheSizeBytes: UNLIMITED` on top of an existing default
+  // (100MB LRU) cache stalled the internal mutation queue on some Android
+  // builds, causing queued chat writes to hang indefinitely. Default is fine.
 
   TrackingForegroundService.initialize();
   unawaited(ConnectivityMonitor.instance.start());
@@ -90,6 +98,7 @@ class IzumiApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AnalyticsProvider()),
         ChangeNotifierProvider(create: (_) => TeamProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
+        ChangeNotifierProvider(create: (_) => EnterpriseProvider()),
       ],
       child: const _IzumiRouter(),
     );
@@ -114,29 +123,76 @@ class _IzumiRouterState extends State<_IzumiRouter> {
     super.initState();
     final authProvider = context.read<AuthProvider>();
     _router = createAppRouter(authProvider);
+    _wireEnterpriseIntoConsumers();
     _setupNotificationListeners(authProvider);
-    _setupDashboardAutoStart(authProvider);
+    _setupEnterpriseBootstrap(authProvider);
   }
 
-  void _setupDashboardAutoStart(AuthProvider authProvider) {
-    void tryStartDashboard() {
+  /// Attach the [EnterpriseProvider] to every provider that needs the
+  /// employee list. Must happen before any bootstrap attempt so that when
+  /// consumers read `.employees`, they see the populated list.
+  void _wireEnterpriseIntoConsumers() {
+    final enterprise = context.read<EnterpriseProvider>();
+    context.read<DashboardProvider>().attachEnterprise(enterprise);
+    context.read<AnalyticsProvider>().attachEnterprise(enterprise);
+    context.read<TeamProvider>().attachEnterprise(enterprise);
+    context.read<UserProvider>().attachEnterprise(enterprise);
+  }
+
+  /// Bootstrap order on auth success:
+  ///   1. EnterpriseProvider.load() — one-shot fetch of enterprise employees
+  ///      (splash gate waits on its isReady flag)
+  ///   2. DashboardProvider.initWithEnterpriseId() — starts RTDB streams,
+  ///      reads employees from EnterpriseProvider
+  ///
+  /// On logout, clears EnterpriseProvider so the next login re-fetches.
+  void _setupEnterpriseBootstrap(AuthProvider authProvider) {
+    String? lastBootstrappedEnterpriseId;
+
+    Future<void> tryBootstrap() async {
       if (!mounted) return;
-      if (!authProvider.isAuthenticated) return;
+
+      final enterprise = context.read<EnterpriseProvider>();
+
+      // Handle logout / unauthenticated state — clear enterprise state so
+      // the splash gate re-fires on next login.
+      if (!authProvider.isAuthenticated) {
+        if (enterprise.isReady) {
+          enterprise.clear();
+          lastBootstrappedEnterpriseId = null;
+        }
+        return;
+      }
+
       final enterpriseId = authProvider.enterpriseId;
       if (enterpriseId == null) return;
+
+      // Avoid redundant bootstraps when AuthProvider notifies for unrelated
+      // reasons (e.g. role switch, FCM token update).
+      if (lastBootstrappedEnterpriseId == enterpriseId) return;
+      lastBootstrappedEnterpriseId = enterpriseId;
+
+      try {
+        // Step 1: Await enterprise load — the splash gate watches isReady
+        await enterprise.load(enterpriseId);
+      } catch (e) {
+        debugPrint('[main] EnterpriseProvider.load failed: $e');
+        // load() flips isReady=true even on failure so the app remains usable
+      }
+
+      if (!mounted) return;
+
+      // Step 2: Kick off dashboard streams now that employees are available
       final dashboardProvider = context.read<DashboardProvider>();
       dashboardProvider.initWithEnterpriseId(enterpriseId);
     }
 
-    // Single source of truth: auth state changes trigger dashboard init
-    authProvider.addListener(tryStartDashboard);
-
-    // Immediate attempt + one safety fallback for slow auth
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      tryStartDashboard();
+    authProvider.addListener(() {
+      unawaited(tryBootstrap());
     });
-    Future.delayed(const Duration(seconds: 5), () {
-      tryStartDashboard();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(tryBootstrap());
     });
   }
 
@@ -214,8 +270,16 @@ class _IzumiRouterState extends State<_IzumiRouter> {
   @override
   Widget build(BuildContext context) {
     final authStatus = context.watch<AuthProvider>().status;
-    final isInitializing =
+    final enterpriseReady = context.watch<EnterpriseProvider>().isReady;
+
+    final authLoading =
         authStatus == AuthStatus.initial || authStatus == AuthStatus.loading;
+    // After auth succeeds we also wait for EnterpriseProvider to finish its
+    // one-shot employee fetch. This guarantees every downstream provider and
+    // screen reads a populated employee list — no more race conditions.
+    final waitingForEnterprise =
+        authStatus == AuthStatus.authenticated && !enterpriseReady;
+    final isInitializing = authLoading || waitingForEnterprise;
 
     return MaterialApp.router(
       title: 'Izumi',

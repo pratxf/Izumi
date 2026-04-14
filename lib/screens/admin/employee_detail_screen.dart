@@ -12,6 +12,7 @@ import '../../models/activity_log_model.dart';
 import '../../models/photo_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../providers/enterprise_provider.dart';
 import '../../repositories/session_repository.dart';
 import '../../services/admin_activity_feed_service.dart';
 import '../../services/geocoding_cache.dart';
@@ -113,13 +114,15 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       });
     }
 
-    final employees = context.read<DashboardProvider>().employees;
-    final linkedIds = employees.isEmpty
-        ? [employeeId]
-        : _feedService.resolveLinkedEmployeeIds(employeeId, employees);
-    final queryIds = linkedIds.isEmpty ? [employeeId] : linkedIds;
+    // EnterpriseProvider guarantees the employee list is loaded (splash gate).
+    // resolveLinkedIds is an O(1) lookup in a pre-built migration index.
+    final queryIds =
+        context.read<EnterpriseProvider>().resolveLinkedIds(employeeId);
 
-    _warmupTimer = Timer(const Duration(seconds: 6), () {
+    // 15s — gives Firestore enough time to warm up on cold start
+    // (App Check attestation + WebSocket open can take 3-8s) before we
+    // give up and force the empty-state UI.
+    _warmupTimer = Timer(const Duration(seconds: 15), () {
       if (mounted && _activityLoading) {
         setState(() {
           _activityLoading = false;
@@ -137,12 +140,21 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
         .listen((feed) {
       if (!mounted) return;
 
-      final hasData = feed.activities.isNotEmpty || feed.photos.isNotEmpty;
-      final doneLoading = hasData || !_activityLoading;
-
       final newSessionIds = feed.activeSessionIds;
       final sessionIdsChanged =
           newSessionIds.join(',') != _activeSessionIds.join(',');
+
+      // Flip loading off ONLY when:
+      //   1. This emission has real data (hasData), OR
+      //   2. Loading is already false (warmup timer already gave up)
+      //
+      // A cold-start empty emission (from Firestore cache or the service's
+      // internal 4s fallback) must NOT prematurely show "No activity" —
+      // that tricks the user into navigating away before the real Firestore
+      // response arrives, killing the subscription. Keep the spinner until
+      // real data comes OR the warmup timer fires.
+      final hasData = feed.activities.isNotEmpty || feed.photos.isNotEmpty;
+      final doneLoading = hasData || !_activityLoading;
 
       setState(() {
         _activityLogs = feed.activities;
@@ -537,11 +549,6 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
         bgColor = AppColors.badgeActiveBackground;
         textColor = AppColors.success;
         label = 'Active';
-        break;
-      case 'signal_lost':
-        bgColor = AppColors.badgeWarning;
-        textColor = AppColors.warning;
-        label = 'Signal Lost';
         break;
       default:
         bgColor = AppColors.badgeOfflineBackground;

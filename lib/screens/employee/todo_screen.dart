@@ -61,15 +61,12 @@ class _TodoScreenState extends State<TodoScreen> {
     if (userId.isEmpty) return;
     context.read<TaskProvider>().streamTasks(userId);
 
-    // Init dashboard & team data for team leads
+    // Init team data for team leads. Employee list comes from
+    // EnterpriseProvider (splash-gated bootstrap) — no per-screen fetch.
     if (widget.isTeamLead) {
       final enterpriseId =
           auth.enterpriseId ?? auth.currentUser?.enterpriseId ?? '';
       if (enterpriseId.isNotEmpty) {
-        final dashboardProvider = context.read<DashboardProvider>();
-        if (dashboardProvider.employees.isEmpty) {
-          dashboardProvider.initDashboard(enterpriseId);
-        }
         context.read<TeamProvider>().initTeam(enterpriseId, userId);
       }
     }
@@ -777,7 +774,6 @@ class _TodoScreenState extends State<TodoScreen> {
   ) {
     final status = dashboardProvider.getEmployeeStatus(member.id);
     final isActive = status == 'active';
-    final isSignalLost = status == 'signal_lost';
     final isOnClock = dashboardProvider.isEmployeeOnClock(member.id);
 
     // Per-member task and follow-up counts
@@ -791,9 +787,7 @@ class _TodoScreenState extends State<TodoScreen> {
 
     final String subtitle = isActive
         ? '$taskCount Tasks . $followupCount Follow-ups'
-        : isSignalLost
-            ? '$taskCount Tasks . Signal Lost (Reconnecting...)'
-            : '$taskCount Tasks . Offline';
+        : '$taskCount Tasks . Offline';
 
     return GestureDetector(
       onTap: () => context.push('/employee/team-lead-detail', extra: {
@@ -835,9 +829,7 @@ class _TodoScreenState extends State<TodoScreen> {
                     decoration: BoxDecoration(
                       color: isActive
                           ? AppColors.success
-                          : isSignalLost
-                              ? AppColors.warning
-                              : AppColors.textTertiary,
+                          : AppColors.textTertiary,
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: AppColors.glassPrimary,

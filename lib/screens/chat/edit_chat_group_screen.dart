@@ -47,14 +47,8 @@ class _EditChatGroupScreenState extends State<EditChatGroupScreen> {
     _selectedMembers = List<String>.from(widget.group.memberIds);
     _mode = widget.group.mode;
 
-    final userProvider = context.read<UserProvider>();
-    if (userProvider.users.isEmpty) {
-      final authProvider = context.read<AuthProvider>();
-      final enterpriseId = authProvider.enterpriseId ?? '';
-      if (enterpriseId.isNotEmpty) {
-        userProvider.streamUsers(enterpriseId);
-      }
-    }
+    // User list is guaranteed populated by EnterpriseProvider during the
+    // splash-gated bootstrap — no per-screen fetch needed.
 
     _loadLinkedGroupMemberCount();
   }

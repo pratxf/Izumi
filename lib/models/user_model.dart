@@ -10,6 +10,10 @@ class UserModel {
   final String enterpriseId;
   final String? groupId;
   final String? migratedFrom;
+  /// Additional pre-migration UIDs linked to this user beyond [migratedFrom].
+  /// Used when a user has multiple historical UIDs (migration happened twice
+  /// or territory-owner had prior orphaned UIDs). Null / empty list = none.
+  final List<String>? migratedFromChain;
   final String? profileImageUrl;
   final String? fcmToken;
   final DateTime createdAt;
@@ -25,6 +29,7 @@ class UserModel {
     required this.enterpriseId,
     this.groupId,
     this.migratedFrom,
+    this.migratedFromChain,
     this.profileImageUrl,
     this.fcmToken,
     required this.createdAt,
@@ -70,6 +75,11 @@ class UserModel {
       enterpriseId: data['enterpriseId'] ?? '',
       groupId: data['groupId'],
       migratedFrom: data['migratedFrom'],
+      migratedFromChain: data['migratedFromChain'] is List
+          ? List<String>.from(
+              (data['migratedFromChain'] as List).whereType<String>(),
+            )
+          : null,
       profileImageUrl: data['profileImageUrl'],
       fcmToken: data['fcmToken'],
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -88,6 +98,7 @@ class UserModel {
       'enterpriseId': enterpriseId,
       'groupId': groupId,
       'migratedFrom': migratedFrom,
+      'migratedFromChain': migratedFromChain,
       'profileImageUrl': profileImageUrl,
       'fcmToken': fcmToken,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -105,6 +116,7 @@ class UserModel {
     String? enterpriseId,
     String? groupId,
     String? migratedFrom,
+    List<String>? migratedFromChain,
     String? profileImageUrl,
     String? fcmToken,
     DateTime? createdAt,
@@ -120,6 +132,7 @@ class UserModel {
       enterpriseId: enterpriseId ?? this.enterpriseId,
       groupId: groupId ?? this.groupId,
       migratedFrom: migratedFrom ?? this.migratedFrom,
+      migratedFromChain: migratedFromChain ?? this.migratedFromChain,
       profileImageUrl: profileImageUrl ?? this.profileImageUrl,
       fcmToken: fcmToken ?? this.fcmToken,
       createdAt: createdAt ?? this.createdAt,

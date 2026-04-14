@@ -293,5 +293,76 @@ export const onSessionComplete = onDocumentUpdated(
       summaryId,
       sessionId,
     });
+
+    // ── 7. Resum daily summary totalDistance from ALL sessions for the day
+    // The existing transaction above is a no-op if the daily summary already
+    // has this sessionId in its sessionIds[] array (the client wrote it on
+    // session end). That dedup skip leaves totalDistance stuck at whatever
+    // the client wrote (often 0 since v1.0.58, or pre-correction inflated
+    // values for older sessions). To guarantee the summary always reflects
+    // the corrected per-session distances, re-sum every completed/auto_ended
+    // session for this employee on this IST date and write the total.
+    //
+    // Why sum all sessions: a day may have multiple sessions and we don't
+    // know each session's previous contribution. Re-summing from Firestore
+    // (which now contains the corrected session.totalDistance from step 5)
+    // is the simplest correct option.
+    try {
+      const [yearN, monthN, dayN] = dateStr.split("-").map(Number);
+      // 00:00 IST = (00:00 - 5h30m) UTC the previous day
+      const startOfDayUTC = new Date(
+        Date.UTC(yearN, monthN - 1, dayN, 0, 0, 0) - 330 * 60_000
+      );
+      // 24:00 IST = startOfDay + 24h
+      const endOfDayUTC = new Date(startOfDayUTC.getTime() + 24 * 60 * 60 * 1000);
+
+      // Single-field query (no composite index required). Fetches all
+      // sessions for this employee — typically 20-100 docs — and filters
+      // the IST day window in memory. A composite index on
+      // (employeeId ASC, startTime ASC) is also declared in
+      // firestore.indexes.json as the long-term fix, but the in-memory
+      // approach keeps this function working even before the index finishes
+      // building.
+      const daySessionsSnap = await db
+        .collection("sessions")
+        .where("employeeId", "==", employeeId)
+        .get();
+
+      let summedDistance = 0;
+      let countedSessions = 0;
+      for (const sDoc of daySessionsSnap.docs) {
+        const s = sDoc.data() as SessionDocument;
+        if (s.status !== "completed" && s.status !== "auto_ended") continue;
+        const sessionStart = s.startTime?.toDate?.();
+        if (!sessionStart) continue;
+        if (sessionStart < startOfDayUTC || sessionStart >= endOfDayUTC) continue;
+        summedDistance += Number(s.totalDistance) || 0;
+        countedSessions++;
+      }
+      summedDistance = Math.round(summedDistance * 100) / 100;
+
+      // merge: true — only overwrite totalDistance + updatedAt, leave
+      // sessionIds, photosCount, tasksCompleted, locationsVisited, etc. alone.
+      await summaryRef.set(
+        {
+          totalDistance: summedDistance,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      logger.info("onSessionComplete: Daily summary totalDistance resummed.", {
+        summaryId,
+        dateStr,
+        countedSessions,
+        summedDistance,
+      });
+    } catch (err) {
+      logger.error("onSessionComplete: Failed to resum daily summary distance.", {
+        summaryId,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 );

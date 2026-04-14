@@ -67,6 +67,7 @@ macos/Pods/
 .firebase/
 functions/node_modules/
 functions/lib/
+scripts/migrate/node_modules/
 
 # Generated Flutter plugin files
 .flutter-plugins

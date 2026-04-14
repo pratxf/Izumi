@@ -7,7 +7,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _databaseName = 'izumi_tracking.db';
-  static const _databaseVersion = 3;
+  static const _databaseVersion = 4;
 
   Database? _database;
 
@@ -34,6 +34,12 @@ class AppDatabase {
         }
         if (oldVersion < 3) {
           await _createSessionStateTable(db);
+          await _addIdempotencyKeyColumn(db);
+        }
+        if (oldVersion < 4) {
+          // v3 fresh installs created offline_jobs WITHOUT idempotency_key
+          // (the column was only in the v2→v3 ALTER path, not onCreate).
+          // Re-run the ALTER here so every v3 install gets patched.
           await _addIdempotencyKeyColumn(db);
         }
       },
@@ -73,7 +79,8 @@ class AppDatabase {
         retry_count INTEGER NOT NULL DEFAULT 0,
         created_at_ms INTEGER NOT NULL,
         last_attempt_at_ms INTEGER,
-        next_attempt_at_ms INTEGER
+        next_attempt_at_ms INTEGER,
+        idempotency_key TEXT
       )
     ''');
 
@@ -85,6 +92,11 @@ class AppDatabase {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_offline_jobs_next_attempt
       ON offline_jobs(next_attempt_at_ms, created_at_ms)
+    ''');
+
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_offline_jobs_idempotency
+      ON offline_jobs(idempotency_key)
     ''');
   }
 

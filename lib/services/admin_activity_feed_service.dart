@@ -6,9 +6,7 @@ import '../models/activity_log_model.dart';
 import '../models/daily_summary_model.dart';
 import '../models/photo_model.dart';
 import '../models/session_model.dart';
-import '../models/user_model.dart';
 import '../repositories/activity_log_repository.dart';
-import '../repositories/daily_summary_repository.dart';
 import '../repositories/photo_repository.dart';
 import '../repositories/session_repository.dart';
 import 'session_query_helper.dart';
@@ -56,48 +54,16 @@ class AdminActivityFeedService {
     ActivityLogRepository? logRepository,
     PhotoRepository? photoRepository,
     SessionRepository? sessionRepository,
-    DailySummaryRepository? dailySummaryRepository,
     SessionQueryHelper? sessionQueryHelper,
   })  : _logRepo = logRepository ?? ActivityLogRepository(),
         _photoRepo = photoRepository ?? PhotoRepository(),
         _sessionRepo = sessionRepository ?? SessionRepository(),
-        _summaryRepo = dailySummaryRepository ?? DailySummaryRepository(),
         _sessionHelper = sessionQueryHelper ?? SessionQueryHelper();
 
   final ActivityLogRepository _logRepo;
   final PhotoRepository _photoRepo;
   final SessionRepository _sessionRepo;
-  final DailySummaryRepository _summaryRepo;
   final SessionQueryHelper _sessionHelper;
-
-  List<String> resolveLinkedEmployeeIds(
-    String employeeId,
-    Iterable<UserModel> employees, {
-    Iterable<String> additionalIds = const [],
-  }) {
-    final ids = <String>{
-      employeeId,
-      ...additionalIds.where((id) => id.trim().isNotEmpty),
-    };
-
-    for (final employee in employees) {
-      if (
-          employee.id == employeeId ||
-          employee.migratedFrom == employeeId ||
-          ids.contains(employee.id) ||
-          (employee.migratedFrom != null &&
-              ids.contains(employee.migratedFrom))
-      ) {
-        ids.add(employee.id);
-        final migratedFrom = employee.migratedFrom;
-        if (migratedFrom != null && migratedFrom.trim().isNotEmpty) {
-          ids.add(migratedFrom.trim());
-        }
-      }
-    }
-
-    return ids.toList();
-  }
 
   Future<AdminRangeActivityFeedData> loadRangeFeed({
     required String employeeId,
@@ -444,71 +410,130 @@ class AdminActivityFeedService {
       );
     }
 
+    // ── Retry tracking — max 2 retries per stream, 5s delay ──
+    const maxRetries = 2;
+    const retryDelay = Duration(seconds: 5);
+    int employeeLogRetries = 0;
+    int sessionLogRetries = 0;
+    int employeePhotoRetries = 0;
+    int sessionPhotoRetries = 0;
+    final pendingRetryTimers = <Timer>[];
+
+    void scheduleRetry(int currentCount, void Function() retryFn) {
+      if (controller.isClosed || currentCount >= maxRetries) return;
+      final timer = Timer(retryDelay, () {
+        if (controller.isClosed) return;
+        retryFn();
+      });
+      pendingRetryTimers.add(timer);
+    }
+
+    void subscribeEmployeeLogs() {
+      employeeLogSub?.cancel();
+      employeeLogSub = _logRepo
+          .streamLogsByEmployeeIdsSince(
+            normalizedIds,
+            since: since,
+            limit: 1000,
+          )
+          .listen((logs) {
+        employeeLogs = logs;
+        emit();
+      }, onError: (e) {
+        debugPrint(
+          '[FeedService] employeeLogSub error '
+          '(retry ${employeeLogRetries + 1}/$maxRetries): $e',
+        );
+        emit();
+        employeeLogRetries++;
+        scheduleRetry(employeeLogRetries, subscribeEmployeeLogs);
+      });
+    }
+
+    void subscribeEmployeePhotos() {
+      employeePhotoSub?.cancel();
+      employeePhotoSub = _photoRepo
+          .streamPhotosByEmployeeIdsWithLimit(
+            normalizedIds,
+            limit: photoLimit,
+          )
+          .listen((photos) {
+        employeePhotos = photos;
+        emit();
+      }, onError: (e) {
+        debugPrint(
+          '[FeedService] employeePhotoSub error '
+          '(retry ${employeePhotoRetries + 1}/$maxRetries): $e',
+        );
+        emit();
+        employeePhotoRetries++;
+        scheduleRetry(employeePhotoRetries, subscribeEmployeePhotos);
+      });
+    }
+
     void attachSessionStreams(List<String> sessionIds) {
       sessionLogSub?.cancel();
       sessionPhotoSub?.cancel();
       sessionLogs = const [];
       sessionPhotos = const [];
+      // Reset session-scoped retry counters when session set changes.
+      sessionLogRetries = 0;
+      sessionPhotoRetries = 0;
 
       if (sessionIds.isEmpty) {
         emit();
         return;
       }
 
-      sessionLogSub = _logRepo
-          .streamLogsBySessionIdsSince(
-            sessionIds,
-            since: since,
-            limit: 1000,
-          )
-          .listen((logs) {
-        sessionLogs = logs;
-        emit();
-      }, onError: (e) {
-        debugPrint('[FeedService] sessionLogSub error: $e');
-        emit();
-      });
+      void subscribeSessionLogs() {
+        sessionLogSub?.cancel();
+        sessionLogSub = _logRepo
+            .streamLogsBySessionIdsSince(
+              sessionIds,
+              since: since,
+              limit: 1000,
+            )
+            .listen((logs) {
+          sessionLogs = logs;
+          emit();
+        }, onError: (e) {
+          debugPrint(
+            '[FeedService] sessionLogSub error '
+            '(retry ${sessionLogRetries + 1}/$maxRetries): $e',
+          );
+          emit();
+          sessionLogRetries++;
+          scheduleRetry(sessionLogRetries, subscribeSessionLogs);
+        });
+      }
 
-      sessionPhotoSub = _photoRepo
-          .streamPhotosBySessionIds(
-            sessionIds,
-            limit: photoLimit,
-          )
-          .listen((photos) {
-        sessionPhotos = photos;
-        emit();
-      }, onError: (e) {
-        debugPrint('[FeedService] sessionPhotoSub error: $e');
-        emit();
-      });
+      void subscribeSessionPhotos() {
+        sessionPhotoSub?.cancel();
+        sessionPhotoSub = _photoRepo
+            .streamPhotosBySessionIds(
+              sessionIds,
+              limit: photoLimit,
+            )
+            .listen((photos) {
+          sessionPhotos = photos;
+          emit();
+        }, onError: (e) {
+          debugPrint(
+            '[FeedService] sessionPhotoSub error '
+            '(retry ${sessionPhotoRetries + 1}/$maxRetries): $e',
+          );
+          emit();
+          sessionPhotoRetries++;
+          scheduleRetry(sessionPhotoRetries, subscribeSessionPhotos);
+        });
+      }
+
+      subscribeSessionLogs();
+      subscribeSessionPhotos();
     }
 
-    employeeLogSub = _logRepo
-        .streamLogsByEmployeeIdsSince(
-          normalizedIds,
-          since: since,
-          limit: 1000,
-        )
-        .listen((logs) {
-      employeeLogs = logs;
-      emit();
-    }, onError: (e) {
-      debugPrint('[FeedService] employeeLogSub error: $e');
-      emit();
-    });
-
-    employeePhotoSub = _photoRepo
-        .streamPhotosByEmployeeIdsWithLimit(
-          normalizedIds,
-          limit: photoLimit,
-        )
-        .listen((photos) {
-      employeePhotos = photos;
-      emit();
-    }, onError: (e) {
-      debugPrint('[FeedService] employeePhotoSub error: $e');
-      emit();
-    });
+    subscribeEmployeeLogs();
+    subscribeEmployeePhotos();
 
     sessionSub = _sessionRepo
         .streamActiveSessionsByEmployeeIds(normalizedIds)
@@ -539,6 +564,10 @@ class AdminActivityFeedService {
     });
 
     controller.onCancel = () async {
+      for (final t in pendingRetryTimers) {
+        t.cancel();
+      }
+      pendingRetryTimers.clear();
       await employeeLogSub?.cancel();
       await sessionLogSub?.cancel();
       await employeePhotoSub?.cancel();

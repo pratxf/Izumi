@@ -8,14 +8,13 @@ class RealtimeDbService {
   Future<void> setPresence({
     required String enterpriseId,
     required String userId,
-    required String status, // 'active' | 'break' | 'offline' | 'signal_lost'
+    required String status, // 'active' | 'break' | 'offline'
     String? currentSessionId,
   }) async {
     await _db.ref('presence/$enterpriseId/$userId').set({
       'status': status,
       'lastSeen': ServerValue.timestamp,
       'currentSessionId': currentSessionId,
-      'signalLostAt': null,
     });
   }
 
@@ -27,18 +26,18 @@ class RealtimeDbService {
       'status': 'offline',
       'lastSeen': ServerValue.timestamp,
       'currentSessionId': null,
-      'signalLostAt': null,
     });
   }
 
-  Future<void> setupSignalLostOnDisconnect({
+  /// Registers an onDisconnect handler that sets presence to offline when
+  /// the RTDB connection drops.
+  Future<void> setupOfflineOnDisconnect({
     required String enterpriseId,
     required String userId,
     String? currentSessionId,
   }) async {
     await _db.ref('presence/$enterpriseId/$userId').onDisconnect().update({
-      'status': 'signal_lost',
-      'signalLostAt': ServerValue.timestamp,
+      'status': 'offline',
       'lastSeen': ServerValue.timestamp,
       'currentSessionId': currentSessionId,
     });

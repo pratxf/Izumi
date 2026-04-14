@@ -31,14 +31,8 @@ class _CreateChatGroupScreenState extends State<CreateChatGroupScreen> {
   @override
   void initState() {
     super.initState();
-    final userProvider = context.read<UserProvider>();
-    if (userProvider.users.isEmpty) {
-      final authProvider = context.read<AuthProvider>();
-      final enterpriseId = authProvider.enterpriseId ?? '';
-      if (enterpriseId.isNotEmpty) {
-        userProvider.streamUsers(enterpriseId);
-      }
-    }
+    // User list is guaranteed populated by EnterpriseProvider during the
+    // splash-gated bootstrap — no per-screen fetch needed.
   }
 
   @override

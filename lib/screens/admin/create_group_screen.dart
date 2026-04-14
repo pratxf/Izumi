@@ -37,15 +37,8 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   @override
   void initState() {
     super.initState();
-    // Safety net: ensure UserProvider has data even if navigated here directly
-    final userProvider = context.read<UserProvider>();
-    if (userProvider.employees.isEmpty) {
-      final authProvider = context.read<AuthProvider>();
-      final enterpriseId = authProvider.enterpriseId ?? '';
-      if (enterpriseId.isNotEmpty) {
-        userProvider.streamUsers(enterpriseId);
-      }
-    }
+    // Employee list is guaranteed populated by EnterpriseProvider during
+    // the splash-gated bootstrap — no per-screen fetch needed.
   }
 
   @override

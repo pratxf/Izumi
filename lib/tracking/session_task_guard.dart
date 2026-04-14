@@ -1,69 +1,51 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Thin Dart wrapper around the native [SessionTaskRemovalService].
+/// Session lifecycle guard for the Android "intentional background" flag.
 ///
-/// When [start] is called, Android's `SessionTaskRemovalService` is bound to
-/// the current task. If the user swipes the app out of the recent-apps list,
-/// `onTaskRemoved` fires and the service auto-ends the active Firestore session
-/// without needing the Flutter engine to be alive.
+/// Previously also started/stopped a native `SessionTaskRemovalService` that
+/// auto-ended sessions when the user swiped the app from recents. That
+/// service has been removed — auto-end on swipe is no longer desired.
 ///
-/// Must be stopped via [stop] when the session ends normally, so the service
-/// does not fire a spurious auto-end after the user deliberately ends a session.
+/// [start] and [stop] are retained as no-ops so existing call sites compile
+/// unchanged. [setIntentionalBackground] is the only live behaviour: it
+/// writes a flag that [SessionTrackingTaskHandler.onDestroy] reads to decide
+/// whether an OEM-triggered service death should auto-end the session.
 class SessionTaskGuard {
   SessionTaskGuard._();
 
-  static const _channel = MethodChannel('izumi/app_lifecycle');
-
-  /// Start the guard for [sessionId] / [employeeId] / [enterpriseId].
-  ///
-  /// Safe to call on non-Android platforms — does nothing.
+  /// Retained for API compatibility. No longer starts any native service.
   static Future<void> start({
     required String enterpriseId,
     required String employeeId,
     required String sessionId,
   }) async {
-    if (!Platform.isAndroid) return;
-    try {
-      await _channel.invokeMethod<void>('startSessionTaskGuard', {
-        'enterpriseId': enterpriseId,
-        'userId': employeeId,
-        'sessionId': sessionId,
-      });
-    } catch (error, stackTrace) {
-      debugPrint(
-        '[SessionTaskGuard] start failed: $error\n$stackTrace',
-      );
-    }
+    // No-op: the former SessionTaskRemovalService has been removed.
   }
 
-  /// Stop the guard (call this after a normal session end).
-  ///
-  /// Safe to call on non-Android platforms — does nothing.
+  /// Retained for API compatibility. No longer stops any native service.
   static Future<void> stop() async {
-    if (!Platform.isAndroid) return;
-    try {
-      await _channel.invokeMethod<void>('stopSessionTaskGuard');
-    } catch (error, stackTrace) {
-      debugPrint(
-        '[SessionTaskGuard] stop failed: $error\n$stackTrace',
-      );
-    }
+    // No-op: the former SessionTaskRemovalService has been removed.
   }
 
   /// Signal that the user intentionally backgrounded the app (via back button
-  /// with an active session). When set, [SessionTaskRemovalService] skips
-  /// auto-end because the foreground service is still running.
+  /// with an active session). Read by [SessionTrackingTaskHandler.onDestroy]
+  /// so it can skip auto-end when the foreground service is later killed by
+  /// the OEM after the user backgrounded the app.
   ///
-  /// Safe to call on non-Android platforms — does nothing.
+  /// Stored in Flutter's [SharedPreferences] so the same backing store is
+  /// used by writer (here) and reader (the foreground service task handler).
   static Future<void> setIntentionalBackground(bool value) async {
     if (!Platform.isAndroid) return;
     try {
-      await _channel.invokeMethod<void>('setIntentionalBackground', {
-        'value': value,
-      });
+      final prefs = await SharedPreferences.getInstance();
+      if (value) {
+        await prefs.setBool('intentional_background', true);
+      } else {
+        await prefs.remove('intentional_background');
+      }
     } catch (error, stackTrace) {
       debugPrint(
         '[SessionTaskGuard] setIntentionalBackground failed: $error\n$stackTrace',
