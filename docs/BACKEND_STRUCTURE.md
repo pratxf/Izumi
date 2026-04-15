@@ -476,6 +476,7 @@ Role-based access using custom claims:
 | `groups` | All in enterprise | Admin only |
 | `dailySummaries` | Owner, Admin, Team Lead (same group) | Cloud Functions only |
 | `chatGroups` | Members, Admin | Admin (CRUD), Members (update lastReadAt) |
+| `chatGroups/{gid}/messages` | Members | Members (create own via `allow create`; update own or admin via `allow update`). Messages use Firestore auto-IDs (`.add()`); deduplication relies on `clientRequestId` in the payload rather than deterministic doc IDs. |
 | `activityLogs` | Owner, Admin, Team Lead (same group) | Owner (create only) |
 
 Key helper functions in rules:
@@ -689,6 +690,9 @@ Behavior:
 | `location_service.dart` | GPS tracking, permissions, reverse geocoding, distance calculation |
 | `image_processing_service.dart` | Photo compression, thumbnail generation (15s full + 10s thumb timeouts) |
 | `connectivity_monitor.dart` | Singleton network state monitor with online/offline stream |
+| `chat_repository.dart` | Firestore chat reads/writes. `sendMessage(groupId, message)` always uses `.add()` (auto-generated ID) so retries cannot collide with the `allow create` rule; dedup happens via `clientRequestId` in the payload. |
+| `offline_queue_manager.dart` | SQLite-backed job queue for chat sends and other offline-tolerant writes. Processes jobs with retry/backoff, marks exhausted jobs as `failed`. Exposes `clearFailedChatJobs()` (called from `ChatConversationScreen.initState`). `_processChatJob` calls `ChatRepository.sendMessage(groupId, message)` without a documentId. Stale-processing timeout: 30s. On `start()`, runs `_cleanupStuckJobsOnStartup()` which resets orphaned `processing` jobs to `pending` (retryCount=0) and marks `error` jobs past maxRetries as `failed`, before the first `processQueue()`. `_nextEligibleJob` also defensively flips exhausted error jobs to `failed` before iterating. |
+| `app_database.dart` | SQLite database wrapper. `_databaseVersion = 4`. v3 had a bug where fresh installs omitted the `idempotency_key` column in `_createOfflineJobsTable`, causing `DatabaseException: no column named idempotency_key` on every chat send. v4 fixes `_createOfflineJobsTable` to include `idempotency_key TEXT` plus a unique index, and the `oldVersion < 4` migration re-runs `_addIdempotencyKeyColumn` (ALTER TABLE) to patch broken v3 installs. |
 | `admin_activity_feed_service.dart` | Activity log queries with session/photo/location merging and deduplication |
 | `session_query_helper.dart` | Optimized session queries with 5-layer fallback chain |
 | `query_cache.dart` | Singleton cache for session and photo query results (2 min TTL) |

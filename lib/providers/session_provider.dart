@@ -12,11 +12,16 @@ import '../models/session_location_model.dart';
 import '../models/session_model.dart';
 import '../repositories/daily_summary_repository.dart';
 import '../repositories/session_repository.dart';
+import '../services/connectivity_monitor.dart';
+import '../services/device_config.dart';
+import '../services/device_health_monitor.dart';
 import '../services/location_service.dart';
 import '../services/realtime_db_service.dart';
 import '../tracking/pending_location_store.dart';
 import '../tracking/session_task_guard.dart';
 import '../tracking/tracking_foreground_service.dart';
+
+enum _ResumeAction { none, resume, endStale }
 
 class SessionProvider extends ChangeNotifier {
   final SessionRepository _sessionRepo = SessionRepository();
@@ -37,6 +42,32 @@ class SessionProvider extends ChangeNotifier {
   String? _error;
   bool _locationInitializing = false;
   DateTime? _lastSessionStartAttempt;
+
+  /// True when the current device configuration would block a new session
+  /// from starting. The UI watches this to show a warning banner and to
+  /// route Start-Session taps into the [SetupWizardScreen].
+  bool _sessionStartBlocked = false;
+  bool get sessionStartBlocked => _sessionStartBlocked;
+  List<SetupCheck> _blockingFailures = const [];
+  List<SetupCheck> get blockingFailures => _blockingFailures;
+  List<SetupCheck> get blockedChecks => _blockingFailures;
+
+  /// Run [DeviceHealthMonitor.runAllChecks] and update [sessionStartBlocked]
+  /// / [blockedChecks]. Call after the wizard completes, and on screen
+  /// resume, to keep the banner state current.
+  Future<void> recheckDeviceHealth() async {
+    try {
+      final health = await DeviceHealthMonitor.runAllChecks();
+      final blocked = health.hasBlockingFailures;
+      final changed = _sessionStartBlocked != blocked ||
+          _blockingFailures.length != health.blockingFailures.length;
+      _sessionStartBlocked = blocked;
+      _blockingFailures = health.blockingFailures;
+      if (changed) _safeNotifyListeners();
+    } catch (e) {
+      debugPrint('[SessionProvider] recheckDeviceHealth failed: $e');
+    }
+  }
 
   SessionProvider() {
     TrackingForegroundService.addTaskDataCallback(_onTaskData);
@@ -113,8 +144,27 @@ class SessionProvider extends ChangeNotifier {
         } catch (e) {
           debugPrint('[SessionProvider] stop orphan tracking failed: $e');
         }
+        // Clear stale resume hint — there's no active session to resume.
+        await _clearResumeHint();
       } else {
         _distance = session.totalDistance;
+
+        // FIX 6: If the foreground service was killed (onDestroy wrote a
+        // needs_resume hint) and the gap was short enough, transparently
+        // restart tracking. Otherwise end the session properly.
+        final resumeAction = await _evaluateResumeHint(session);
+        if (resumeAction == _ResumeAction.endStale) {
+          debugPrint('[SessionProvider] resume hint stale — ending session.');
+          await endSession(
+            enterpriseId: session.enterpriseId,
+            employeeId: session.employeeId,
+          );
+          await _clearResumeHint();
+          _isLoading = false;
+          _safeNotifyListeners();
+          return;
+        }
+
         try {
           await TrackingForegroundService.ensureTrackingRunning(
             enterpriseId: session.enterpriseId,
@@ -128,6 +178,54 @@ class SessionProvider extends ChangeNotifier {
           );
           _error = error.toString();
         }
+
+        if (resumeAction == _ResumeAction.resume) {
+          debugPrint('[SessionProvider] session resumed after service kill.');
+          // Compute the gap between onDestroy and resume so the admin
+          // activity timeline can show it.
+          int? gapMs;
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final killedAtMs = prefs.getInt('needs_resume_killed_at_ms');
+            if (killedAtMs != null) {
+              gapMs = DateTime.now().millisecondsSinceEpoch - killedAtMs;
+              if (gapMs < 0) gapMs = null;
+            }
+          } catch (_) {}
+
+          final gapMinutes =
+              gapMs == null ? null : (gapMs / 60000).round();
+          final detail = gapMinutes == null
+              ? 'Tracking resumed after service was killed.'
+              : 'Resumed after ${gapMinutes}m gap';
+
+          unawaited(
+            FirebaseFirestore.instance.collection('activityLogs').add({
+              'type': 'session_resume',
+              'employeeId': session.employeeId,
+              'sessionId': session.id,
+              'enterpriseId': session.enterpriseId,
+              'orgId': session.enterpriseId,
+              'timestamp': FieldValue.serverTimestamp(),
+              'date': _todayDateIST(),
+              'title': 'Session Resumed',
+              'detail': detail,
+              'payload': {
+                if (gapMs != null) 'gapMs': gapMs,
+                if (gapMinutes != null) 'gapMinutes': gapMinutes,
+              },
+            }).then<void>((_) {}).catchError((Object e) {
+              debugPrint('[SessionProvider] resume log failed: $e');
+            }),
+          );
+          await _clearResumeHint();
+        }
+
+        // Re-bind connectivity monitor so transitions are recorded.
+        ConnectivityMonitor.instance.bindUser(
+          enterpriseId: session.enterpriseId,
+          userId: session.employeeId,
+        );
       }
 
       _isLoading = false;
@@ -220,6 +318,22 @@ class SessionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // FIX 11: device setup gate. Block session start when any check
+      // critical to the foreground service is missing. The UI listens for
+      // [sessionStartBlocked] and routes the employee to the setup wizard.
+      final health = await DeviceHealthMonitor.runAllChecks();
+      if (health.hasBlockingFailures) {
+        _sessionStartBlocked = true;
+        _blockingFailures = health.blockingFailures;
+        _error = 'Your device is not configured for tracking yet. '
+            'Open the setup wizard to fix the missing settings.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+      _sessionStartBlocked = false;
+      _blockingFailures = const [];
+
       final permission = await _locationService.checkPermissions();
       if (permission != LocationPermissionResult.granted) {
         _error = _permissionErrorMessage(permission);
@@ -329,6 +443,13 @@ class SessionProvider extends ChangeNotifier {
         }),
       );
 
+      // FIX 7: ensure a liveLocation write always fires on session start so
+      // the dashboard never shows "No location data" for an active employee,
+      // even if GPS is slow. Fall back to the last-known position when no
+      // fresh fix is available.
+      Position? bootstrapPosition = initialPosition;
+      bootstrapPosition ??= await Geolocator.getLastKnownPosition();
+
       // ── 5-8. Set RTDB presence, onDisconnect, start tracking ─────────
       await Future.wait([
         _rtdb.setPresence(
@@ -342,14 +463,14 @@ class SessionProvider extends ChangeNotifier {
           userId: employeeId,
           currentSessionId: sessionId,
         ),
-        if (initialPosition != null)
+        if (bootstrapPosition != null)
           _rtdb.updateLiveLocation(
             enterpriseId: enterpriseId,
             userId: employeeId,
-            latitude: initialPosition.latitude,
-            longitude: initialPosition.longitude,
+            latitude: bootstrapPosition.latitude,
+            longitude: bootstrapPosition.longitude,
             address: initialAddress,
-            accuracy: initialPosition.accuracy,
+            accuracy: bootstrapPosition.accuracy,
           ),
         TrackingForegroundService.startTracking(
           enterpriseId: enterpriseId,
@@ -386,6 +507,26 @@ class SessionProvider extends ChangeNotifier {
           sessionId: sessionId,
         ),
       );
+
+      // ── 11. Bind connectivity monitor so transitions are recorded under
+      // this user's presence node. The server-side sweep uses the latest
+      // recorded transition to distinguish "no network" from "app dead".
+      ConnectivityMonitor.instance.bindUser(
+        enterpriseId: enterpriseId,
+        userId: employeeId,
+      );
+
+      // ── 12. Clear the FIX-6 needs_resume flag now that we have a fresh
+      // session running, so an old crash doesn't trigger an unwanted resume.
+      unawaited(() async {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('needs_resume');
+          await prefs.remove('needs_resume_session_id');
+          await prefs.remove('needs_resume_started_at_ms');
+          await prefs.remove('needs_resume_killed_at_ms');
+        } catch (_) {}
+      }());
 
       _isLoading = false;
       _safeNotifyListeners();
@@ -486,6 +627,7 @@ class SessionProvider extends ChangeNotifier {
       // clearOnDisconnect runs first, then setOffline — but both are
       // independent of stopTracking, so we overlap them.
       unawaited(SessionTaskGuard.stop());
+      ConnectivityMonitor.instance.unbindUser();
       await Future.wait([
         TrackingForegroundService.stopTracking(clearContext: true),
         _rtdb.clearOnDisconnect(
@@ -632,6 +774,49 @@ class SessionProvider extends ChangeNotifier {
       _safeNotifyListeners();
       return null;
     }
+  }
+
+  // ── FIX 6: resume-after-OEM-kill helpers ───────────────────────────────
+
+  /// Maximum gap between service kill and app reopen at which we'll silently
+  /// resume the session. Beyond this, the session is ended properly.
+  static const Duration _resumeMaxGap = Duration(hours: 2);
+
+  Future<_ResumeAction> _evaluateResumeHint(SessionModel session) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final needsResume = prefs.getBool('needs_resume') ?? false;
+      if (!needsResume) return _ResumeAction.none;
+
+      final hintSessionId = prefs.getString('needs_resume_session_id');
+      if (hintSessionId != session.id) {
+        // Hint refers to a different session — stale.
+        await _clearResumeHint();
+        return _ResumeAction.none;
+      }
+
+      final startedAtMs = prefs.getInt('needs_resume_started_at_ms');
+      if (startedAtMs == null) return _ResumeAction.resume;
+
+      final age = DateTime.now().difference(
+        DateTime.fromMillisecondsSinceEpoch(startedAtMs),
+      );
+      if (age > _resumeMaxGap) return _ResumeAction.endStale;
+      return _ResumeAction.resume;
+    } catch (e) {
+      debugPrint('[SessionProvider] resume hint read failed: $e');
+      return _ResumeAction.none;
+    }
+  }
+
+  Future<void> _clearResumeHint() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('needs_resume');
+      await prefs.remove('needs_resume_session_id');
+      await prefs.remove('needs_resume_started_at_ms');
+      await prefs.remove('needs_resume_killed_at_ms');
+    } catch (_) {}
   }
 
   void incrementPhotoCount() {

@@ -14,6 +14,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
+import '../services/diagnostic_logger.dart';
 import 'pending_location_store.dart';
 import 'sync_manager.dart';
 
@@ -60,11 +61,12 @@ class SessionTrackingTaskHandler extends TaskHandler {
   bool _pollInFlight = false;
 
   // Quality filter constants
-  // Indoor/desk workers can have GPS accuracy worse than 30m — use a generous
-  // threshold so stationary sessions still record location data.
-  static const double _maxAccuracyMeters = 100.0;
-  static const double _maxSpeedMps = 19.4; // 70 km/h — max realistic speed for field employees on motorcycles
-  static const double _minMovementMeters = 15.0; // discard GPS jitter
+  // Tightened to reduce GPS-jitter-driven distance inflation. The first fix
+  // is always accepted (see [_isUsableFix]) so stationary/indoor sessions
+  // still register on the dashboard even with poor accuracy.
+  static const double _maxAccuracyMeters = 40.0;
+  static const double _maxSpeedMps = 25.0; // 90 km/h
+  static const double _minMovementMeters = 30.0; // above GPS noise floor
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -80,12 +82,19 @@ class SessionTrackingTaskHandler extends TaskHandler {
     );
     await _loadContext();
     await _restoreSessionState();
+    await DiagnosticLogger.I.init();
+    DiagnosticLogger.I.setSessionId(_sessionId);
+    DiagnosticLogger.I.log('service_started', {
+      'sessionId': _sessionId,
+      'employeeId': _employeeId,
+    });
     await _startSyncManager();
     await _startActivityRecognition();
     await _sendHeartbeat();
-    // Heartbeat every 25 minutes per spec
+    // Heartbeat every 15 minutes — more frequent proof-of-life without
+    // significant RTDB write cost.
     _heartbeatTimer = Timer.periodic(
-      const Duration(minutes: 25),
+      const Duration(minutes: 15),
       (_) => unawaited(_sendHeartbeat()),
     );
     _scheduleSevenPmReminder();
@@ -232,6 +241,10 @@ class SessionTrackingTaskHandler extends TaskHandler {
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    DiagnosticLogger.I.log('service_destroyed', {
+      'isTimeout': isTimeout,
+      'sessionId': _sessionId,
+    }, 'critical');
     _activitySubscription?.cancel();
     _heartbeatTimer?.cancel();
     _activityTimeoutTimer?.cancel();
@@ -315,47 +328,18 @@ class SessionTrackingTaskHandler extends TaskHandler {
       // Skip location buffer flush — too slow for Android's kill window.
       // Pending SQLite locations are acceptable to lose on task removal.
 
-      // Fire-and-forget: write session end to Firestore
-      final now = DateTime.now();
-      final durationSecs = _sessionDurationSeconds();
-      unawaited(
-        _firestore.collection('sessions').doc(sessionId).set({
-          'endTime': Timestamp.fromDate(now),
-          'status': 'auto_ended',
-          'totalDuration': durationSecs,
-          'totalDistance': _totalDistanceKm,
-          'autoEndReason': 'app_removed',
-          'autoEndSource': 'foreground_task_onDestroy',
-        }, SetOptions(merge: true)).catchError((e) {
-          debugPrint('[TrackingTaskHandler] onDestroy session write failed: $e');
-        }),
-      );
+      // FIX 6: Don't auto-end on service destroy. OEM kills are often
+      // temporary and the foreground service can be restarted by the system
+      // or by the user reopening the app. Instead:
+      //   1. Mark presence as `signal_lost` so dashboards know the device
+      //      hasn't been heard from, but the session is NOT ended.
+      //   2. Persist `needs_resume` in SharedPreferences so the app can
+      //      seamlessly resume tracking on next open (within 2 hours).
+      //   3. Let the server-side sweep auto-end after the stale window if
+      //      the user never comes back.
 
-      // Fire-and-forget: write activityLog
-      unawaited(
-        _firestore.collection('activityLogs').doc('session_auto_ended_$sessionId').set({
-          'enterpriseId': enterpriseId,
-          'employeeId': employeeId,
-          'sessionId': sessionId,
-          'orgId': enterpriseId,
-          'type': 'session_auto_ended',
-          'title': 'Session Auto-Ended',
-          'detail': 'Session ended because the app was closed',
-          'timestamp': FieldValue.serverTimestamp(),
-          'date': _todayDateString(),
-          'payload': {
-            'endTime': Timestamp.fromDate(now),
-            'durationSeconds': durationSecs,
-            'distanceKm': _totalDistanceKm,
-            'endReason': 'app_removed',
-          },
-        }, SetOptions(merge: true)).catchError((e) {
-          debugPrint('[TrackingTaskHandler] onDestroy activityLog write failed: $e');
-        }),
-      );
-
-      // Fire-and-forget: cancel onDisconnect handler before writing presence
-      // so the offline write doesn't double-fire after our cleanup.
+      // Fire-and-forget: cancel onDisconnect handler so the offline write
+      // doesn't fire after our explicit signal_lost write.
       unawaited(
         _database.ref('presence/$enterpriseId/$employeeId')
             .onDisconnect().cancel().catchError((e) {
@@ -363,60 +347,41 @@ class SessionTrackingTaskHandler extends TaskHandler {
         }),
       );
 
-      // Fire-and-forget: set presence to offline and clear dashboard nodes.
+      // Fire-and-forget: set presence to signal_lost. Keep liveLocation,
+      // activeStats, and sessionHeartbeat intact so the admin dashboard
+      // continues to show the employee's last known state — useful context
+      // while waiting to see if the service restarts.
       unawaited(
-        _database.ref().update({
-          'presence/$enterpriseId/$employeeId/status': 'offline',
-          'presence/$enterpriseId/$employeeId/currentSessionId': null,
-          'presence/$enterpriseId/$employeeId/lastSeen': ServerValue.timestamp,
-          'activeStats/$enterpriseId/$employeeId': null,
-          'sessionHeartbeat/$enterpriseId/$employeeId': null,
-          'liveLocations/$enterpriseId/$employeeId': null,
+        _database.ref('presence/$enterpriseId/$employeeId').update({
+          'status': 'signal_lost',
+          'currentSessionId': sessionId,
+          'lastSeen': ServerValue.timestamp,
         }).catchError((e) {
-          debugPrint('[TrackingTaskHandler] onDestroy RTDB update failed: $e');
+          debugPrint('[TrackingTaskHandler] onDestroy presence write failed: $e');
         }),
       );
 
-      // Send local push notification to employee
+      // Persist resume hint so [SessionProvider.loadActiveSession] can
+      // restart tracking on next app open. The startedAt timestamp lets us
+      // decide whether the gap was short enough to resume (< 2h) or long
+      // enough that the session should be ended properly.
       try {
-        final duration = Duration(seconds: _sessionDurationSeconds());
-        final hours = duration.inHours;
-        final minutes = duration.inMinutes.remainder(60);
-        final durationText = hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
-
-        final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-        await flutterLocalNotificationsPlugin.initialize(
-          const InitializationSettings(
-            android: AndroidInitializationSettings('ic_stat_izumi'),
-            iOS: DarwinInitializationSettings(),
-          ),
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('needs_resume', true);
+        await prefs.setString('needs_resume_session_id', sessionId);
+        await prefs.setInt(
+          'needs_resume_started_at_ms',
+          _startedAtMs ?? DateTime.now().millisecondsSinceEpoch,
         );
-        await flutterLocalNotificationsPlugin.show(
-          9901,
-          'Session Ended',
-          'Your tracking session has ended because the app was closed. Duration: $durationText.',
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'izumi_session_alerts',
-              'Session Alerts',
-              channelDescription: 'Notifications about session lifecycle events',
-              importance: Importance.high,
-              priority: Priority.high,
-              icon: 'ic_stat_izumi',
-            ),
-            iOS: DarwinNotificationDetails(),
-          ),
+        // Record when the service was killed so the resume log can show
+        // the gap duration on the admin activity timeline.
+        await prefs.setInt(
+          'needs_resume_killed_at_ms',
+          DateTime.now().millisecondsSinceEpoch,
         );
       } catch (e) {
-        debugPrint('[TrackingTaskHandler] onDestroy notification failed: $e');
+        debugPrint('[TrackingTaskHandler] onDestroy needs_resume write failed: $e');
       }
-
-      // Fire-and-forget: clear session state from SQLite
-      unawaited(
-        _pendingLocationStore.markSessionEnding().catchError((e) {
-          debugPrint('[TrackingTaskHandler] onDestroy markSessionEnding failed: $e');
-        }),
-      );
     }
 
     unawaited(_syncManager.dispose());
@@ -629,7 +594,19 @@ class SessionTrackingTaskHandler extends TaskHandler {
         locationSettings: _buildLocationSettings(),
       ).timeout(const Duration(seconds: 30));
 
-      if (!_isUsableFix(position)) return;
+      if (!_isUsableFix(position)) {
+        DiagnosticLogger.I.log('gps_fix_rejected', {
+          'reason': 'accuracy_too_low',
+          'accuracy': position.accuracy,
+        });
+        return;
+      }
+      DiagnosticLogger.I.log('gps_fix_received', {
+        'lat': position.latitude,
+        'lng': position.longitude,
+        'accuracy': position.accuracy,
+        'speed': position.speed,
+      });
 
       // Distance quality filters (order: movement → timestamp → speed → accumulate)
       if (_lastPosition != null) {
@@ -641,20 +618,52 @@ class SessionTrackingTaskHandler extends TaskHandler {
         );
 
         // 1. Minimum movement filter — discard GPS jitter
-        if (meters < _minMovementMeters) return;
+        if (meters < _minMovementMeters) {
+          DiagnosticLogger.I.log('gps_fix_rejected', {
+            'reason': 'movement_too_small',
+            'meters': meters,
+          });
+          return;
+        }
 
         // 2. Timestamp validity — reject fixes with duplicate/invalid timestamps
         final timeDiffSecs = position.timestamp
             .difference(_lastPosition!.timestamp)
             .inSeconds
             .abs();
-        if (timeDiffSecs <= 0) return;
+        if (timeDiffSecs <= 0) {
+          DiagnosticLogger.I.log('gps_fix_rejected', {
+            'reason': 'duplicate_timestamp',
+          });
+          return;
+        }
 
         // 3. Speed spike detection
         final speedMps = meters / timeDiffSecs;
-        if (speedMps > _maxSpeedMps) return;
+        if (speedMps > _maxSpeedMps) {
+          DiagnosticLogger.I.log('gps_fix_rejected', {
+            'reason': 'speed_too_high',
+            'speedMps': speedMps,
+          });
+          return;
+        }
 
-        _totalDistanceKm += meters / 1000;
+        // 4. STILL freeze — when the activity classifier reports STILL, GPS
+        // jitter that slips past the 30 m filter is not real movement. Don't
+        // accumulate distance, but keep buffering the point and updating
+        // RTDB so the session stays live on the dashboard.
+        if (_activityType == 'STILL') {
+          DiagnosticLogger.I.log('distance_frozen', {
+            'reason': 'activity_still',
+            'cumulativeKm': _totalDistanceKm,
+          });
+        } else {
+          _totalDistanceKm += meters / 1000;
+          DiagnosticLogger.I.log('distance_added', {
+            'segmentKm': meters / 1000,
+            'cumulativeKm': _totalDistanceKm,
+          });
+        }
       }
 
       _lastPosition = position;
@@ -750,7 +759,7 @@ class SessionTrackingTaskHandler extends TaskHandler {
     return position.accuracy <= _maxAccuracyMeters;
   }
 
-  // ── Heartbeat (every 25 min) ──
+  // ── Heartbeat (every 15 min) ──
 
   Future<void> _sendHeartbeat() async {
     if (_enterpriseId == null || _employeeId == null || _sessionId == null) {
@@ -927,11 +936,6 @@ class SessionTrackingTaskHandler extends TaskHandler {
     return Duration(
       milliseconds: DateTime.now().millisecondsSinceEpoch - startedAtMs,
     ).inSeconds;
-  }
-
-  String _todayDateString() {
-    final now = DateTime.now();
-    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 
   void _sendGenericEvent(Map<String, dynamic> payload) {

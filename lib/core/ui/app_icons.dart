@@ -107,4 +107,5 @@ class AppIcons {
   static const IconData user_tag = HugeIcons.strokeRoundedUserCircle;
   static const IconData volume_high = HugeIcons.strokeRoundedVolumeHigh;
   static const IconData warning_2 = HugeIcons.strokeRoundedAlertCircle;
+  static const IconData bug = HugeIcons.strokeRoundedBug01;
 }

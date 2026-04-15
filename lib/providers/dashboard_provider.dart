@@ -52,6 +52,9 @@ class DashboardProvider extends ChangeNotifier {
   int get offlineCount => employees
       .where((employee) => getEmployeeStatus(employee.id) == 'offline')
       .length;
+  int get offlineTrackingCount => employees
+      .where((e) => getEmployeeStatus(e.id) == 'offline_tracking')
+      .length;
 
   /// Attach the [EnterpriseProvider] that owns the employee list. Must be
   /// called before [initDashboard]. Idempotent.
@@ -258,19 +261,22 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   /// Get employee status from RTDB presence. Reads `presence.status` directly
-  /// — no staleness heuristics. Status is exactly one of: active, break, offline.
+  /// — no staleness heuristics. Status is exactly one of:
+  /// active, break, offline_tracking, offline.
   String getEmployeeStatus(String userId) {
     final rawPresenceStatus = _presenceData[userId]?['status'];
     final presenceStatus = rawPresenceStatus?.toString().toLowerCase();
 
     if (presenceStatus == 'active') return 'active';
     if (presenceStatus == 'break') return 'break';
+    if (presenceStatus == 'offline_tracking') return 'offline_tracking';
     return 'offline';
   }
 
   bool isEmployeeOnClock(String userId) {
     final status = getEmployeeStatus(userId);
-    return status == 'active' || status == 'break';
+    // offline_tracking employees are still working, just in a no-network zone.
+    return status == 'active' || status == 'break' || status == 'offline_tracking';
   }
 
   // Get employee live location

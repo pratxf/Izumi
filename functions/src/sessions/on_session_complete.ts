@@ -37,10 +37,17 @@ interface LocationDocument {
   timestamp: admin.firestore.Timestamp;
   type: "check_in" | "visit" | "check_out";
   title: string;
+  /** Reported GPS accuracy in metres (when available on raw fixes). */
+  accuracy?: number;
 }
 
-const MAX_REALISTIC_SPEED_KMH = 120;
-const MAX_SEGMENT_DISTANCE_KM = 100;
+// Tightened to match field-worker reality: never above 90 km/h, never a
+// 10+ km jump between consecutive fixes. Drops obvious GPS teleports.
+const MAX_REALISTIC_SPEED_KMH = 90;
+const MAX_SEGMENT_DISTANCE_KM = 10;
+// Drop low-accuracy fixes from the distance calculation. They stay in the
+// location history (so the map still shows them) but are not summed.
+const MAX_ACCEPTED_ACCURACY_M = 50;
 
 /**
  * Calculate the distance in kilometres between two lat/lng pairs
@@ -69,12 +76,19 @@ function calculateTrustedDistanceKm(locations: LocationDocument[]): {
   totalDistance: number;
   skippedSegments: number;
 } {
+  // Pre-filter: drop fixes whose reported accuracy exceeds the threshold so
+  // they never anchor a distance segment. Keeps un-accuracied waypoints
+  // (check_in / check_out / visit titles) which never have an accuracy field.
+  const usable = locations.filter(
+    (loc) => loc.accuracy === undefined || loc.accuracy <= MAX_ACCEPTED_ACCURACY_M
+  );
+
   let totalDistance = 0;
   let skippedSegments = 0;
 
-  for (let i = 1; i < locations.length; i++) {
-    const prev = locations[i - 1];
-    const curr = locations[i];
+  for (let i = 1; i < usable.length; i++) {
+    const prev = usable[i - 1];
+    const curr = usable[i];
     const segmentDistanceKm = haversineDistanceKm(
       prev.latitude,
       prev.longitude,

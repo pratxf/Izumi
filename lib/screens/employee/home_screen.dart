@@ -19,6 +19,7 @@ import '../../services/permission_service.dart';
 import '../../services/battery_optimization_service.dart';
 import '../../offline_queue/offline_queue_manager.dart';
 import '../../services/realtime_db_service.dart';
+import '../auth/setup_wizard_screen.dart';
 
 /// Employee Home Screen - Glassmorphism Design
 /// Shows IDLE or ACTIVE state based on session status
@@ -42,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _initProviders();
       _listenUnread();
       _cleanupOrphanedSession();
+      _refreshDeviceHealth();
     });
   }
 
@@ -51,7 +53,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Force-retry any stuck uploads when app comes to foreground
       OfflineQueueManager.instance.retryAllNow();
       _cleanupOrphanedSession();
+      // Settings may have changed while the app was in the background —
+      // refresh the session-start gate so the banner and button stay accurate.
+      _refreshDeviceHealth();
     }
+  }
+
+  void _refreshDeviceHealth() {
+    if (!mounted) return;
+    context.read<SessionProvider>().recheckDeviceHealth();
+  }
+
+  /// Push the setup wizard. If it pops with `true` (all checks passed),
+  /// refresh the provider's blocked state. Returns whether the device is
+  /// now ready for a session.
+  Future<bool> _openSetupWizard() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<bool>(
+        builder: (_) => SetupWizardScreen(
+          onComplete: () {
+            if (mounted) {
+              context.read<SessionProvider>().recheckDeviceHealth();
+            }
+          },
+        ),
+      ),
+    );
+    if (!mounted) return false;
+    await context.read<SessionProvider>().recheckDeviceHealth();
+    if (!mounted) return false;
+    return !context.read<SessionProvider>().sessionStartBlocked;
   }
 
   Future<void> _cleanupOrphanedSession() async {
@@ -151,6 +182,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _startSession() async {
     final auth = context.read<AuthProvider>();
     final session = context.read<SessionProvider>();
+
+    // FIX 11 gate: if the device is not configured for tracking (location
+    // always, battery optimization, notifications), push the setup wizard
+    // instead of starting the session. The user returns to the home screen
+    // after completing the wizard and taps Start again to begin tracking.
+    if (session.sessionStartBlocked) {
+      if (!mounted) return;
+      await _openSetupWizard();
+      return;
+    }
+
     final userId = auth.currentUser?.id ?? '';
     final enterpriseId =
         auth.enterpriseId ?? auth.currentUser?.enterpriseId ?? '';
@@ -402,6 +444,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         isLocationLost: session.isLocationLost),
                     const SizedBox(height: 20),
 
+                    // Device-setup warning banner (FIX 11). Shown only when
+                    // a session is NOT active — once a session is running,
+                    // the blocking settings are already good enough.
+                    if (!isActive && session.sessionStartBlocked)
+                      _buildSetupWarningBanner(session),
+
                     // Location Lost Warning Banner
                     if (session.isLocationLost)
                       _buildLocationLostBanner(session),
@@ -521,6 +569,66 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSetupWarningBanner(SessionProvider session) {
+    return GestureDetector(
+      onTap: _openSetupWizard,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppColors.warning.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(AppIcons.warning_2, color: AppColors.warning, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Phone setup required',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.warning,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Phone settings need to be configured for tracking to work. Tap to fix.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'Fix',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.warning,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

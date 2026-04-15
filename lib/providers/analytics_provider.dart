@@ -331,12 +331,29 @@ class AnalyticsProvider extends ChangeNotifier {
         sessionTasks += session.tasksCompleted;
       }
 
-      // Use whichever source reports more duration (the more complete one)
-      if (summaryDuration >= sessionDuration) {
+      // Prefer dailySummaries — they hold the server-side, accuracy-filtered
+      // distance written by onSessionComplete, and aggregate multiple sessions
+      // per day. Sessions are used only as a top-up for sessions not yet
+      // covered by any summary (e.g. auto-ended sessions that haven't been
+      // processed). This keeps the list view and the detail view aligned on
+      // a single source of truth for distance.
+      if (summaries.isNotEmpty) {
         _totalDurationSecs += summaryDuration;
         _totalDistance += summaryDistance;
         _totalPhotos += summaryPhotos;
         _totalTasks += summaryTasks;
+
+        final coveredSessionIds = <String>{
+          for (final s in summaries) ...s.sessionIds,
+        };
+        for (final session in sessions) {
+          if (coveredSessionIds.contains(session.id)) continue;
+          _totalDurationSecs +=
+              session.totalDuration.clamp(0, _maxSessionDurationSecs);
+          _totalDistance += _sanitizeDistance(session.totalDistance);
+          _totalPhotos += session.photosCount;
+          _totalTasks += session.tasksCompleted;
+        }
       } else {
         _totalDurationSecs += sessionDuration;
         _totalDistance += sessionDistance;
@@ -440,16 +457,29 @@ class AnalyticsProvider extends ChangeNotifier {
       sessionTasks += session.tasksCompleted;
     }
 
-    // Use whichever source reports more duration (the more complete one)
+    // Same source-of-truth rule as _recomputeTotals: prefer dailySummaries,
+    // top up with sessions that aren't covered by any summary.
     int durationSecs;
     double distance;
     int photos;
     int tasks;
-    if (summaryDuration >= sessionDuration) {
+    if (summaries.isNotEmpty) {
       durationSecs = summaryDuration;
       distance = summaryDistance;
       photos = summaryPhotos;
       tasks = summaryTasks;
+
+      final coveredSessionIds = <String>{
+        for (final s in summaries) ...s.sessionIds,
+      };
+      for (final session in sessions) {
+        if (coveredSessionIds.contains(session.id)) continue;
+        durationSecs +=
+            session.totalDuration.clamp(0, _maxSessionDurationSecs);
+        distance += _sanitizeDistance(session.totalDistance);
+        photos += session.photosCount;
+        tasks += session.tasksCompleted;
+      }
     } else {
       durationSecs = sessionDuration;
       distance = sessionDistance;

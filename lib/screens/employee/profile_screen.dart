@@ -471,6 +471,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   label: 'End All Sessions',
                   onTap: () => _endAllSessions(context),
                 ),
+                _buildDivider(),
+                _buildMenuItem(
+                  icon: AppIcons.bug,
+                  label: 'Developer Debug',
+                  onTap: () {
+                    context.push('/admin/debug');
+                  },
+                ),
               ],
             ],
           ),

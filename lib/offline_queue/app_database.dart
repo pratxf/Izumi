@@ -7,7 +7,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _databaseName = 'izumi_tracking.db';
-  static const _databaseVersion = 4;
+  static const _databaseVersion = 5;
 
   Database? _database;
 
@@ -26,6 +26,7 @@ class AppDatabase {
         await _createPendingLocationsTable(db);
         await _createOfflineJobsTable(db);
         await _createSessionStateTable(db);
+        await _createDiagnosticLogsTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -41,6 +42,9 @@ class AppDatabase {
           // (the column was only in the v2→v3 ALTER path, not onCreate).
           // Re-run the ALTER here so every v3 install gets patched.
           await _addIdempotencyKeyColumn(db);
+        }
+        if (oldVersion < 5) {
+          await _createDiagnosticLogsTable(db);
         }
       },
     );
@@ -116,6 +120,28 @@ class AppDatabase {
         status TEXT DEFAULT 'active'
       )
     ''');
+  }
+
+  Future<void> _createDiagnosticLogsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS diagnostic_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,
+        event_type TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        payload TEXT,
+        severity TEXT NOT NULL DEFAULT 'info'
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_diag_session ON diagnostic_logs(session_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_diag_timestamp ON diagnostic_logs(timestamp)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_diag_type ON diagnostic_logs(event_type)',
+    );
   }
 
   Future<void> _addIdempotencyKeyColumn(Database db) async {

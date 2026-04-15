@@ -42,6 +42,7 @@ export { dailySummaryAggregator } from "./scheduled/daily_summary_aggregator";
 export { checkAnalyticsIntegrity } from "./scheduled/check_analytics_integrity";
 export { cleanupOldExports } from "./scheduled/cleanup_old_exports";
 export { sanitizeActiveStats } from "./scheduled/sanitize_active_stats";
+export { sweepSignalLostSessions } from "./scheduled/sweep_signal_lost_sessions";
 
 // ── HTTPS Callable Functions ───────────────────────────────────────────────
 export { exportReport } from "./callable/export_report";

@@ -1,4 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart';
+
+import 'diagnostic_logger.dart';
 
 class RealtimeDbService {
   final FirebaseDatabase _db = FirebaseDatabase.instance;
@@ -58,6 +62,25 @@ class RealtimeDbService {
     return _db.ref('presence/$enterpriseId/$userId').onValue;
   }
 
+  /// Records the latest known connectivity transition under
+  /// `presence/{eid}/{uid}/lastConnectivity`. The server-side sweep uses this
+  /// to distinguish "app dead" (online but no heartbeat) from "in a no-network
+  /// zone" (offline but still tracking locally).
+  ///
+  /// If the device is already offline this write will fail silently — the
+  /// previously recorded "online" state is enough for the sweep to know when
+  /// the device last had network access.
+  Future<void> recordConnectivityChange({
+    required String enterpriseId,
+    required String userId,
+    required bool isOnline,
+  }) async {
+    await _db.ref('presence/$enterpriseId/$userId/lastConnectivity').set({
+      'state': isOnline ? 'online' : 'offline',
+      'changedAt': ServerValue.timestamp,
+    });
+  }
+
   // ── Live Locations ──
 
   Future<void> updateLiveLocation({
@@ -68,13 +91,40 @@ class RealtimeDbService {
     required String address,
     double? accuracy,
   }) async {
-    await _db.ref('liveLocations/$enterpriseId/$userId').set({
-      'latitude': latitude,
-      'longitude': longitude,
-      'address': address,
-      'updatedAt': ServerValue.timestamp,
-      'accuracy': accuracy,
-    });
+    try {
+      await _db.ref('liveLocations/$enterpriseId/$userId').set({
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        'updatedAt': ServerValue.timestamp,
+        'accuracy': accuracy,
+      });
+    } catch (e) {
+      // FIX 7: surface RTDB write failures so the v4 "No location data"
+      // regression is diagnosable. The most common cause is a missing /
+      // stale Firebase Auth ID token after migration; force-refresh it and
+      // retry once.
+      debugPrint('[RealtimeDbService] updateLiveLocation failed: $e — '
+          'refreshing auth and retrying');
+      DiagnosticLogger.I.log('rtdb_live_location_err', {
+        'error': e.toString(),
+        'phase': 'first_attempt',
+      }, 'error');
+      try {
+        await FirebaseAuth.instance.currentUser?.getIdToken(true);
+        await _db.ref('liveLocations/$enterpriseId/$userId').set({
+          'latitude': latitude,
+          'longitude': longitude,
+          'address': address,
+          'updatedAt': ServerValue.timestamp,
+          'accuracy': accuracy,
+        });
+      } catch (retryErr) {
+        debugPrint('[RealtimeDbService] updateLiveLocation retry failed: '
+            '$retryErr');
+        rethrow;
+      }
+    }
   }
 
   Future<void> clearLiveLocation({

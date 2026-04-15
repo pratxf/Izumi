@@ -6,6 +6,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import 'diagnostic_logger.dart';
+
 class NotificationService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
@@ -192,8 +194,36 @@ class NotificationService {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
+    if (_handleDiagnosticControl(message)) return;
     _foregroundMessageController.add(message);
     _showLocalNotification(message);
+  }
+
+  /// Returns true if the message was a `diagnostic_control` command and was
+  /// fully handled (no notification surfaced). FCM payload shape:
+  ///   { type: "diagnostic_control",
+  ///     action: "enable" | "disable" | "upload_now",
+  ///     targetUserId?: "uid_..." }
+  bool _handleDiagnosticControl(RemoteMessage message) {
+    final data = message.data;
+    if (data['type'] != 'diagnostic_control') return false;
+    final action = data['action']?.toString();
+    switch (action) {
+      case 'enable':
+        unawaited(DiagnosticLogger.I.setEnabled(true));
+        break;
+      case 'disable':
+        unawaited(DiagnosticLogger.I.setEnabled(false));
+        break;
+      case 'upload_now':
+        // Set a request marker; the in-app session controller (which has
+        // user/enterprise context) reads this and triggers the upload.
+        unawaited(SharedPreferences.getInstance().then((p) =>
+            p.setInt('diagnostic_logger.upload_request',
+                DateTime.now().millisecondsSinceEpoch)));
+        break;
+    }
+    return true;
   }
 
   void _handleMessageOpenedApp(RemoteMessage message) {

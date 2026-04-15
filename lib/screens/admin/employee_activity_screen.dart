@@ -691,36 +691,11 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
       );
     }
 
-    if (_routePoints.isEmpty) {
-      return Container(
-        height: 190,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: const [
-            BoxShadow(blurRadius: 6, color: Colors.black12),
-          ],
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                AppIcons.map,
-                size: 36,
-                color: AppColors.textTertiary.withValues(alpha: 0.5),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'No route data for this period',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.textTertiary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+    // FIX 9: skip the route card entirely when there's nothing meaningful
+    // to draw (need at least 2 points to render a route). Better than an
+    // "empty state" placeholder that just adds noise.
+    if (_routePoints.length < 2) {
+      return const SizedBox.shrink();
     }
 
     // Compute bounds
@@ -1268,6 +1243,58 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
       final sessionActivities = activityBySession[session.id] ?? [];
       sessionActivities.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
+      // FIX 8: warn when a session has no tracking data between start and end.
+      // Sessions that show only lifecycle events (start, auto_end, etc.)
+      // mean the foreground service was killed before it collected anything,
+      // typically due to OEM battery optimization.
+      const lifecycleEventTypes = {
+        'session_started',
+        'session_ended',
+        'session_auto_ended',
+        'session_resume',
+      };
+      final hasTrackingData = sessionActivities
+          .any((a) => !lifecycleEventTypes.contains(a.type));
+      final isCompleted = !session.isActive;
+      if (isCompleted && !hasTrackingData) {
+        widgets.add(
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: AppColors.warning.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  AppIcons.warning_2,
+                  size: 18,
+                  color: AppColors.warning,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'No tracking data for this session. The tracking service '
+                    'may have been stopped by the device. Ask the employee '
+                    'to check battery optimization settings.',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.warning,
+                      fontSize: 11.5,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
       for (var j = 0; j < sessionActivities.length; j++) {
         final isLastInSession = j == sessionActivities.length - 1;
         final isLastOverall =
@@ -1313,6 +1340,11 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         icon = AppIcons.timer_pause;
         color = AppColors.warning;
         break;
+      case 'session_resume':
+        icon = AppIcons.refresh_circle;
+        // Blue — matches the offline_tracking presence status color.
+        color = AppColors.info;
+        break;
       case 'location_update':
         icon = AppIcons.location;
         color = AppColors.primary;
@@ -1349,6 +1381,9 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         break;
       case 'session_auto_ended':
         displayTitle = 'Session auto-ended';
+        break;
+      case 'session_resume':
+        displayTitle = 'Session resumed';
         break;
       case 'location_update':
         displayTitle = 'Tracked location';
@@ -1583,6 +1618,20 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
           payload?['reason']?.toString().trim() ??
           activity.detail.trim();
       if (reason.isNotEmpty) return reason;
+    }
+
+    // For session_resume, prefer the structured gap from the payload so the
+    // subtitle renders consistently ("Resumed after 23 min gap") regardless
+    // of how the log's `detail` was written.
+    if (activity.type == 'session_resume') {
+      final gapMinutes = (payload?['gapMinutes'] as num?)?.toInt() ??
+          (metadata?['gapMinutes'] as num?)?.toInt();
+      if (gapMinutes != null && gapMinutes > 0) {
+        return 'Resumed after $gapMinutes min gap';
+      }
+      final raw = activity.detail.trim();
+      if (raw.isNotEmpty) return raw;
+      return 'Tracking resumed after service was killed';
     }
 
     return activity.detail.trim();

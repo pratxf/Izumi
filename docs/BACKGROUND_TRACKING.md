@@ -143,6 +143,15 @@ Manages the buffer of pending GPS locations and flushes them to Firestore.
 
 SQLite persistence layer for offline-first location tracking.
 
+Backed by the shared `AppDatabase` (`app_database.dart`), currently at schema version **4**. The same database also hosts the `offline_jobs` table used by `OfflineQueueManager` for chat/send retries. v3 shipped a bug where fresh installs skipped the `idempotency_key` column on `offline_jobs`; v4 fixes `_createOfflineJobsTable` to include `idempotency_key TEXT` plus a unique index, and the `oldVersion < 4` migration re-runs `_addIdempotencyKeyColumn` (ALTER TABLE) to patch broken v3 installs.
+
+`OfflineQueueManager` hardening:
+- `_staleProcessingTimeout` reduced from 60s to **30s**.
+- `start()` now runs `_cleanupStuckJobsOnStartup()` BEFORE the first `processQueue()`: orphaned `processing` jobs are reset to `pending` with retryCount=0, and `error` jobs whose retryCount >= maxRetries are marked `failed`.
+- `_nextEligibleJob` defensively flips exhausted error jobs to `failed` before iterating.
+- `clearFailedChatJobs()` deletes permanently-failed chat jobs and is invoked from `ChatConversationScreen.initState` as a safety net.
+- `_processChatJob` calls `ChatRepository.sendMessage(groupId, message)` without a documentId; dedup uses `clientRequestId` in the payload.
+
 **Tables:**
 
 **`pending_locations`** — GPS points awaiting sync

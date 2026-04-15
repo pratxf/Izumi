@@ -23,6 +23,7 @@ import 'providers/team_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/enterprise_provider.dart';
 import 'services/connectivity_monitor.dart';
+import 'services/diagnostic_logger.dart';
 import 'tracking/tracking_foreground_service.dart';
 
 void main() async {
@@ -46,6 +47,7 @@ void main() async {
 
   TrackingForegroundService.initialize();
   unawaited(ConnectivityMonitor.instance.start());
+  unawaited(DiagnosticLogger.I.init());
 
   // Activate App Check in background — provider registration is instant,
   // actual attestation happens lazily on first Firebase call.

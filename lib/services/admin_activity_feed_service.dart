@@ -371,7 +371,9 @@ class AdminActivityFeedService {
     int photoLimit = 24,
   }) {
     final normalizedIds = _normalizeIds(linkedEmployeeIds);
-    final since = DateTime.now().subtract(window);
+    // Feed resets at IST midnight every day instead of rolling 24h — the
+    // `window` param is retained for API compatibility but ignored here.
+    final since = _istMidnightTodayAsUtcInstant();
     final controller = StreamController<AdminRecentActivityFeedData>();
 
     StreamSubscription<List<ActivityLogModel>>? employeeLogSub;
@@ -896,5 +898,16 @@ class AdminActivityFeedService {
     }
 
     return syntheticLogs;
+  }
+
+  /// Returns the UTC instant that corresponds to today's 00:00 in IST
+  /// (Asia/Kolkata, UTC+5:30). Comparing any DateTime against this instant
+  /// via `isBefore` is zone-safe because Dart's DateTime comparisons use
+  /// the underlying epoch microseconds, not the wall-clock representation.
+  DateTime _istMidnightTodayAsUtcInstant() {
+    const istOffset = Duration(hours: 5, minutes: 30);
+    final nowIst = DateTime.now().toUtc().add(istOffset);
+    final istMidnightWall = DateTime.utc(nowIst.year, nowIst.month, nowIst.day);
+    return istMidnightWall.subtract(istOffset);
   }
 }

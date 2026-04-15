@@ -3,7 +3,7 @@ name: izumi
 description: Izumi BioSciences
 publish_to: 'none'
 
-version: 1.0.61+61
+version: 1.0.62+62
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -60,6 +60,8 @@ dependencies:
   sqflite: ^2.4.2
   connectivity_plus: ^7.0.0
   disable_battery_optimization: ^1.1.2
+  device_info_plus: ^11.2.0
+  android_intent_plus: ^5.2.0
 
   # Image compression
   flutter_image_compress: ^2.3.0

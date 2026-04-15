@@ -549,6 +549,9 @@ Glassmorphism design system | GoRouter navigation | Provider state management
 - Swipe-to-reply gesture
 - Real-time message updates
 - Camera access button
+- Failed messages show the actual Firebase error text inline next to a red refresh-circle icon (tap-to-retry). Backed by `ChatMessageModel.errorMessage: String?`.
+- WhatsApp-style floating date pill overlays the top of the message list, showing the date of the topmost-visible message (`Today` / `Yesterday` / `DD MMM YYYY`, IST / Asia/Kolkata). Fades out after 2s of scroll inactivity via a 200ms `AnimatedOpacity`. Matches the styling of the static per-group date separators, which remain unchanged.
+- On `initState`, the screen calls `OfflineQueueManager.clearFailedChatJobs()` as a safety net to remove permanently-failed chat jobs from the local queue.
 
 ---
 
