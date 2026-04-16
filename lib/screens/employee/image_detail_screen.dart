@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:izumi/core/ui/app_icons.dart';
@@ -132,19 +133,20 @@ class _ImageDetailScreenState extends State<ImageDetailScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Blurred background fill (low-res decode for performance)
+          // Blurred background fill — uses the cached thumbnail (already on
+          // disk from the grid) so it appears immediately instead of flashing
+          // white while the full image downloads.
           Positioned.fill(
             child: ImageFiltered(
               imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-              child: Image.network(
-                widget.imageUrl,
+              child: CachedNetworkImage(
+                imageUrl: (widget.thumbnailUrl?.isNotEmpty == true)
+                    ? widget.thumbnailUrl!
+                    : widget.imageUrl,
                 fit: BoxFit.cover,
-                cacheWidth: 100,
-                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                  if (wasSynchronouslyLoaded || frame != null) return child;
-                  return const SizedBox.shrink();
-                },
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                fadeInDuration: Duration.zero,
+                placeholder: (_, __) => const SizedBox.shrink(),
+                errorWidget: (_, __, ___) => const SizedBox.shrink(),
               ),
             ),
           ),
@@ -275,33 +277,28 @@ class _ImageDetailScreenState extends State<ImageDetailScreen> {
         thumb != null && thumb.isNotEmpty && thumb != widget.imageUrl;
 
     final image = hasThumb
-        ? _ProgressiveNetworkImage(
+        ? _ProgressiveCachedImage(
             thumbnailUrl: thumb,
             fullUrl: widget.imageUrl,
           )
-        : Image.network(
-            widget.imageUrl,
+        : CachedNetworkImage(
+            imageUrl: widget.imageUrl,
             fit: BoxFit.cover,
-            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-              if (wasSynchronouslyLoaded || frame != null) return child;
-              return AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: Container(
-                  color: AppColors.gradientStart,
-                  child: const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white38,
-                      ),
-                    ),
+            fadeInDuration: const Duration(milliseconds: 150),
+            placeholder: (_, __) => Container(
+              color: AppColors.gradientStart,
+              child: const Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white38,
                   ),
                 ),
-              );
-            },
-            errorBuilder: (_, __, ___) => Container(
+              ),
+            ),
+            errorWidget: (_, __, ___) => Container(
               color: AppColors.gradientStart,
               child: const Center(
                 child: Icon(AppIcons.image,
@@ -604,61 +601,43 @@ class _ImageDetailScreenState extends State<ImageDetailScreen> {
   }
 }
 
-/// Shows a cached thumbnail instantly, then crossfades to the full-res image.
-class _ProgressiveNetworkImage extends StatefulWidget {
+/// Shows the cached thumbnail instantly (shared cache with the grid tiles),
+/// then fades the full-resolution image in on top when it finishes loading.
+///
+/// Both layers share the same `flutter_cache_manager` disk cache keyed by URL,
+/// so a thumbnail already fetched by `PhotoTileImage` appears with no network
+/// round-trip — eliminating the white flash.
+class _ProgressiveCachedImage extends StatelessWidget {
   final String thumbnailUrl;
   final String fullUrl;
-  const _ProgressiveNetworkImage({
+  const _ProgressiveCachedImage({
     required this.thumbnailUrl,
     required this.fullUrl,
   });
 
   @override
-  State<_ProgressiveNetworkImage> createState() =>
-      _ProgressiveNetworkImageState();
-}
-
-class _ProgressiveNetworkImageState extends State<_ProgressiveNetworkImage> {
-  bool _fullLoaded = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final stream = NetworkImage(widget.fullUrl).resolve(
-      ImageConfiguration.empty,
-    );
-    stream.addListener(ImageStreamListener(
-      (_, __) {
-        if (mounted) setState(() => _fullLoaded = true);
-      },
-    ));
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedCrossFade(
-      duration: const Duration(milliseconds: 300),
-      crossFadeState:
-          _fullLoaded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-      layoutBuilder: (top, topKey, bottom, bottomKey) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            Positioned.fill(key: bottomKey, child: bottom),
-            Positioned.fill(key: topKey, child: top),
-          ],
-        );
-      },
-      firstChild: Image.network(
-        widget.thumbnailUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(color: AppColors.gradientStart),
-      ),
-      secondChild: Image.network(
-        widget.fullUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(color: AppColors.gradientStart),
-      ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        CachedNetworkImage(
+          imageUrl: thumbnailUrl,
+          fit: BoxFit.cover,
+          fadeInDuration: Duration.zero,
+          placeholder: (_, __) => Container(color: AppColors.gradientStart),
+          errorWidget: (_, __, ___) =>
+              Container(color: AppColors.gradientStart),
+        ),
+        CachedNetworkImage(
+          imageUrl: fullUrl,
+          fit: BoxFit.cover,
+          fadeInDuration: const Duration(milliseconds: 200),
+          // Transparent placeholder so the thumbnail underneath shows through
+          // while the full image is still downloading.
+          placeholder: (_, __) => const SizedBox.shrink(),
+          errorWidget: (_, __, ___) => const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 }

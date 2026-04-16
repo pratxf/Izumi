@@ -1,5 +1,8 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:izumi/core/ui/app_icons.dart';
 import 'package:provider/provider.dart';
@@ -10,9 +13,11 @@ import '../../core/constants/app_typography.dart';
 import '../../models/daily_summary_model.dart';
 import '../../models/session_model.dart';
 import '../../models/session_location_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/session_provider.dart';
 import '../../repositories/daily_summary_repository.dart';
 import '../../repositories/session_repository.dart';
+import '../../services/realtime_db_service.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 
@@ -28,6 +33,7 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   final DailySummaryRepository _summaryRepo = DailySummaryRepository();
   final SessionRepository _sessionRepo = SessionRepository();
+  final RealtimeDbService _rtdb = RealtimeDbService();
 
   int _selectedYear = DateTime.now().year;
   int _selectedMonth = DateTime.now().month;
@@ -44,6 +50,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final Map<int, List<List<SessionLocationModel>>> _locationCache = {};
   // Which session within an expanded day is expanded (day index -> session index)
   int? _expandedSessionIndex;
+
+  // Live RTDB activeStats for the current user's own in-progress session.
+  // Used to add live distance/photos/tasks to today's card while the session
+  // is running (before a dailySummary exists).
+  StreamSubscription<DatabaseEvent>? _activeStatsSubscription;
+  Map<String, dynamic>? _liveActiveStats;
 
   static const _monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -62,6 +74,89 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   SessionProvider? _sessionProvider;
 
+  // ─── Distance helpers ─────────────────────────────────────────────────
+  // Match the pattern used by AnalyticsProvider so completed-day distance
+  // reads from dailySummaries (server-corrected) and active-today adds live
+  // RTDB activeStats on top. Values are sanitized so legacy meter-valued
+  // rows don't inflate the monthly total.
+
+  /// Some older sessions wrote meters into a field labeled km. Realistic
+  /// daily travel caps at ~500 km; anything beyond is a unit bug.
+  static double _sanitizeDistance(double rawKm) {
+    if (rawKm > 500) return rawKm / 1000.0;
+    return rawKm;
+  }
+
+  /// Server-style fallback for sessions without a dailySummary: sum
+  /// Haversine segments, rejecting > 10 km jumps and > 90 km/h speeds —
+  /// same thresholds as `on_session_complete.ts`.
+  static const double _maxSegmentKm = 10.0;
+  static const double _maxSpeedKmh = 90.0;
+
+  static double _haversineKm(
+      double lat1, double lon1, double lat2, double lon2) {
+    const r = 6371.0;
+    final dLat = (lat2 - lat1) * math.pi / 180.0;
+    final dLon = (lon2 - lon1) * math.pi / 180.0;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180.0) *
+            math.cos(lat2 * math.pi / 180.0) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  }
+
+  static double _filteredDistanceKm(List<SessionLocationModel> locations) {
+    if (locations.length < 2) return 0.0;
+    double total = 0.0;
+    for (var i = 1; i < locations.length; i++) {
+      final prev = locations[i - 1];
+      final curr = locations[i];
+      final seg = _haversineKm(
+          prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+      if (seg > _maxSegmentKm) continue;
+      final dtSec = curr.timestamp.difference(prev.timestamp).inSeconds;
+      if (dtSec > 0) {
+        final speedKmh = seg / (dtSec / 3600.0);
+        if (speedKmh > _maxSpeedKmh) continue;
+      }
+      total += seg;
+    }
+    return total;
+  }
+
+  double get _liveDistanceKm => _sanitizeDistance(
+      ((_liveActiveStats?['distance'] as num?)?.toDouble() ?? 0.0));
+
+  /// Distance to display for a given day card. Uses the dailySummary
+  /// total (server-authoritative), plus live RTDB activeStats when today's
+  /// session is still running.
+  double _distanceForDay(DailySummaryModel summary, {required bool isToday}) {
+    double km = _sanitizeDistance(summary.totalDistance);
+    if (isToday && (_sessionProvider?.isSessionActive ?? false)) {
+      km += _liveDistanceKm;
+    }
+    return km;
+  }
+
+  /// Distance for the expanded per-session row. Prefers the server-corrected
+  /// session.totalDistance (written by `on_session_complete`); for active
+  /// sessions shows live RTDB distance; falls back to filtered Haversine
+  /// when a completed session never got the Cloud Function correction.
+  double _distanceForSession(
+    SessionModel session,
+    List<SessionLocationModel> locations, {
+    required bool daySummaryExists,
+  }) {
+    if (session.isActive) {
+      return _liveDistanceKm;
+    }
+    if (!daySummaryExists && locations.length >= 2) {
+      return _filteredDistanceKm(locations);
+    }
+    return _sanitizeDistance(session.totalDistance);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -69,7 +164,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _sessionProvider = context.read<SessionProvider>();
       _wasSessionActive = _sessionProvider!.isSessionActive;
       _sessionProvider!.addListener(_onSessionChanged);
+      _startActiveStatsStream();
       _loadData();
+    });
+  }
+
+  void _startActiveStatsStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    String enterpriseId = '';
+    try {
+      enterpriseId = context.read<AuthProvider>().enterpriseId ?? '';
+    } catch (_) {
+      enterpriseId = '';
+    }
+    if (enterpriseId.isEmpty) return;
+
+    _activeStatsSubscription?.cancel();
+    _activeStatsSubscription =
+        _rtdb.streamUserActiveStats(enterpriseId, user.uid).listen((event) {
+      if (!mounted) return;
+      final data = event.snapshot.value;
+      setState(() {
+        _liveActiveStats =
+            data is Map ? Map<String, dynamic>.from(data) : null;
+      });
+    }, onError: (e) {
+      debugPrint('[HistoryScreen] activeStats stream error: $e');
     });
   }
 
@@ -88,6 +209,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void dispose() {
     _sessionProvider?.removeListener(_onSessionChanged);
+    _activeStatsSubscription?.cancel();
     super.dispose();
   }
 
@@ -433,7 +555,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildMonthlySummary() {
-    final distance = (_monthSummary['totalDistance'] as num?)?.toDouble() ?? 0.0;
+    // Use dailySummaries as the source of truth (server-corrected by
+    // onSessionComplete), not the pre-aggregated repo total — the repo
+    // doesn't sanitize legacy meter values. Add live RTDB activeStats when
+    // the current user's session is running today and today falls in the
+    // selected month.
+    double distance = 0.0;
+    for (final s in _dailySummaries) {
+      if (!s.isOffDuty) {
+        distance += _sanitizeDistance(s.totalDistance);
+      }
+    }
+    final now = DateTime.now();
+    final todayInRange =
+        now.year == _selectedYear && now.month == _selectedMonth;
+    if (todayInRange && (_sessionProvider?.isSessionActive ?? false)) {
+      distance += _liveDistanceKm;
+    }
     final hours = _monthSummary['hours'] ?? 0;
     final minutes = _monthSummary['minutes'] ?? 0;
     final activeDays = _monthSummary['activeDays'] ?? 0;
@@ -710,7 +848,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      '${summary.totalDistance.toStringAsFixed(1)}km',
+                                      '${_distanceForDay(summary, isToday: isToday).toStringAsFixed(1)}km',
                                       style: AppTypography.caption.copyWith(
                                         color: AppColors.textSecondary,
                                       ),
@@ -767,6 +905,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           final sessionLocs = sIdx < perSessionLocations.length
                               ? perSessionLocations[sIdx]
                               : <SessionLocationModel>[];
+                          // A summary exists for this day if the sessionId
+                          // is covered by summary.sessionIds — that's the
+                          // server-corrected path. Otherwise fall back to
+                          // Haversine + filter computation.
+                          final daySummaryExists =
+                              summary.sessionIds.contains(s.id);
+                          final sessionDistanceKm = _distanceForSession(
+                            s,
+                            sessionLocs,
+                            daySummaryExists: daySummaryExists,
+                          );
 
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
@@ -810,7 +959,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                             ),
                                           ),
                                           Text(
-                                            '${s.totalDistance.toStringAsFixed(1)} km',
+                                            '${sessionDistanceKm.toStringAsFixed(1)} km',
                                             style: AppTypography.caption.copyWith(
                                               color: AppColors.success,
                                               fontWeight: FontWeight.bold,

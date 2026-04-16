@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../services/diagnostic_logger.dart';
@@ -18,7 +18,9 @@ class DiagnosticAdminScreen extends StatefulWidget {
 }
 
 class _DiagnosticAdminScreenState extends State<DiagnosticAdminScreen> {
-  bool _enabled = DiagnosticLogger.I.enabled;
+  bool _enabled = DiagnosticLogger.I.isEnabled;
+  bool _broadcasting = false;
+  bool _backfilling = false;
   String _query = '';
 
   @override
@@ -35,11 +37,13 @@ class _DiagnosticAdminScreenState extends State<DiagnosticAdminScreen> {
               'enable or disable diagnostic logging.',
             ),
             value: _enabled,
-            onChanged: (v) async {
-              setState(() => _enabled = v);
-              await DiagnosticLogger.I.setEnabled(v);
-              await _broadcast(v ? 'enable' : 'disable');
-            },
+            onChanged: _broadcasting
+                ? null
+                : (v) async {
+                    setState(() => _enabled = v);
+                    await DiagnosticLogger.I.setEnabled(v);
+                    await _broadcast(v ? 'enable' : 'disable');
+                  },
           ),
           const SizedBox(height: 12),
           TextField(
@@ -56,25 +60,130 @@ class _DiagnosticAdminScreenState extends State<DiagnosticAdminScreen> {
           OutlinedButton.icon(
             icon: const Icon(Icons.cloud_upload),
             label: const Text('Request live dump from all employees'),
-            onPressed: () => _broadcast('upload_now'),
+            onPressed: _broadcasting ? null : () => _broadcast('upload_now'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: _backfilling
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.image_outlined),
+            label: const Text('Backfill thumbnails'),
+            onPressed: _backfilling ? null : _backfillThumbnails,
           ),
         ],
       ),
     );
   }
 
-  Future<void> _broadcast(String action) async {
-    // Topic-based broadcast. The server-side function or the admin can also
-    // call FCM HTTP v1 directly with the same payload.
+  // ─── Backfill thumbnails ──────────────────────────────────────────────
+  // Two-phase: dry-run to count → admin confirms → real run.
+
+  Future<void> _backfillThumbnails() async {
+    setState(() => _backfilling = true);
     try {
-      await FirebaseMessaging.instance.subscribeToTopic(
-        'diag_${widget.enterpriseId}',
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('backfillThumbnails');
+
+      final dryResult = await callable.call(<String, dynamic>{
+        'enterpriseId': widget.enterpriseId,
+        'dryRun': true,
+      });
+      final dryData = Map<String, dynamic>.from(dryResult.data as Map);
+      final affected = (dryData['affected'] as num?)?.toInt() ?? 0;
+      final scanned = (dryData['scanned'] as num?)?.toInt() ?? 0;
+
+      if (!mounted) return;
+      if (affected == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(
+            'No legacy thumbnails found (scanned $scanned recent photos).',
+          )),
+        );
+        return;
+      }
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Backfill thumbnails?'),
+          content: Text(
+            '$affected of $scanned recent photos still have the broken '
+            'legacy thumbnail URL. Update them now?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text('Update $affected'),
+            ),
+          ],
+        ),
       );
-    } catch (_) {}
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Diagnostic broadcast queued: $action')),
-    );
+      if (confirmed != true || !mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backfilling $affected thumbnails…')),
+      );
+
+      final runResult = await callable.call(<String, dynamic>{
+        'enterpriseId': widget.enterpriseId,
+        'dryRun': false,
+      });
+      final runData = Map<String, dynamic>.from(runResult.data as Map);
+      final updated = (runData['updated'] as num?)?.toInt() ?? 0;
+      final failed = (runData['failed'] as num?)?.toInt() ?? 0;
+      final skipped = (runData['skipped'] as num?)?.toInt() ?? 0;
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+          'Backfill done: $updated updated, $skipped skipped, $failed failed.',
+        )),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backfill failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _backfilling = false);
+    }
+  }
+
+  Future<void> _broadcast(String action) async {
+    setState(() => _broadcasting = true);
+    try {
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('broadcastDiagnosticCommand');
+      final result = await callable.call(<String, dynamic>{
+        'enterpriseId': widget.enterpriseId,
+        'action': action,
+      });
+      final data = Map<String, dynamic>.from(result.data as Map);
+      final successCount = data['successCount'] ?? 0;
+      final failureCount = data['failureCount'] ?? 0;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+          'Sent "$action" to $successCount device(s), '
+          '$failureCount failed',
+        )),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Broadcast failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _broadcasting = false);
+    }
   }
 }
 

@@ -10,9 +10,8 @@
     },
     "liveLocations": {
       "$enterpriseId": {
-        ".read": "auth != null && auth.token.enterpriseId == $enterpriseId && (auth.token.role == 'admin' || auth.token.role == 'team_lead')",
+        ".read": "auth != null && auth.token.enterpriseId == $enterpriseId",
         "$userId": {
-          ".read": "auth != null && (auth.uid == $userId || ((auth.token.role == 'admin' || auth.token.role == 'team_lead') && auth.token.enterpriseId == $enterpriseId))",
           ".write": "auth != null && auth.uid == $userId"
         }
       }

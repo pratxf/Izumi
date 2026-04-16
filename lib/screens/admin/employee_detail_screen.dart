@@ -19,6 +19,7 @@ import '../../services/geocoding_cache.dart';
 import '../../services/realtime_db_service.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
+import '../../widgets/photo_tile_image.dart';
 
 /// Employee Detail Screen — Live View
 /// Shows real-time employee location on map, stats, activity feed, and photos.
@@ -102,6 +103,52 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     // Firestore streams auto-deliver on resume; no restart needed.
   }
 
+  /// Tear down all live streams and re-subscribe. Used by pull-to-refresh
+  /// and the header refresh button as a secondary safety net for when the
+  /// feed fails to populate on first load (cold Firestore cache, transient
+  /// App Check warmup delay, etc.). Completes when the next feed emission
+  /// arrives or the 15s warmup timer expires — whichever comes first.
+  Future<void> _refreshAll() async {
+    final id = _employeeId;
+    if (id == null) return;
+
+    // Cancel the live-location stream too so its first emission after
+    // restart re-centers the map.
+    _liveLocationSubscription?.cancel();
+    _startLiveLocationStream(id);
+
+    // Fresh feed subscription. Returns a Future that completes when the
+    // next emission lands (real data OR the warmup timer) so the
+    // RefreshIndicator spinner releases at the right moment.
+    final completer = Completer<void>();
+    _feedSubscription?.cancel();
+    _warmupTimer?.cancel();
+
+    Timer? watchdog;
+    watchdog = Timer(const Duration(seconds: 5), () {
+      if (!completer.isCompleted) completer.complete();
+    });
+
+    final prevLoading = _activityLoading;
+    _startRecentFeed(id);
+
+    // _startRecentFeed set _activityLoading = true. Poll briefly so we
+    // release the spinner as soon as it flips false (real data arrived or
+    // warmup fired).
+    void poll() {
+      if (!mounted || completer.isCompleted) return;
+      if (!_activityLoading && prevLoading != _activityLoading) {
+        completer.complete();
+        return;
+      }
+      Future.delayed(const Duration(milliseconds: 100), poll);
+    }
+    poll();
+
+    await completer.future;
+    watchdog.cancel();
+  }
+
   // ── Feed ──
 
   void _startRecentFeed(String employeeId) {
@@ -119,10 +166,11 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     final queryIds =
         context.read<EnterpriseProvider>().resolveLinkedIds(employeeId);
 
-    // 15s — gives Firestore enough time to warm up on cold start
-    // (App Check attestation + WebSocket open can take 3-8s) before we
-    // give up and force the empty-state UI.
-    _warmupTimer = Timer(const Duration(seconds: 15), () {
+    // 5s — fast path shows data as soon as Firestore responds; slow path
+    // flips to the tap-to-refresh empty state quickly instead of a 15s
+    // spinner. The subscription is NOT cancelled here — if data arrives
+    // after the timeout fires, the listener still updates the UI.
+    _warmupTimer = Timer(const Duration(seconds: 5), () {
       if (mounted && _activityLoading) {
         setState(() {
           _activityLoading = false;
@@ -481,9 +529,13 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
 
               // ── Scrollable content ──
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
-                  child: Column(
+                child: RefreshIndicator(
+                  onRefresh: _refreshAll,
+                  color: AppColors.primary,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Mini route map
@@ -517,6 +569,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
                       _buildPhotosSection(),
                     ],
                   ),
+                  ),
                 ),
               ),
             ],
@@ -535,7 +588,34 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       title: widget.name,
       type: AppHeaderType.secondary,
       showAvatar: false,
-      actions: [_buildStatusPill(status)],
+      actions: [
+        _buildRefreshButton(),
+        const SizedBox(width: 8),
+        _buildStatusPill(status),
+      ],
+    );
+  }
+
+  /// Small glass-style refresh button matching the header's back-arrow
+  /// visual (40×40, 14px radius, glassPrimary background). Taps trigger
+  /// [_refreshAll] — same flow as pull-to-refresh.
+  Widget _buildRefreshButton() {
+    return GestureDetector(
+      onTap: () => _refreshAll(),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: Icon(
+          AppIcons.refresh,
+          size: 18,
+          color: AppColors.textPrimary,
+        ),
+      ),
     );
   }
 
@@ -762,20 +842,36 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     }
 
     if (_activityLogs.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.only(top: 32),
-          child: Column(
-            children: [
-              Icon(AppIcons.activity, size: 48, color: AppColors.textTertiary),
-              const SizedBox(height: 16),
-              Text(
-                'No activity in the last 24 hours',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textSecondary,
+      // Tap-to-retry affordance. If the warmup timer expired before
+      // Firestore's first real response arrived (or the stream errored
+      // silently), the user would otherwise be stuck on this screen.
+      return GestureDetector(
+        onTap: () => _refreshAll(),
+        behavior: HitTestBehavior.opaque,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 32),
+            child: Column(
+              children: [
+                Icon(AppIcons.activity,
+                    size: 48, color: AppColors.textTertiary),
+                const SizedBox(height: 16),
+                Text(
+                  'No activity in the last 24 hours',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  'Tap to refresh',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -1052,21 +1148,20 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
   }
 
   Widget _buildPhotoTile(PhotoModel photo) {
-    final displayUrl = (photo.thumbnailUrl?.isNotEmpty == true)
+    final thumbUrl = photo.thumbnailUrl?.isNotEmpty == true
         ? photo.thumbnailUrl!
-        : (photo.imageUrl.isNotEmpty)
-            ? photo.imageUrl
-            : null;
+        : photo.imageUrl;
+    final fullUrl = photo.imageUrl;
     final heroTag = 'detail_photo_${photo.id}';
 
     return GestureDetector(
       onTap: () {
-        if (photo.imageUrl.isNotEmpty) {
-          precacheImage(NetworkImage(photo.imageUrl), context);
+        if (fullUrl.isNotEmpty) {
+          precacheImage(CachedNetworkImageProvider(fullUrl), context);
         }
         context.push('/employee/image-detail', extra: {
-          'imageUrl': photo.imageUrl,
-          'thumbnailUrl': displayUrl ?? '',
+          'imageUrl': fullUrl,
+          'thumbnailUrl': thumbUrl,
           'location': photo.location,
           'capturedBy': widget.name,
           'employeeId': photo.employeeId,
@@ -1098,24 +1193,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
             children: [
               Hero(
                 tag: heroTag,
-                child: displayUrl == null
-                    ? Container(
-                        color: Colors.grey[300],
-                        child: Icon(Icons.image_not_supported,
-                            color: Colors.grey[500]),
-                      )
-                    : CachedNetworkImage(
-                        imageUrl: displayUrl,
-                        cacheKey: photo.id,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) =>
-                            Container(color: Colors.grey[200]),
-                        errorWidget: (context, url, error) => Container(
-                          color: Colors.grey[300],
-                          child: Icon(Icons.broken_image,
-                              color: Colors.grey[500]),
-                        ),
-                      ),
+                child: PhotoTileImage(thumbUrl: thumbUrl, fullUrl: fullUrl),
               ),
               // Time overlay
               Positioned(

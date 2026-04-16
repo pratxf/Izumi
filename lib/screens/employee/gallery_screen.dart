@@ -20,6 +20,7 @@ import '../../offline_queue/offline_queue_manager.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 import '../../widgets/inputs/text_input_field.dart';
+import '../../widgets/photo_tile_image.dart';
 
 /// Employee Gallery Screen - Photo gallery with glassmorphism design
 class GalleryScreen extends StatefulWidget {
@@ -457,12 +458,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Widget _buildPhotoTile(PhotoModel photo, AuthProvider auth) {
-    final displayUrl = (photo.thumbnailUrl?.isNotEmpty == true)
+    final thumbUrl = photo.thumbnailUrl?.isNotEmpty == true
         ? photo.thumbnailUrl!
-        : (photo.imageUrl.isNotEmpty)
-            ? photo.imageUrl
-            : null;
-    final imageUrl = displayUrl ?? '';
+        : photo.imageUrl;
+    final fullUrl = photo.imageUrl;
     final heroTag = 'photo_${photo.id}';
     final capturedBy = _resolveCapturedBy(photo, auth);
 
@@ -487,13 +486,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
           return;
         }
         // Precache full image so detail screen shows it faster
-        if (photo.uploadStatus == UploadStatus.success &&
-            photo.imageUrl.isNotEmpty) {
-          precacheImage(NetworkImage(photo.imageUrl), context);
+        if (photo.uploadStatus == UploadStatus.success && fullUrl.isNotEmpty) {
+          precacheImage(CachedNetworkImageProvider(fullUrl), context);
         }
         context.push('/employee/image-detail', extra: {
-          'imageUrl': photo.imageUrl,
-          'thumbnailUrl': imageUrl,
+          'imageUrl': fullUrl,
+          'thumbnailUrl': thumbUrl,
           'location': photo.location,
           'capturedBy': capturedBy,
           'employeeId': photo.employeeId,
@@ -535,24 +533,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           ),
                         ),
                       )
-                    : displayUrl == null
-                        ? Container(
-                            color: Colors.grey[300],
-                            child: Icon(Icons.image_not_supported,
-                                color: Colors.grey[500]),
-                          )
-                        : CachedNetworkImage(
-                            imageUrl: displayUrl,
-                            cacheKey: photo.id,
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) =>
-                                Container(color: Colors.grey[200]),
-                            errorWidget: (context, url, error) => Container(
-                              color: Colors.grey[300],
-                              child: Icon(Icons.broken_image,
-                                  color: Colors.grey[500]),
-                            ),
-                          ),
+                    : PhotoTileImage(thumbUrl: thumbUrl, fullUrl: fullUrl),
               ),
               if (photo.uploadStatus == UploadStatus.pending)
                 Container(

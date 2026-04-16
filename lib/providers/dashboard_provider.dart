@@ -192,11 +192,32 @@ class DashboardProvider extends ChangeNotifier {
                 Map<String, dynamic>.from(value);
           }
         });
+        debugPrint('[DashboardProvider] liveLocations snapshot — '
+            '${_liveLocationData.length} entries; keys='
+            '${_liveLocationData.keys.toList()}');
+        for (final entry in _liveLocationData.entries) {
+          final lat = entry.value['latitude'];
+          final lng = entry.value['longitude'];
+          final addr = entry.value['address'];
+          final updatedAt = entry.value['updatedAt'];
+          debugPrint('[DashboardProvider] liveLocation[${entry.key}] '
+              'lat=$lat lng=$lng addr=$addr updatedAt=$updatedAt');
+        }
         notifyListeners();
       } else {
+        debugPrint('[DashboardProvider] liveLocations snapshot is null/empty '
+            '(type=${data.runtimeType})');
         _liveLocationData = {};
         notifyListeners();
       }
+    }, onError: (Object error, StackTrace stackTrace) {
+      // Without this handler the stream errors silently and
+      // _liveLocationData stays empty, which the UI renders as
+      // "No location data" with no way for the admin to understand why.
+      debugPrint('[DashboardProvider] liveLocations STREAM ERROR: $error\n'
+          '$stackTrace');
+      _error = 'Live locations unavailable: $error';
+      notifyListeners();
     });
   }
 

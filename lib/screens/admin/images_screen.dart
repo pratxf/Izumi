@@ -13,6 +13,7 @@ import '../../providers/photo_provider.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/inputs/text_input_field.dart';
 import '../../widgets/navigation/app_header.dart';
+import '../../widgets/photo_tile_image.dart';
 
 /// Admin Images Screen - Cloud images gallery with employee filter
 class ImagesScreen extends StatefulWidget {
@@ -327,21 +328,20 @@ class _ImagesScreenState extends State<ImagesScreen> {
 
   Widget _buildPhotoTile(PhotoModel photo) {
     final initials = _getEmployeeInitials(photo.employeeId);
-    final displayUrl = (photo.thumbnailUrl?.isNotEmpty == true)
+    final thumbUrl = photo.thumbnailUrl?.isNotEmpty == true
         ? photo.thumbnailUrl!
-        : (photo.imageUrl.isNotEmpty)
-            ? photo.imageUrl
-            : null;
+        : photo.imageUrl;
+    final fullUrl = photo.imageUrl;
     final heroTag = 'admin_photo_${photo.id}';
 
     return GestureDetector(
       onTap: () {
-        if (photo.imageUrl.isNotEmpty) {
-          precacheImage(NetworkImage(photo.imageUrl), context);
+        if (fullUrl.isNotEmpty) {
+          precacheImage(CachedNetworkImageProvider(fullUrl), context);
         }
         context.push('/employee/image-detail', extra: {
-          'imageUrl': photo.imageUrl,
-          'thumbnailUrl': displayUrl ?? '',
+          'imageUrl': fullUrl,
+          'thumbnailUrl': thumbUrl,
           'location': photo.location,
           'capturedBy': _getEmployeeName(photo.employeeId),
           'employeeId': photo.employeeId,
@@ -373,24 +373,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
             children: [
               Hero(
                 tag: heroTag,
-                child: displayUrl == null
-                    ? Container(
-                        color: Colors.grey[300],
-                        child: Icon(Icons.image_not_supported,
-                            color: Colors.grey[500]),
-                      )
-                    : CachedNetworkImage(
-                        imageUrl: displayUrl,
-                        cacheKey: photo.id,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) =>
-                            Container(color: Colors.grey[200]),
-                        errorWidget: (context, url, error) => Container(
-                          color: Colors.grey[300],
-                          child: Icon(Icons.broken_image,
-                              color: Colors.grey[500]),
-                        ),
-                      ),
+                child: PhotoTileImage(thumbUrl: thumbUrl, fullUrl: fullUrl),
               ),
               // Employee Badge (top-left)
               Positioned(

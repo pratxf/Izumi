@@ -91,14 +91,18 @@ class RealtimeDbService {
     required String address,
     double? accuracy,
   }) async {
+    final path = 'liveLocations/$enterpriseId/$userId';
+    final payload = {
+      'latitude': latitude,
+      'longitude': longitude,
+      'address': address,
+      'updatedAt': ServerValue.timestamp,
+      'accuracy': accuracy,
+    };
     try {
-      await _db.ref('liveLocations/$enterpriseId/$userId').set({
-        'latitude': latitude,
-        'longitude': longitude,
-        'address': address,
-        'updatedAt': ServerValue.timestamp,
-        'accuracy': accuracy,
-      });
+      await _db.ref(path).set(payload);
+      debugPrint('[RealtimeDbService] updateLiveLocation OK path=$path '
+          'lat=$latitude lng=$longitude acc=$accuracy addr.len=${address.length}');
     } catch (e) {
       // FIX 7: surface RTDB write failures so the v4 "No location data"
       // regression is diagnosable. The most common cause is a missing /
@@ -112,13 +116,8 @@ class RealtimeDbService {
       }, 'error');
       try {
         await FirebaseAuth.instance.currentUser?.getIdToken(true);
-        await _db.ref('liveLocations/$enterpriseId/$userId').set({
-          'latitude': latitude,
-          'longitude': longitude,
-          'address': address,
-          'updatedAt': ServerValue.timestamp,
-          'accuracy': accuracy,
-        });
+        await _db.ref(path).set(payload);
+        debugPrint('[RealtimeDbService] updateLiveLocation retry OK path=$path');
       } catch (retryErr) {
         debugPrint('[RealtimeDbService] updateLiveLocation retry failed: '
             '$retryErr');
@@ -135,7 +134,15 @@ class RealtimeDbService {
   }
 
   Stream<DatabaseEvent> streamLiveLocations(String enterpriseId) {
-    return _db.ref('liveLocations/$enterpriseId').onValue;
+    final path = 'liveLocations/$enterpriseId';
+    debugPrint('[RealtimeDbService] streamLiveLocations subscribing path=$path');
+    return _db.ref(path).onValue.map((event) {
+      final value = event.snapshot.value;
+      final count = value is Map ? value.length : 0;
+      debugPrint('[RealtimeDbService] streamLiveLocations emit path=$path '
+          'type=${value.runtimeType} entries=$count');
+      return event;
+    });
   }
 
   Stream<DatabaseEvent> streamUserLiveLocation(

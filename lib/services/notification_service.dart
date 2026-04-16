@@ -216,11 +216,7 @@ class NotificationService {
         unawaited(DiagnosticLogger.I.setEnabled(false));
         break;
       case 'upload_now':
-        // Set a request marker; the in-app session controller (which has
-        // user/enterprise context) reads this and triggers the upload.
-        unawaited(SharedPreferences.getInstance().then((p) =>
-            p.setInt('diagnostic_logger.upload_request',
-                DateTime.now().millisecondsSinceEpoch)));
+        unawaited(DiagnosticLogger.I.uploadRecent());
         break;
     }
     return true;

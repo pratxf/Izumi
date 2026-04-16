@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
@@ -26,6 +28,46 @@ import 'services/connectivity_monitor.dart';
 import 'services/diagnostic_logger.dart';
 import 'tracking/tracking_foreground_service.dart';
 
+/// Must match pubspec `version:`. Bumped in lockstep with release builds.
+const String kAppVersion = '1.0.63+63';
+
+/// FCM background handler. Runs in a dedicated isolate — the singleton
+/// graph in the main isolate is NOT accessible. For diagnostic_control,
+/// writes the desired flag to SharedPreferences and leaves the in-app
+/// [DiagnosticLogger] to pick it up on next foreground (via
+/// [DiagnosticLogger.reloadFromPrefs] or a cold start of [DiagnosticLogger.init]).
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (_) {}
+
+  final data = message.data;
+  if (data['type'] != 'diagnostic_control') return;
+  final action = data['action']?.toString();
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    switch (action) {
+      case 'enable':
+        await prefs.setBool('diagnostic_logger.enabled', true);
+        break;
+      case 'disable':
+        await prefs.setBool('diagnostic_logger.enabled', false);
+        break;
+      case 'upload_now':
+        // No auth / provider graph in this isolate — defer to the main
+        // isolate. reloadFromPrefs drains this marker on resume/init.
+        await prefs.setInt(
+          'diagnostic_logger.pending_upload',
+          DateTime.now().millisecondsSinceEpoch,
+        );
+        break;
+    }
+  } catch (_) {/* swallow — never crash the background isolate */}
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -44,6 +86,8 @@ void main() async {
   // here — setting `cacheSizeBytes: UNLIMITED` on top of an existing default
   // (100MB LRU) cache stalled the internal mutation queue on some Android
   // builds, causing queued chat writes to hang indefinitely. Default is fine.
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   TrackingForegroundService.initialize();
   unawaited(ConnectivityMonitor.instance.start());
@@ -116,18 +160,29 @@ class _IzumiRouter extends StatefulWidget {
   State<_IzumiRouter> createState() => _IzumiRouterState();
 }
 
-class _IzumiRouterState extends State<_IzumiRouter> {
+class _IzumiRouterState extends State<_IzumiRouter>
+    with WidgetsBindingObserver {
   late final GoRouter _router;
   final List<StreamSubscription> _notificationSubs = [];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final authProvider = context.read<AuthProvider>();
     _router = createAppRouter(authProvider);
     _wireEnterpriseIntoConsumers();
     _setupNotificationListeners(authProvider);
     _setupEnterpriseBootstrap(authProvider);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Background FCM may flip the diagnostic flag or queue an upload; the
+    // main isolate's in-memory state is stale until we re-read prefs.
+    if (state == AppLifecycleState.resumed) {
+      unawaited(DiagnosticLogger.I.reloadFromPrefs());
+    }
   }
 
   /// Attach the [EnterpriseProvider] to every provider that needs the
@@ -187,6 +242,20 @@ class _IzumiRouterState extends State<_IzumiRouter> {
       // Step 2: Kick off dashboard streams now that employees are available
       final dashboardProvider = context.read<DashboardProvider>();
       dashboardProvider.initWithEnterpriseId(enterpriseId);
+
+      // Step 3: Configure DiagnosticLogger so any upload call (session end
+      // or FCM upload_now) knows where to write and under which user.
+      final userId = authProvider.currentUser?.id;
+      if (userId != null) {
+        DiagnosticLogger.I.configure(
+          enterpriseId: enterpriseId,
+          userId: userId,
+          appVersion: kAppVersion,
+        );
+        // If a background FCM queued an upload before auth resolved,
+        // drain it now that we have context.
+        unawaited(DiagnosticLogger.I.reloadFromPrefs());
+      }
     }
 
     authProvider.addListener(() {
@@ -263,6 +332,7 @@ class _IzumiRouterState extends State<_IzumiRouter> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final sub in _notificationSubs) {
       sub.cancel();
     }
