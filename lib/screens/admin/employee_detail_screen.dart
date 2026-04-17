@@ -17,6 +17,7 @@ import '../../repositories/session_repository.dart';
 import '../../services/admin_activity_feed_service.dart';
 import '../../services/geocoding_cache.dart';
 import '../../services/realtime_db_service.dart';
+import '../../services/unified_data_layer.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 import '../../widgets/photo_tile_image.dart';
@@ -68,8 +69,12 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
   // ── Subscriptions & timers ──
   StreamSubscription<AdminRecentActivityFeedData>? _feedSubscription;
   StreamSubscription<dynamic>? _liveLocationSubscription;
-  Timer? _warmupTimer;
+  StreamSubscription<double>? _distanceSubscription;
   Timer? _liveDurationTimer;
+
+  // ── Unified distance (km) — sourced from UnifiedDataLayer so every
+  //    screen shows the same number for the same employee/day. ──
+  double _distanceKm = 0.0;
 
   // ── Live duration ──
   String _liveDurationDisplay = '--:--:--';
@@ -94,7 +99,27 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
         _startRecentFeed(id);
         _startLiveLocationStream(id);
         _startLiveDurationTimer();
+        _subscribeDistance(id);
       }
+    });
+  }
+
+  /// Subscribe to UnifiedDataLayer.streamDistance. This is the ONE source of
+  /// truth for today's distance for the stat card. Ensures this screen,
+  /// history, analytics, and TL monitor all show the same number.
+  void _subscribeDistance(String employeeId) {
+    _distanceSubscription?.cancel();
+    final enterpriseId = context.read<AuthProvider>().enterpriseId;
+    if (enterpriseId == null) return;
+    _distanceSubscription = UnifiedDataLayer.I
+        .streamDistance(
+          employeeId: employeeId,
+          enterpriseId: enterpriseId,
+          date: DateTime.now(),
+        )
+        .listen((km) {
+      if (!mounted) return;
+      setState(() => _distanceKm = km);
     });
   }
 
@@ -103,57 +128,25 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     // Firestore streams auto-deliver on resume; no restart needed.
   }
 
-  /// Tear down all live streams and re-subscribe. Used by pull-to-refresh
-  /// and the header refresh button as a secondary safety net for when the
-  /// feed fails to populate on first load (cold Firestore cache, transient
-  /// App Check warmup delay, etc.). Completes when the next feed emission
-  /// arrives or the 15s warmup timer expires — whichever comes first.
+  /// Tear down all live streams and re-subscribe. Genuine UX refresh for
+  /// pull-to-refresh and the header refresh button.
   Future<void> _refreshAll() async {
     final id = _employeeId;
     if (id == null) return;
 
-    // Cancel the live-location stream too so its first emission after
-    // restart re-centers the map.
     _liveLocationSubscription?.cancel();
     _startLiveLocationStream(id);
 
-    // Fresh feed subscription. Returns a Future that completes when the
-    // next emission lands (real data OR the warmup timer) so the
-    // RefreshIndicator spinner releases at the right moment.
-    final completer = Completer<void>();
     _feedSubscription?.cancel();
-    _warmupTimer?.cancel();
-
-    Timer? watchdog;
-    watchdog = Timer(const Duration(seconds: 5), () {
-      if (!completer.isCompleted) completer.complete();
-    });
-
-    final prevLoading = _activityLoading;
     _startRecentFeed(id);
 
-    // _startRecentFeed set _activityLoading = true. Poll briefly so we
-    // release the spinner as soon as it flips false (real data arrived or
-    // warmup fired).
-    void poll() {
-      if (!mounted || completer.isCompleted) return;
-      if (!_activityLoading && prevLoading != _activityLoading) {
-        completer.complete();
-        return;
-      }
-      Future.delayed(const Duration(milliseconds: 100), poll);
-    }
-    poll();
-
-    await completer.future;
-    watchdog.cancel();
+    _subscribeDistance(id);
   }
 
   // ── Feed ──
 
   void _startRecentFeed(String employeeId) {
     _feedSubscription?.cancel();
-    _warmupTimer?.cancel();
     if (mounted) {
       setState(() {
         _activityLoading = true;
@@ -165,19 +158,6 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     // resolveLinkedIds is an O(1) lookup in a pre-built migration index.
     final queryIds =
         context.read<EnterpriseProvider>().resolveLinkedIds(employeeId);
-
-    // 5s — fast path shows data as soon as Firestore responds; slow path
-    // flips to the tap-to-refresh empty state quickly instead of a 15s
-    // spinner. The subscription is NOT cancelled here — if data arrives
-    // after the timeout fires, the listener still updates the UI.
-    _warmupTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted && _activityLoading) {
-        setState(() {
-          _activityLoading = false;
-          _photosLoading = false;
-        });
-      }
-    });
 
     _feedSubscription = _feedService
         .streamRecentFeed(
@@ -192,27 +172,16 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       final sessionIdsChanged =
           newSessionIds.join(',') != _activeSessionIds.join(',');
 
-      // Flip loading off ONLY when:
-      //   1. This emission has real data (hasData), OR
-      //   2. Loading is already false (warmup timer already gave up)
-      //
-      // A cold-start empty emission (from Firestore cache or the service's
-      // internal 4s fallback) must NOT prematurely show "No activity" —
-      // that tricks the user into navigating away before the real Firestore
-      // response arrives, killing the subscription. Keep the spinner until
-      // real data comes OR the warmup timer fires.
-      final hasData = feed.activities.isNotEmpty || feed.photos.isNotEmpty;
-      final doneLoading = hasData || !_activityLoading;
-
+      // Stream-driven loading: the first emission — empty or not — ends
+      // the spinner. No warmup timer, no tap-to-refresh empty-state hack.
+      // Firestore snapshot streams auto-retry, so a slow first response
+      // resolves itself without any synthetic timeout.
       setState(() {
         _activityLogs = feed.activities;
         _photos = feed.photos;
         _activeSessionIds = newSessionIds;
-        if (doneLoading) {
-          _warmupTimer?.cancel();
-          _activityLoading = false;
-          _photosLoading = false;
-        }
+        _activityLoading = false;
+        _photosLoading = false;
         if (_showAllPhotos && _photos.length <= _collapsedPhotoCount) {
           _showAllPhotos = false;
         }
@@ -229,7 +198,6 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       }
     }, onError: (_) {
       if (!mounted) return;
-      _warmupTimer?.cancel();
       setState(() {
         _activityLoading = false;
         _photosLoading = false;
@@ -492,9 +460,9 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _warmupTimer?.cancel();
     _feedSubscription?.cancel();
     _liveLocationSubscription?.cancel();
+    _distanceSubscription?.cancel();
     _liveDurationTimer?.cancel();
     _mapController?.dispose();
     super.dispose();
@@ -510,12 +478,12 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     final status = _employeeId != null
         ? dashboardProvider.getEmployeeStatus(_employeeId!)
         : (widget.isActive ? 'active' : 'offline');
-    final stats = _employeeId != null
-        ? dashboardProvider.getEmployeeStats(_employeeId!)
-        : null;
 
-    final distanceKm = (stats?['distance'] as num?)?.toDouble() ?? 0.0;
-    final distanceDisplay = '${distanceKm.toStringAsFixed(1)} km';
+    // Distance sourced from UnifiedDataLayer (single source of truth).
+    // DashboardProvider still drives status/presence and backs the live
+    // duration timer, but the displayed distance matches every other
+    // screen now.
+    final distanceDisplay = '${_distanceKm.toStringAsFixed(1)} km';
     final photoCount = _photos.length;
 
     return Scaffold(
@@ -842,36 +810,21 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     }
 
     if (_activityLogs.isEmpty) {
-      // Tap-to-retry affordance. If the warmup timer expired before
-      // Firestore's first real response arrived (or the stream errored
-      // silently), the user would otherwise be stuck on this screen.
-      return GestureDetector(
-        onTap: () => _refreshAll(),
-        behavior: HitTestBehavior.opaque,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 32),
-            child: Column(
-              children: [
-                Icon(AppIcons.activity,
-                    size: 48, color: AppColors.textTertiary),
-                const SizedBox(height: 16),
-                Text(
-                  'No activity in the last 24 hours',
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 32),
+          child: Column(
+            children: [
+              Icon(AppIcons.activity,
+                  size: 48, color: AppColors.textTertiary),
+              const SizedBox(height: 16),
+              Text(
+                'No activity in the last 24 hours',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Tap to refresh',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       );

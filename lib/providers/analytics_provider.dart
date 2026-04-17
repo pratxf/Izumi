@@ -10,6 +10,7 @@ import '../repositories/activity_log_repository.dart';
 import '../repositories/photo_repository.dart';
 import '../services/realtime_db_service.dart';
 import '../services/session_query_helper.dart';
+import '../services/unified_data_layer.dart';
 import 'enterprise_provider.dart';
 
 class AnalyticsProvider extends ChangeNotifier {
@@ -277,13 +278,6 @@ class AnalyticsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sanitize a distance value — some older sessions wrote meters instead of km.
-  /// A realistic day's travel cap is ~500 km. Anything beyond that is meters.
-  static double _sanitizeDistance(double rawKm) {
-    if (rawKm > 500) return rawKm / 1000.0;
-    return rawKm;
-  }
-
   /// Recompute aggregate totals from both completed (Firestore) and
   /// live active (RTDB) sources. No double-counting because RTDB stats
   /// are cleared when a session ends, and dailySummaries are only
@@ -314,7 +308,7 @@ class AnalyticsProvider extends ChangeNotifier {
       int summaryTasks = 0;
       for (final s in summaries) {
         summaryDuration += s.totalDuration.clamp(0, _maxSessionDurationSecs);
-        summaryDistance += _sanitizeDistance(s.totalDistance);
+        summaryDistance += UnifiedDataLayer.sanitizeKm(s.totalDistance);
         summaryPhotos += s.photosCount;
         summaryTasks += s.tasksCompleted;
       }
@@ -326,7 +320,7 @@ class AnalyticsProvider extends ChangeNotifier {
       for (final session in sessions) {
         sessionDuration +=
             session.totalDuration.clamp(0, _maxSessionDurationSecs);
-        sessionDistance += _sanitizeDistance(session.totalDistance);
+        sessionDistance += UnifiedDataLayer.sanitizeKm(session.totalDistance);
         sessionPhotos += session.photosCount;
         sessionTasks += session.tasksCompleted;
       }
@@ -350,7 +344,7 @@ class AnalyticsProvider extends ChangeNotifier {
           if (coveredSessionIds.contains(session.id)) continue;
           _totalDurationSecs +=
               session.totalDuration.clamp(0, _maxSessionDurationSecs);
-          _totalDistance += _sanitizeDistance(session.totalDistance);
+          _totalDistance += UnifiedDataLayer.sanitizeKm(session.totalDistance);
           _totalPhotos += session.photosCount;
           _totalTasks += session.tasksCompleted;
         }
@@ -366,7 +360,7 @@ class AnalyticsProvider extends ChangeNotifier {
     for (final stats in _activeStatsData.values) {
       _totalDurationSecs += _resolveLiveDurationSecs(stats);
       final rawDist = (stats['distance'] as num?)?.toDouble() ?? 0.0;
-      _totalDistance += _sanitizeDistance(rawDist);
+      _totalDistance += UnifiedDataLayer.sanitizeKm(rawDist);
       _totalPhotos += (stats['photosToday'] as num?)?.toInt() ?? 0;
       _totalTasks += (stats['tasksToday'] as num?)?.toInt() ?? 0;
     }
@@ -440,7 +434,7 @@ class AnalyticsProvider extends ChangeNotifier {
     int summaryTasks = 0;
     for (final s in summaries) {
       summaryDuration += s.totalDuration.clamp(0, _maxSessionDurationSecs);
-      summaryDistance += _sanitizeDistance(s.totalDistance);
+      summaryDistance += UnifiedDataLayer.sanitizeKm(s.totalDistance);
       summaryPhotos += s.photosCount;
       summaryTasks += s.tasksCompleted;
     }
@@ -452,7 +446,7 @@ class AnalyticsProvider extends ChangeNotifier {
     int sessionTasks = 0;
     for (final session in sessions) {
       sessionDuration += session.totalDuration.clamp(0, _maxSessionDurationSecs);
-      sessionDistance += _sanitizeDistance(session.totalDistance);
+      sessionDistance += UnifiedDataLayer.sanitizeKm(session.totalDistance);
       sessionPhotos += session.photosCount;
       sessionTasks += session.tasksCompleted;
     }
@@ -476,7 +470,7 @@ class AnalyticsProvider extends ChangeNotifier {
         if (coveredSessionIds.contains(session.id)) continue;
         durationSecs +=
             session.totalDuration.clamp(0, _maxSessionDurationSecs);
-        distance += _sanitizeDistance(session.totalDistance);
+        distance += UnifiedDataLayer.sanitizeKm(session.totalDistance);
         photos += session.photosCount;
         tasks += session.tasksCompleted;
       }
@@ -491,7 +485,7 @@ class AnalyticsProvider extends ChangeNotifier {
     final liveStats = _activeStatsData[employeeId];
     if (liveStats != null) {
       durationSecs += _resolveLiveDurationSecs(liveStats);
-      distance += _sanitizeDistance((liveStats['distance'] as num?)?.toDouble() ?? 0.0);
+      distance += UnifiedDataLayer.sanitizeKm((liveStats['distance'] as num?)?.toDouble() ?? 0.0);
       photos += (liveStats['photosToday'] as num?)?.toInt() ?? 0;
       tasks += (liveStats['tasksToday'] as num?)?.toInt() ?? 0;
     }

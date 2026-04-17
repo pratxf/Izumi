@@ -672,7 +672,6 @@ class SessionProvider extends ChangeNotifier {
         _sessionRepo.endSession(
           sessionId: session.id,
           totalDuration: totalDurationSecs,
-          totalDistance: _distance,
           photosCount: session.photosCount,
           tasksCompleted: session.tasksCompleted,
         ),

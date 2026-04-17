@@ -19,6 +19,7 @@ import '../../providers/auth_provider.dart';
 import '../../repositories/session_repository.dart';
 import '../../services/admin_activity_feed_service.dart';
 import '../../services/geocoding_cache.dart';
+import '../../services/unified_data_layer.dart';
 import '../../widgets/glass/gradient_background.dart';
 
 
@@ -1692,7 +1693,10 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
                 : dayActivity.photoCount)
             : null);
 
-    final distance = dayActivity.summary?.totalDistance ?? 0.0;
+    // Route through UnifiedDataLayer.sanitizeKm so this screen matches
+    // the distance shown elsewhere (dashboard, history, analytics list).
+    final distance = UnifiedDataLayer.sanitizeKm(
+        dayActivity.summary?.totalDistance ?? 0.0);
 
     return {
       'duration': formatDuration(totalDuration),

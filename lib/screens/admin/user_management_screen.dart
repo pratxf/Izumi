@@ -232,45 +232,59 @@ class UserManagementContent extends StatelessWidget {
                   style: AppTypography.label,
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.glassPrimary,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.glassBorder),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: selectedRole,
-                      isExpanded: true,
-                      dropdownColor: AppColors.glassStrong,
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'employee',
-                          child: Text('Field Employee'),
+                if (user.isAdmin)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.glassPrimary,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.glassBorder),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Enterprise Admin',
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                        DropdownMenuItem(
-                          value: 'team_lead',
-                          child: Text('Team Lead'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'admin',
-                          child: Text('Enterprise Admin'),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Admin role cannot be changed from this screen.',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.textTertiary,
+                          ),
                         ),
                       ],
-                      onChanged: isSaving
-                          ? null
-                          : (value) {
-                              if (value != null) {
-                                setModalState(() => selectedRole = value);
-                              }
-                            },
                     ),
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _RolePill(
+                          label: 'Field Employee',
+                          selected: selectedRole == 'employee',
+                          onTap: isSaving
+                              ? null
+                              : () => setModalState(() => selectedRole = 'employee'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _RolePill(
+                          label: 'Team Lead',
+                          selected: selectedRole == 'team_lead',
+                          onTap: isSaving
+                              ? null
+                              : () => setModalState(() => selectedRole = 'team_lead'),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
               ],
             ),
           ),
@@ -321,9 +335,15 @@ class UserManagementContent extends StatelessWidget {
                         }
 
                         if (context.mounted) {
+                          final auth = context.read<AuthProvider>();
+                          final eid = auth.enterpriseId ?? '';
+                          if (eid.isNotEmpty) {
+                            await context.read<UserProvider>().loadUsers(eid);
+                          }
+                          if (!context.mounted) return;
                           Navigator.of(ctx).pop();
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('User updated successfully')),
+                            const SnackBar(content: Text('Role updated')),
                           );
                         }
                       } catch (e) {
@@ -425,6 +445,8 @@ class UserManagementContent extends StatelessWidget {
     );
   }
 
+
+
   Widget _buildUserCard(BuildContext context, UserModel user) {
     return GestureDetector(
       onTap: () => _showEditUserDialog(context, user),
@@ -506,6 +528,52 @@ class UserManagementContent extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RolePill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _RolePill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 48,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : AppColors.glassPrimary,
+          borderRadius: BorderRadius.circular(24),
+          border: selected ? null : Border.all(color: AppColors.glassBorder),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: AppTypography.bodySmall.copyWith(
+              fontWeight: FontWeight.bold,
+              color: selected ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
         ),
       ),
     );

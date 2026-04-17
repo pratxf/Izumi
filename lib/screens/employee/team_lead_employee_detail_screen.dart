@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:izumi/core/ui/app_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -10,10 +11,12 @@ import '../../core/constants/app_typography.dart';
 import '../../models/activity_log_model.dart';
 import '../../models/photo_model.dart';
 import '../../models/task_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/enterprise_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../services/admin_activity_feed_service.dart';
+import '../../services/unified_data_layer.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
@@ -40,27 +43,52 @@ class TeamLeadEmployeeDetailScreen extends StatefulWidget {
 
 class _TeamLeadEmployeeDetailScreenState
     extends State<TeamLeadEmployeeDetailScreen> {
+  static const int _previewPhotoCount = 3;
+
   final AdminActivityFeedService _feedService = AdminActivityFeedService();
   StreamSubscription? _feedSubscription;
-  Timer? _warmupTimer;
+  StreamSubscription<double>? _distanceSubscription;
 
   List<ActivityLogModel> _activities = [];
   List<PhotoModel> _photos = [];
   bool _feedLoading = true;
+
+  // Distance sourced from UnifiedDataLayer so this screen shows the same
+  // number as admin dashboard, analytics, and the employee's own history.
+  double _distanceKm = 0.0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startFeed();
+      _subscribeDistance();
     });
   }
 
   @override
   void dispose() {
     _feedSubscription?.cancel();
-    _warmupTimer?.cancel();
+    _distanceSubscription?.cancel();
     super.dispose();
+  }
+
+  void _subscribeDistance() {
+    final employeeId = widget.employeeId;
+    if (employeeId == null) return;
+    final enterpriseId = context.read<AuthProvider>().enterpriseId;
+    if (enterpriseId == null) return;
+    _distanceSubscription?.cancel();
+    _distanceSubscription = UnifiedDataLayer.I
+        .streamDistance(
+          employeeId: employeeId,
+          enterpriseId: enterpriseId,
+          date: DateTime.now(),
+        )
+        .listen((km) {
+      if (!mounted) return;
+      setState(() => _distanceKm = km);
+    });
   }
 
   void _startFeed() {
@@ -71,8 +99,6 @@ class _TeamLeadEmployeeDetailScreenState
     // then restart with full list" causes the first subscription's first
     // emission to be cancelled before it can propagate, leaving the user
     // staring at an empty state during the cold-start window.
-    //
-    // EnterpriseProvider is guaranteed populated by the splash gate.
     List<String> linkedIds;
     try {
       linkedIds = context
@@ -81,16 +107,6 @@ class _TeamLeadEmployeeDetailScreenState
     } catch (_) {
       linkedIds = [widget.employeeId!];
     }
-
-    // 15s — gives Firestore enough time to warm up on cold start (App Check
-    // attestation + WebSocket open can take 3-8s) before we give up and
-    // force the empty-state UI. Cancelled by the listener on first emission.
-    _warmupTimer?.cancel();
-    _warmupTimer = Timer(const Duration(seconds: 15), () {
-      if (mounted && _feedLoading) {
-        setState(() => _feedLoading = false);
-      }
-    });
 
     _feedSubscription?.cancel();
     _feedSubscription = _feedService
@@ -101,23 +117,16 @@ class _TeamLeadEmployeeDetailScreenState
         )
         .listen((feed) {
       if (!mounted) return;
-      // Flip loading off ONLY when this emission has real data, or the
-      // warmup timer already gave up. A cold-start empty emission must
-      // not prematurely show the empty state — real data could still be
-      // arriving.
-      final hasData = feed.activities.isNotEmpty || feed.photos.isNotEmpty;
-      final doneLoading = hasData || !_feedLoading;
+      // Stream-driven loading: first emission — empty or not — ends the
+      // spinner. No warmup timer. Firestore snapshot streams auto-retry
+      // so a cold connection resolves itself without a synthetic timeout.
       setState(() {
         _activities = feed.activities;
         _photos = feed.photos;
-        if (doneLoading) {
-          _warmupTimer?.cancel();
-          _feedLoading = false;
-        }
+        _feedLoading = false;
       });
     }, onError: (_) {
       if (!mounted) return;
-      _warmupTimer?.cancel();
       setState(() => _feedLoading = false);
     });
   }
@@ -153,7 +162,7 @@ class _TeamLeadEmployeeDetailScreenState
         : null;
 
     final durationSec = (stats?['sessionDuration'] as int?) ?? 0;
-    final distanceKm = (stats?['distance'] as num?)?.toDouble() ?? 0.0;
+    final distanceKm = _distanceKm;
     final photosToday = (stats?['photosToday'] as num?)?.toInt() ?? 0;
     final tasksToday = (stats?['tasksToday'] as num?)?.toInt() ?? 0;
     final address = location?['address'] as String? ?? 'Unknown';
@@ -212,6 +221,10 @@ class _TeamLeadEmployeeDetailScreenState
                       _buildSectionTitle('Photos (${_photos.length})'),
                       const SizedBox(height: 8),
                       _buildPhotoGrid(),
+                      if (_photos.length > _previewPhotoCount) ...[
+                        const SizedBox(height: 12),
+                        _buildViewMorePhotosButton(),
+                      ],
                       const SizedBox(height: 20),
                     ],
 
@@ -368,6 +381,7 @@ class _TeamLeadEmployeeDetailScreenState
   // ── Photos ──
 
   Widget _buildPhotoGrid() {
+    final visible = _photos.take(_previewPhotoCount).toList();
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -376,49 +390,98 @@ class _TeamLeadEmployeeDetailScreenState
         mainAxisSpacing: 8,
         crossAxisSpacing: 8,
       ),
-      itemCount: _photos.length > 6 ? 6 : _photos.length,
-      itemBuilder: (context, index) {
-        final photo = _photos[index];
-        final isLocal = photo.imageUrl.startsWith('/');
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: isLocal
-              ? const ColoredBox(
-                  color: AppColors.glassPrimary,
-                  child: Center(
-                      child: Icon(AppIcons.camera,
-                          color: AppColors.textTertiary)))
-              : () {
-                  final displayUrl =
-                      (photo.thumbnailUrl?.isNotEmpty == true)
-                          ? photo.thumbnailUrl!
-                          : (photo.imageUrl.isNotEmpty)
-                              ? photo.imageUrl
-                              : null;
-                  if (displayUrl == null) {
-                    return Container(
-                      color: Colors.grey[300],
-                      child: Center(
-                          child: Icon(Icons.image_not_supported,
-                              color: Colors.grey[500])),
-                    );
-                  }
-                  return CachedNetworkImage(
-                    imageUrl: displayUrl,
-                    cacheKey: photo.id,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) =>
-                        Container(color: Colors.grey[200]),
-                    errorWidget: (context, url, error) => Container(
-                      color: Colors.grey[300],
-                      child: Center(
-                          child: Icon(Icons.broken_image,
-                              color: Colors.grey[500])),
-                    ),
-                  );
-                }(),
-        );
-      },
+      itemCount: visible.length,
+      itemBuilder: (context, index) => _buildPhotoTile(visible[index]),
+    );
+  }
+
+  Widget _buildPhotoTile(PhotoModel photo) {
+    final isLocal = photo.imageUrl.startsWith('/');
+    final displayUrl = (photo.thumbnailUrl?.isNotEmpty == true)
+        ? photo.thumbnailUrl!
+        : (photo.imageUrl.isNotEmpty ? photo.imageUrl : null);
+
+    Widget image;
+    if (isLocal) {
+      image = const ColoredBox(
+        color: AppColors.glassPrimary,
+        child: Center(
+          child: Icon(AppIcons.camera, color: AppColors.textTertiary),
+        ),
+      );
+    } else if (displayUrl == null) {
+      image = Container(
+        color: Colors.grey[300],
+        child: Center(
+          child: Icon(Icons.image_not_supported, color: Colors.grey[500]),
+        ),
+      );
+    } else {
+      image = CachedNetworkImage(
+        imageUrl: displayUrl,
+        cacheKey: photo.id,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => Container(color: Colors.grey[200]),
+        errorWidget: (context, url, error) => Container(
+          color: Colors.grey[300],
+          child: Center(
+            child: Icon(Icons.broken_image, color: Colors.grey[500]),
+          ),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: isLocal ? null : () => _openPhoto(photo),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: image,
+      ),
+    );
+  }
+
+  void _openPhoto(PhotoModel photo) {
+    final thumbUrl = photo.thumbnailUrl?.isNotEmpty == true
+        ? photo.thumbnailUrl!
+        : photo.imageUrl;
+    final fullUrl = photo.imageUrl;
+    if (fullUrl.isNotEmpty) {
+      precacheImage(CachedNetworkImageProvider(fullUrl), context);
+    }
+    context.push('/employee/image-detail', extra: {
+      'imageUrl': fullUrl,
+      'thumbnailUrl': thumbUrl,
+      'location': photo.location,
+      'capturedBy': widget.name,
+      'employeeId': photo.employeeId,
+      'timestamp': photo.timestamp,
+      'latitude': photo.latitude,
+      'longitude': photo.longitude,
+      'category': photo.category,
+      'name': photo.customerName,
+      'phone': photo.customerPhone,
+      'hasFollowUp': photo.hasFollowUp,
+      'heroTag': 'team_lead_photo_${photo.id}',
+    });
+  }
+
+  Widget _buildViewMorePhotosButton() {
+    return Align(
+      alignment: Alignment.center,
+      child: TextButton(
+        onPressed: () {
+          if (widget.employeeId == null) return;
+          context.push('/admin/employee-images',
+              extra: {'employeeId': widget.employeeId});
+        },
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          textStyle: AppTypography.bodyMedium.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        child: Text('View all ${_photos.length} photos'),
+      ),
     );
   }
 

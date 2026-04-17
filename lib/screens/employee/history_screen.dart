@@ -18,6 +18,7 @@ import '../../providers/session_provider.dart';
 import '../../repositories/daily_summary_repository.dart';
 import '../../repositories/session_repository.dart';
 import '../../services/realtime_db_service.dart';
+import '../../services/unified_data_layer.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 
@@ -80,13 +81,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // RTDB activeStats on top. Values are sanitized so legacy meter-valued
   // rows don't inflate the monthly total.
 
-  /// Some older sessions wrote meters into a field labeled km. Realistic
-  /// daily travel caps at ~500 km; anything beyond is a unit bug.
-  static double _sanitizeDistance(double rawKm) {
-    if (rawKm > 500) return rawKm / 1000.0;
-    return rawKm;
-  }
-
   /// Server-style fallback for sessions without a dailySummary: sum
   /// Haversine segments, rejecting > 10 km jumps and > 90 km/h speeds —
   /// same thresholds as `on_session_complete.ts`.
@@ -125,14 +119,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return total;
   }
 
-  double get _liveDistanceKm => _sanitizeDistance(
+  double get _liveDistanceKm => UnifiedDataLayer.sanitizeKm(
       ((_liveActiveStats?['distance'] as num?)?.toDouble() ?? 0.0));
 
   /// Distance to display for a given day card. Uses the dailySummary
   /// total (server-authoritative), plus live RTDB activeStats when today's
   /// session is still running.
   double _distanceForDay(DailySummaryModel summary, {required bool isToday}) {
-    double km = _sanitizeDistance(summary.totalDistance);
+    double km = UnifiedDataLayer.sanitizeKm(summary.totalDistance);
     if (isToday && (_sessionProvider?.isSessionActive ?? false)) {
       km += _liveDistanceKm;
     }
@@ -154,7 +148,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (!daySummaryExists && locations.length >= 2) {
       return _filteredDistanceKm(locations);
     }
-    return _sanitizeDistance(session.totalDistance);
+    return UnifiedDataLayer.sanitizeKm(session.totalDistance);
   }
 
   @override
@@ -563,7 +557,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     double distance = 0.0;
     for (final s in _dailySummaries) {
       if (!s.isOffDuty) {
-        distance += _sanitizeDistance(s.totalDistance);
+        distance += UnifiedDataLayer.sanitizeKm(s.totalDistance);
       }
     }
     final now = DateTime.now();

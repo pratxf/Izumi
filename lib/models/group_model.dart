@@ -30,12 +30,14 @@ class GroupModel {
     final data = doc.data() as Map<String, dynamic>;
 
     // Support both new `leadIds` array and legacy `leadId` string.
-    List<String> leadIds;
-    if (data['leadIds'] != null) {
-      leadIds = List<String>.from(data['leadIds']);
-    } else {
+    // Also fall back to legacy `leadId` when `leadIds` is present but empty —
+    // some older group docs have `leadIds: []` alongside a populated `leadId`.
+    List<String> leadIds = List<String>.from(data['leadIds'] ?? const []);
+    if (leadIds.isEmpty) {
       final legacy = data['leadId'] as String? ?? '';
-      leadIds = legacy.isNotEmpty ? [legacy] : [];
+      if (legacy.isNotEmpty) {
+        leadIds = [legacy];
+      }
     }
 
     return GroupModel(

@@ -6,6 +6,7 @@ import '../models/daily_summary_model.dart';
 import '../repositories/daily_summary_repository.dart';
 import '../models/user_model.dart';
 import '../services/realtime_db_service.dart';
+import '../services/unified_data_layer.dart';
 import 'enterprise_provider.dart';
 
 class DashboardProvider extends ChangeNotifier {
@@ -242,13 +243,6 @@ class DashboardProvider extends ChangeNotifier {
     });
   }
 
-  /// Sanitize a distance value — some older sessions wrote meters instead of km.
-  /// A realistic day's travel cap is ~500 km. Anything beyond that is meters.
-  static double _sanitizeDistance(double rawKm) {
-    if (rawKm > 500) return rawKm / 1000.0;
-    return rawKm;
-  }
-
   static const int _maxSessionDurationSecs = 16 * 3600; // 16 hours
 
   int _resolveLiveDurationSecs(Map<String, dynamic> stats) {
@@ -320,8 +314,8 @@ class DashboardProvider extends ChangeNotifier {
         employeeStatus == 'active' || employeeStatus == 'break';
     final liveStats = (stats != null && isOnClock) ? stats : null;
 
-    final distance = _sanitizeDistance(summary?.totalDistance ?? 0.0) +
-        _sanitizeDistance((liveStats?['distance'] as num?)?.toDouble() ?? 0.0);
+    final distance = UnifiedDataLayer.sanitizeKm(summary?.totalDistance ?? 0.0) +
+        UnifiedDataLayer.sanitizeKm((liveStats?['distance'] as num?)?.toDouble() ?? 0.0);
     final sessionDuration = (summary?.totalDuration ?? 0) +
         (liveStats != null ? _resolveLiveDurationSecs(liveStats) : 0);
     final photosToday = (summary?.photosCount ?? 0) +

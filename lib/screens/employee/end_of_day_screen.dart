@@ -7,6 +7,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/session_provider.dart';
+import '../../services/unified_data_layer.dart';
 import '../../widgets/glass/gradient_background.dart';
 import '../../widgets/navigation/app_header.dart';
 
@@ -35,15 +36,6 @@ class EndOfDayScreen extends StatefulWidget {
 class _EndOfDayScreenState extends State<EndOfDayScreen> {
   bool _isEnding = false;
 
-  /// Defensive conversion for legacy sessions that stored meters in a field
-  /// labeled km. Mirrors the helper used in AnalyticsProvider /
-  /// DashboardProvider so the end-of-day summary never shows a wildly
-  /// inflated number when the client accumulator is off.
-  static double _sanitizeDistance(double rawKm) {
-    if (rawKm > 500) return rawKm / 1000.0;
-    return rawKm;
-  }
-
   Future<void> _confirmEndSession() async {
     setState(() => _isEnding = true);
 
@@ -62,7 +54,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
     if (result != null) {
       // Show local notification with session summary
       final duration = result['sessionDuration'] as Duration;
-      final dist = _sanitizeDistance(result['distance'] as double);
+      final dist = UnifiedDataLayer.sanitizeKm(result['distance'] as double);
       final hours = duration.inHours;
       final minutes = duration.inMinutes % 60;
       final durationText = hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
@@ -189,7 +181,7 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                                       icon: AppIcons.location,
                                       label: 'Total Distance',
                                       value:
-                                          '${_sanitizeDistance(widget.distance).toStringAsFixed(1)} km',
+                                          '${UnifiedDataLayer.sanitizeKm(widget.distance).toStringAsFixed(1)} km',
                                     ),
                                   ),
                                 ],

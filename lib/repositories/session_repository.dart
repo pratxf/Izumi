@@ -42,15 +42,16 @@ class SessionRepository {
   Future<void> endSession({
     required String sessionId,
     required int totalDuration,
-    required double totalDistance,
     required int photosCount,
     required int tasksCompleted,
   }) async {
+    // Distance is intentionally NOT written here. onSessionComplete
+    // (Cloud Function) recalculates totalDistance from the raw location
+    // trail and is the single source of truth for completed-session distance.
     await _firestoreService.updateDocument(_collection, sessionId, {
       'endTime': Timestamp.fromDate(DateTime.now()),
       'status': 'ended',
       'totalDuration': totalDuration,
-      'totalDistance': totalDistance,
       'photosCount': photosCount,
       'tasksCompleted': tasksCompleted,
     });

@@ -217,11 +217,15 @@ class SyncManager {
         batchCount++;
       }
 
-      // Add session totalDistance + lastSyncAt to the final batch
+      // Update lastSyncAt on the session. Distance is intentionally NOT
+      // written by the client anymore — UnifiedDataLayer reads from RTDB
+      // activeStats (live) and dailySummaries (server-authoritative for
+      // completed sessions). The client write previously produced inflated
+      // numbers because it used loose filters vs. the server Haversine
+      // recalculation.
       currentBatch.set(
           _firestore.collection('sessions').doc(sessionId),
           {
-            'totalDistance': latestDistanceKm,
             'lastSyncAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true));
