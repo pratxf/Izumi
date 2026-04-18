@@ -53,6 +53,8 @@ export { migrateHistoricalPhotos } from "./callable/migrate_historical_photos";
 export { resolveUserOnLogin } from "./callable/resolve_user_on_login";
 export { ensureClaims } from "./callable/ensure_claims";
 export { updateUserRole } from "./callable/update_user_role";
+export { updateUser } from "./callable/update_user";
+export { checkPhoneCollision } from "./callable/check_phone_collision";
 export { syncLinkedChatGroups } from "./callable/sync_linked_chat_groups";
 export { deleteUser } from "./callable/delete_user";
 export { adminCleanup } from "./callable/admin_cleanup";

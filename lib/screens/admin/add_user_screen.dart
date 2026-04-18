@@ -171,6 +171,86 @@ class _AddUserScreenState extends State<AddUserScreen> {
         }
       }
 
+      // Probe Firebase Auth for a stranded record on this phone before
+      // we create a placeholder doc. This catches Auth zombies left over
+      // from prior deletes so the admin sees them explicitly rather than
+      // hitting phone-number-already-exists on first login.
+      final collisionCallable =
+          FirebaseFunctions.instanceFor(region: 'asia-south1')
+              .httpsCallable('checkPhoneCollision');
+      final collisionResp =
+          await collisionCallable.call({'phone': fullPhone});
+      final collision =
+          Map<String, dynamic>.from(collisionResp.data as Map);
+      final verdict = collision['verdict'] as String? ?? 'none';
+      final collisionMessage = collision['message'] as String? ?? '';
+
+      if (verdict == 'otherEnterpriseAuth') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(collisionMessage)),
+          );
+        }
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      if (verdict == 'orphanAuthSameEnterprise' ||
+          verdict == 'unknownAuth') {
+        if (!mounted) return;
+        final shouldClean = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.glassStrong,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            title: Text(
+              'Old account found',
+              style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
+            ),
+            content: Text(
+              '$collisionMessage\n\n'
+              'The old Firebase Auth record (UID: ${collision['authUid']}) '
+              'will be deleted before this user is created.',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(
+                  'Cancel',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(
+                  'Clean up & create',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldClean != true) {
+          if (mounted) setState(() => _isLoading = false);
+          return;
+        }
+
+        final cleanup = FirebaseFunctions.instanceFor(region: 'asia-south1')
+            .httpsCallable('adminCleanup');
+        await cleanup.call({'phone': fullPhone, 'deleteOnly': true});
+      }
+
       final user = UserModel(
         id: FirebaseFirestore.instance.collection('users').doc().id,
         name: name,

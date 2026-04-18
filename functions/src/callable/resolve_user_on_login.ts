@@ -435,36 +435,68 @@ export const resolveUserOnLogin = onCall(
       return { found: true, user: { id: uid, ...userData } };
     }
 
-    // 2. Query by phone number (admin SDK bypasses security rules)
-    let phoneLookup = await db
+    // 2. Query by phone number (admin SDK bypasses security rules).
+    //    We deliberately do NOT limit(1) — a phone may appear in more than
+    //    one enterprise's user list (cross-enterprise reuse). Picking the
+    //    most recently created doc is the pragmatic "intended account" rule;
+    //    we warn when multiple matches exist so operators can audit.
+    const selectNewestDoc = (
+      docs: FirebaseFirestore.QueryDocumentSnapshot[]
+    ): FirebaseFirestore.QueryDocumentSnapshot | null => {
+      if (docs.length === 0) return null;
+      if (docs.length === 1) return docs[0];
+      const sorted = [...docs].sort((a, b) => {
+        const ac = a.data().createdAt as admin.firestore.Timestamp | undefined;
+        const bc = b.data().createdAt as admin.firestore.Timestamp | undefined;
+        const at = ac ? ac.toMillis() : 0;
+        const bt = bc ? bc.toMillis() : 0;
+        return bt - at;
+      });
+      logger.warn(
+        "resolveUserOnLogin: Multiple user docs match this phone; picking newest.",
+        {
+          uid,
+          phoneNumber,
+          matches: sorted.map((d) => ({
+            id: d.id,
+            enterpriseId: d.data().enterpriseId,
+            createdAt: (d.data().createdAt as admin.firestore.Timestamp | undefined)
+              ?.toDate()
+              ?.toISOString(),
+          })),
+        }
+      );
+      return sorted[0];
+    };
+
+    const phoneLookup = await db
       .collection("users")
       .where("phone", "==", phoneNumber)
-      .limit(1)
       .get();
+    let selected = selectNewestDoc(phoneLookup.docs);
 
-    // Fallback: docs may have spaces/dashes in phone field
-    if (phoneLookup.empty) {
+    // Fallback: docs may have spaces/dashes in phone field.
+    if (!selected) {
       const normalizedPhone = phoneNumber.replace(/[\s\-()]/g, "");
       const allUsers = await db.collection("users").get();
-      const match = allUsers.docs.find((doc) => {
+      const matches = allUsers.docs.filter((doc) => {
         const docPhone = (doc.data().phone as string || "").replace(/[\s\-()]/g, "");
         return docPhone === normalizedPhone;
       });
-
-      if (match) {
-        logger.info("resolveUserOnLogin: Found doc via normalized phone.", {
-          uid, docId: match.id, storedPhone: match.data().phone,
-        });
-        await match.ref.update({ phone: phoneNumber });
-        phoneLookup = await db
-          .collection("users")
-          .where("phone", "==", phoneNumber)
-          .limit(1)
-          .get();
+      if (matches.length > 0) {
+        selected = selectNewestDoc(matches);
+        if (selected) {
+          logger.info("resolveUserOnLogin: Found doc via normalized phone.", {
+            uid,
+            docId: selected.id,
+            storedPhone: selected.data().phone,
+          });
+          await selected.ref.update({ phone: phoneNumber });
+        }
       }
     }
 
-    if (phoneLookup.empty) {
+    if (!selected) {
       logger.info(
         "resolveUserOnLogin: No user doc found for phone. New user.",
         { uid, phoneNumber }
@@ -473,7 +505,7 @@ export const resolveUserOnLogin = onCall(
     }
 
     // 3. Found a pre-created doc — migrate to /users/{uid}
-    const existingDoc = phoneLookup.docs[0];
+    const existingDoc = selected;
     const existingData = existingDoc.data();
     const oldDocId = existingDoc.id;
 

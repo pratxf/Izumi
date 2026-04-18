@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:izumi/core/ui/app_icons.dart';
@@ -313,26 +312,24 @@ class UserManagementContent extends StatelessWidget {
 
                       setModalState(() => isSaving = true);
                       try {
-                        final updates = <String, dynamic>{
-                          'name': name,
-                          'phone': phone,
-                          'updatedAt': Timestamp.fromDate(DateTime.now()),
+                        final payload = <String, dynamic>{
+                          'targetUserId': user.id,
                         };
-
-                        await FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(user.id)
-                            .update(updates);
-
-                        if (selectedRole != user.activeRole) {
-                          final callable =
-                              FirebaseFunctions.instanceFor(region: 'asia-south1')
-                                  .httpsCallable('updateUserRole');
-                          await callable.call({
-                            'targetUserId': user.id,
-                            'newRole': selectedRole,
-                          });
+                        if (name != user.name) payload['name'] = name;
+                        if (phone != user.phone) payload['phone'] = phone;
+                        if (!user.isAdmin && selectedRole != user.activeRole) {
+                          payload['role'] = selectedRole;
                         }
+                        if (payload.length == 1) {
+                          // Nothing changed — close silently.
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                          return;
+                        }
+
+                        final callable =
+                            FirebaseFunctions.instanceFor(region: 'asia-south1')
+                                .httpsCallable('updateUser');
+                        await callable.call(payload);
 
                         if (context.mounted) {
                           final auth = context.read<AuthProvider>();
@@ -343,8 +340,21 @@ class UserManagementContent extends StatelessWidget {
                           if (!context.mounted) return;
                           Navigator.of(ctx).pop();
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Role updated')),
+                            const SnackBar(content: Text('User updated')),
                           );
+                        }
+                      } on FirebaseFunctionsException catch (e) {
+                        final msg = e.code == 'already-exists'
+                            ? (e.message ??
+                                'This phone number is already in use.')
+                            : (e.message ?? 'Failed to update user.');
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(msg)),
+                          );
+                        }
+                        if (ctx.mounted) {
+                          setModalState(() => isSaving = false);
                         }
                       } catch (e) {
                         if (context.mounted) {
