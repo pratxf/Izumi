@@ -56,6 +56,7 @@ export { updateUserRole } from "./callable/update_user_role";
 export { syncLinkedChatGroups } from "./callable/sync_linked_chat_groups";
 export { deleteUser } from "./callable/delete_user";
 export { adminCleanup } from "./callable/admin_cleanup";
+export { cleanupOrphanData } from "./callable/cleanup_orphan_data";
 export { forceEndAllSessions } from "./callable/force_end_all_sessions";
 export { backfillActivityLogs } from "./callable/backfill_activity_logs";
 export { backfillSessionDistances } from "./callable/backfill_session_distances";

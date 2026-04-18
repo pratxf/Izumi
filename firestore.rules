@@ -303,6 +303,21 @@ service cloud.firestore {
     }
 
     // =============================================
+    // Deleted Users (Tombstones)
+    // =============================================
+    // Written by the deleteUser / cleanupOrphanData callables (admin SDK
+    // bypasses rules). Analytics and the admin console read these to
+    // exclude deleted users' historical data from enterprise totals.
+    match /deletedUsers/{uid} {
+      // Read: Admin in same enterprise only.
+      allow read: if isAuthenticated() &&
+        isAdmin() && belongsToEnterprise(resource.data.enterpriseId);
+
+      // Write: Cloud Functions only (admin SDK bypasses rules).
+      allow write: if false;
+    }
+
+    // =============================================
     // Activity Logs Collection
     // =============================================
     match /activityLogs/{logId} {
