@@ -458,6 +458,14 @@ class UserManagementContent extends StatelessWidget {
 
 
   Widget _buildUserCard(BuildContext context, UserModel user) {
+    // Placeholder docs live in Firestore until the user logs in for the
+    // first time — only then does a Firebase Auth UID exist and an
+    // fcmToken get written. Surface that state so admins can tell who is
+    // registered vs. who is still waiting on a first login.
+    final isPendingLogin =
+        (user.fcmToken == null || user.fcmToken!.trim().isEmpty) &&
+            !user.isAdmin;
+
     return GestureDetector(
       onTap: () => _showEditUserDialog(context, user),
       child: GlassPanel(
@@ -488,12 +496,42 @@ class UserManagementContent extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    user.name,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          user.name,
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isPendingLogin) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.glassPrimary,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.glassBorder),
+                          ),
+                          child: Text(
+                            'Pending login',
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
