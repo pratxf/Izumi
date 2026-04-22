@@ -15,7 +15,6 @@ import '../repositories/session_repository.dart';
 import '../services/connectivity_monitor.dart';
 import '../services/device_config.dart';
 import '../services/device_health_monitor.dart';
-import '../services/diagnostic_logger.dart';
 import '../services/location_service.dart';
 import '../services/realtime_db_service.dart';
 import '../tracking/pending_location_store.dart';
@@ -419,7 +418,6 @@ class SessionProvider extends ChangeNotifier {
       final sessionId = await _sessionRepo.createSession(session);
       _activeSession = session.copyWith(id: sessionId);
       _distance = 0.0;
-      DiagnosticLogger.I.setSessionId(sessionId);
       _safeNotifyListeners();
 
       // ── 3b. Clear stale SQLite pending locations from previous session
@@ -761,23 +759,6 @@ class SessionProvider extends ChangeNotifier {
         'tasksCompleted': session.tasksCompleted,
         'locations': finalAddress,
       };
-
-      if (DiagnosticLogger.I.isEnabled) {
-        unawaited(
-          DiagnosticLogger.I.uploadSessionReport(
-            sessionId: session.id,
-            sessionSummary: {
-              'durationSec': totalDurationSecs,
-              'distanceKm': _distance,
-              'photosCount': session.photosCount,
-              'tasksCompleted': session.tasksCompleted,
-            },
-          ).catchError((Object e) {
-            debugPrint('[SessionProvider] diagnostic upload failed: $e');
-          }),
-        );
-      }
-      DiagnosticLogger.I.setSessionId(null);
 
       _activeSession = null;
       _distance = 0.0;

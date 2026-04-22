@@ -15,7 +15,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/enterprise_provider.dart';
 import '../../providers/team_provider.dart';
-import '../../services/admin_activity_feed_service.dart';
+import '../../repositories/photo_repository.dart';
 import '../../services/unified_data_layer.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/gradient_background.dart';
@@ -45,13 +45,15 @@ class _TeamLeadEmployeeDetailScreenState
     extends State<TeamLeadEmployeeDetailScreen> {
   static const int _previewPhotoCount = 3;
 
-  final AdminActivityFeedService _feedService = AdminActivityFeedService();
-  StreamSubscription? _feedSubscription;
+  final PhotoRepository _photoRepository = PhotoRepository();
+  StreamSubscription<List<ActivityLogModel>>? _feedSubscription;
+  StreamSubscription<List<PhotoModel>>? _photoSubscription;
   StreamSubscription<double>? _distanceSubscription;
 
   List<ActivityLogModel> _activities = [];
   List<PhotoModel> _photos = [];
   bool _feedLoading = true;
+  String? _feedError;
 
   // Distance sourced from UnifiedDataLayer so this screen shows the same
   // number as admin dashboard, analytics, and the employee's own history.
@@ -69,6 +71,7 @@ class _TeamLeadEmployeeDetailScreenState
   @override
   void dispose() {
     _feedSubscription?.cancel();
+    _photoSubscription?.cancel();
     _distanceSubscription?.cancel();
     super.dispose();
   }
@@ -95,10 +98,7 @@ class _TeamLeadEmployeeDetailScreenState
     if (widget.employeeId == null) return;
 
     // Resolve migration IDs upfront so we open the Firestore stream ONCE
-    // with the full ID set. Splitting this into "start with [currentUid] →
-    // then restart with full list" causes the first subscription's first
-    // emission to be cancelled before it can propagate, leaving the user
-    // staring at an empty state during the cold-start window.
+    // with the full ID set.
     List<String> linkedIds;
     try {
       linkedIds = context
@@ -108,27 +108,39 @@ class _TeamLeadEmployeeDetailScreenState
       linkedIds = [widget.employeeId!];
     }
 
+    final enterpriseId =
+        context.read<AuthProvider>().enterpriseId ?? '';
+
     _feedSubscription?.cancel();
-    _feedSubscription = _feedService
-        .streamRecentFeed(
-          linkedEmployeeIds: linkedIds,
-          window: const Duration(hours: 24),
-          photoLimit: 20,
+    _feedSubscription = UnifiedDataLayer.I
+        .streamActivityFeed(
+          employeeIds: linkedIds,
+          enterpriseId: enterpriseId,
+          from: DateTime.now().subtract(const Duration(hours: 24)),
         )
-        .listen((feed) {
+        .listen((logs) {
       if (!mounted) return;
-      // Stream-driven loading: first emission — empty or not — ends the
-      // spinner. No warmup timer. Firestore snapshot streams auto-retry
-      // so a cold connection resolves itself without a synthetic timeout.
       setState(() {
-        _activities = feed.activities;
-        _photos = feed.photos;
+        _activities = logs;
         _feedLoading = false;
+        _feedError = null;
       });
-    }, onError: (_) {
+    }, onError: (error) {
+      debugPrint('[TeamLeadDetail] Feed error: $error');
       if (!mounted) return;
-      setState(() => _feedLoading = false);
+      setState(() {
+        _feedLoading = false;
+        _feedError = error.toString();
+      });
     });
+
+    _photoSubscription?.cancel();
+    _photoSubscription = _photoRepository
+        .streamPhotosByEmployeeIdsWithLimit(linkedIds, limit: 20)
+        .listen((photos) {
+      if (!mounted) return;
+      setState(() => _photos = photos);
+    }, onError: (_) {});
   }
 
   @override
@@ -504,6 +516,35 @@ class _TeamLeadEmployeeDetailScreenState
               ),
             ),
           )),
+        ),
+      );
+    }
+
+    if (_feedError != null && _activities.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.error_outline,
+                  color: AppColors.critical, size: 48),
+              const SizedBox(height: 12),
+              Text('Failed to load activity',
+                  style: AppTypography.bodySmall
+                      .copyWith(color: AppColors.textTertiary)),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _feedLoading = true;
+                    _feedError = null;
+                  });
+                  _startFeed();
+                },
+                child: const Text('Tap to retry'),
+              ),
+            ],
+          ),
         ),
       );
     }

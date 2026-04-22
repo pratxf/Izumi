@@ -63,4 +63,3 @@ export { forceEndAllSessions } from "./callable/force_end_all_sessions";
 export { backfillActivityLogs } from "./callable/backfill_activity_logs";
 export { backfillSessionDistances } from "./callable/backfill_session_distances";
 export { backfillThumbnails } from "./callable/backfill_thumbnails";
-export { broadcastDiagnosticCommand } from "./callable/broadcast_diagnostic";

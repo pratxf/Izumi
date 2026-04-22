@@ -13,8 +13,8 @@ import '../../models/photo_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/enterprise_provider.dart';
+import '../../repositories/photo_repository.dart';
 import '../../repositories/session_repository.dart';
-import '../../services/admin_activity_feed_service.dart';
 import '../../services/geocoding_cache.dart';
 import '../../services/realtime_db_service.dart';
 import '../../services/unified_data_layer.dart';
@@ -46,7 +46,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
   static const Duration _activityWindow = Duration(hours: 24);
 
   // ── Services ──
-  final AdminActivityFeedService _feedService = AdminActivityFeedService();
+  final PhotoRepository _photoRepository = PhotoRepository();
   final SessionRepository _sessionRepository = SessionRepository();
   final RealtimeDbService _realtimeDbService = RealtimeDbService();
 
@@ -58,6 +58,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
   bool _activityLoading = true;
   bool _photosLoading = true;
   bool _showAllPhotos = false;
+  String? _feedError;
 
   // ── Map state ──
   GoogleMapController? _mapController;
@@ -67,7 +68,8 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
   LatLng? _liveLatLng;
 
   // ── Subscriptions & timers ──
-  StreamSubscription<AdminRecentActivityFeedData>? _feedSubscription;
+  StreamSubscription<List<ActivityLogModel>>? _feedSubscription;
+  StreamSubscription<List<PhotoModel>>? _photoSubscription;
   StreamSubscription<dynamic>? _liveLocationSubscription;
   StreamSubscription<double>? _distanceSubscription;
   Timer? _liveDurationTimer;
@@ -147,61 +149,85 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
 
   void _startRecentFeed(String employeeId) {
     _feedSubscription?.cancel();
+    _photoSubscription?.cancel();
     if (mounted) {
       setState(() {
         _activityLoading = true;
         _photosLoading = true;
+        _feedError = null;
       });
     }
 
     // EnterpriseProvider guarantees the employee list is loaded (splash gate).
-    // resolveLinkedIds is an O(1) lookup in a pre-built migration index.
+    // resolveLinkedIds is an O(1) lookup in a pre-built migration index —
+    // current uid plus any prior migrated-from IDs so legacy logs stay
+    // visible.
     final queryIds =
         context.read<EnterpriseProvider>().resolveLinkedIds(employeeId);
+    final enterpriseId =
+        context.read<AuthProvider>().enterpriseId ?? '';
 
-    _feedSubscription = _feedService
-        .streamRecentFeed(
-          linkedEmployeeIds: queryIds,
-          window: _activityWindow,
-          photoLimit: _photoPreviewLimit,
+    // Activity feed → UnifiedDataLayer. Self-contained Firestore stream,
+    // no provider-state dependency, no warmup timer. First emission — empty
+    // or not — ends the spinner.
+    _feedSubscription = UnifiedDataLayer.I
+        .streamActivityFeed(
+          employeeIds: queryIds,
+          enterpriseId: enterpriseId,
+          from: DateTime.now().subtract(_activityWindow),
         )
-        .listen((feed) {
+        .listen((logs) {
       if (!mounted) return;
 
-      final newSessionIds = feed.activeSessionIds;
+      // Derive session IDs for the map route polyline directly from the
+      // feed — any session with activity in the 24h window.
+      final newSessionIds = <String>{
+        for (final log in logs)
+          if (log.sessionId != null && log.sessionId!.isNotEmpty)
+            log.sessionId!,
+      }.toList();
       final sessionIdsChanged =
           newSessionIds.join(',') != _activeSessionIds.join(',');
 
-      // Stream-driven loading: the first emission — empty or not — ends
-      // the spinner. No warmup timer, no tap-to-refresh empty-state hack.
-      // Firestore snapshot streams auto-retry, so a slow first response
-      // resolves itself without any synthetic timeout.
       setState(() {
-        _activityLogs = feed.activities;
-        _photos = feed.photos;
+        _activityLogs = logs;
         _activeSessionIds = newSessionIds;
         _activityLoading = false;
-        _photosLoading = false;
-        if (_showAllPhotos && _photos.length <= _collapsedPhotoCount) {
-          _showAllPhotos = false;
-        }
       });
 
       if (sessionIdsChanged) {
         _loadRouteFromSessions(newSessionIds);
       }
 
-      // Fallback: if no RTDB live location and no route, use last
-      // location_update from the activity feed for the map marker
       if (_liveLatLng == null && _routePoints.isEmpty) {
-        _applyFeedLocationFallback(feed.activities);
+        _applyFeedLocationFallback(logs);
       }
-    }, onError: (_) {
+    }, onError: (error) {
+      debugPrint('[EmployeeDetail] Feed error: $error');
       if (!mounted) return;
       setState(() {
         _activityLoading = false;
-        _photosLoading = false;
+        _feedError = error.toString();
       });
+    });
+
+    // Photos → PhotoRepository directly. Same independence guarantee:
+    // its own Firestore query, no provider-state dependency.
+    _photoSubscription = _photoRepository
+        .streamPhotosByEmployeeIdsWithLimit(queryIds,
+            limit: _photoPreviewLimit)
+        .listen((photos) {
+      if (!mounted) return;
+      setState(() {
+        _photos = photos;
+        _photosLoading = false;
+        if (_showAllPhotos && _photos.length <= _collapsedPhotoCount) {
+          _showAllPhotos = false;
+        }
+      });
+    }, onError: (_) {
+      if (!mounted) return;
+      setState(() => _photosLoading = false);
     });
   }
 
@@ -461,6 +487,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _feedSubscription?.cancel();
+    _photoSubscription?.cancel();
     _liveLocationSubscription?.cancel();
     _distanceSubscription?.cancel();
     _liveDurationTimer?.cancel();
@@ -804,6 +831,32 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
             width: 24,
             height: 24,
             child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
+      );
+    }
+
+    if (_feedError != null && _activityLogs.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 32),
+          child: Column(
+            children: [
+              Icon(AppIcons.close_circle,
+                  size: 48, color: AppColors.critical),
+              const SizedBox(height: 16),
+              Text(
+                'Failed to load activity',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _refreshAll,
+                child: const Text('Tap to retry'),
+              ),
+            ],
           ),
         ),
       );

@@ -18,7 +18,6 @@ import '../../screens/employee/image_detail_screen.dart';
 import '../../screens/employee/team_lead_employee_detail_screen.dart';
 import '../../screens/admin/admin_shell.dart';
 import '../../screens/admin/dashboard_screen.dart';
-import '../../screens/admin/diagnostic_admin_screen.dart';
 import '../../screens/admin/images_screen.dart';
 import '../../screens/employee/monitor_screen.dart';
 import '../../screens/admin/analytics_screen.dart';
@@ -201,7 +200,6 @@ GoRouter createAppRouter(AuthProvider authProvider) {
           return EndOfDayScreen(
             sessionDuration:
                 extra['sessionDuration'] as Duration? ?? Duration.zero,
-            distance: extra['distance'] as double? ?? 0.0,
             locations: extra['locations'] as List<String>? ?? const [],
             photosCount: extra['photosCount'] as int? ?? 0,
             tasksCompleted: extra['tasksCompleted'] as int? ?? 0,
@@ -420,16 +418,6 @@ GoRouter createAppRouter(AuthProvider authProvider) {
           return ImagesScreen(
             initialEmployeeId: extra['employeeId'] as String?,
           );
-        },
-      ),
-      GoRoute(
-        path: '/admin/debug',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
-          final auth = context.read<AuthProvider>();
-          final enterpriseId =
-              auth.enterpriseId ?? auth.currentUser?.enterpriseId ?? '';
-          return DiagnosticAdminScreen(enterpriseId: enterpriseId);
         },
       ),
     ],

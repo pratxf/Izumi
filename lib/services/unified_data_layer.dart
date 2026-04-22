@@ -121,23 +121,66 @@ class UnifiedDataLayer {
     }
   }
 
-  /// Stream variant. Firestore snapshot streams auto-retry, so a cold
-  /// connection resolves itself without any warmup timer on the caller.
+  /// Stream variant with cold-start cache prime. Before opening the
+  /// snapshot stream, a one-shot server get() runs so the stream's first
+  /// emission hits a warmed-up local cache instead of racing the network.
+  /// If the narrow employeeId query returns empty, an enterprise-wide
+  /// prime runs as a fallback (mirrors AdminActivityFeedService).
+  ///
+  /// Accepts a list of employee IDs so migration-chain feeds (current uid +
+  /// prior migrated-from IDs) stay visible. Firestore `whereIn` is capped at
+  /// 30 values — callers passing more than 30 linked IDs will have the list
+  /// truncated.
   Stream<List<ActivityLogModel>> streamActivityFeed({
-    required String employeeId,
+    required List<String> employeeIds,
     required String enterpriseId,
     required DateTime from,
     int limit = 100,
-  }) {
+  }) async* {
+    final ids = employeeIds
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .take(30)
+        .toList();
+    if (ids.isEmpty) {
+      yield const <ActivityLogModel>[];
+      return;
+    }
+
     final q = FirebaseFirestore.instance
         .collection('activityLogs')
-        .where('employeeId', isEqualTo: employeeId)
+        .where('employeeId', whereIn: ids)
         .where('timestamp',
             isGreaterThanOrEqualTo: Timestamp.fromDate(from))
         .orderBy('timestamp', descending: true)
         .limit(limit);
 
-    return q.snapshots().map(
+    // Prime the local Firestore cache with a one-shot server fetch so the
+    // stream's first emission has real data instead of an empty cache.
+    try {
+      final primary =
+          await q.get(const GetOptions(source: Source.server));
+      if (primary.docs.isEmpty && enterpriseId.isNotEmpty) {
+        // Fallback: enterprise-wide prime for cases where the narrow
+        // employeeId query comes back empty (index propagation delay,
+        // data-shape drift). We don't consume this result — the goal is
+        // just to populate the SDK's local cache.
+        try {
+          await FirebaseFirestore.instance
+              .collection('activityLogs')
+              .where('enterpriseId', isEqualTo: enterpriseId)
+              .where('timestamp',
+                  isGreaterThanOrEqualTo: Timestamp.fromDate(from))
+              .orderBy('timestamp', descending: true)
+              .limit(200)
+              .get(const GetOptions(source: Source.server));
+        } catch (_) {}
+      }
+    } catch (_) {
+      // Offline or slow — proceed anyway, the stream will keep retrying.
+    }
+
+    yield* q.snapshots().map(
           (snap) => snap.docs
               .map((d) => ActivityLogModel.fromFirestore(d))
               .toList(),

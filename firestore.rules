@@ -277,32 +277,6 @@ service cloud.firestore {
     }
 
     // =============================================
-    // Diagnostic Reports
-    // =============================================
-    // Client writes land at:
-    //   diagnostics/{enterpriseId}/{userId}/reports/items/{reportId}
-    // (The {userId}-named sub-collection is how the logger scopes reports
-    // per employee. The admin screen uses a collectionGroup('items') query
-    // and filters on path for the current enterprise.)
-    match /diagnostics/{enterpriseId}/{userId}/reports/items/{reportId} {
-      // Employees may only create their own reports, and only in their
-      // own enterprise.
-      allow create: if isAuthenticated()
-        && isOwner(userId)
-        && belongsToEnterprise(enterpriseId);
-
-      // Admins and team leads can read diagnostic reports for anyone in
-      // their enterprise. Employees can read their own.
-      allow read: if isAuthenticated()
-        && belongsToEnterprise(enterpriseId)
-        && (isAdmin() || isTeamLead() || isOwner(userId));
-
-      // Reports are immutable once written; only the server-side cleanup
-      // job (admin SDK, bypasses rules) should ever modify them.
-      allow update, delete: if false;
-    }
-
-    // =============================================
     // Deleted Users (Tombstones)
     // =============================================
     // Written by the deleteUser / cleanupOrphanData callables (admin SDK

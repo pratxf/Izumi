@@ -2,8 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 
-import 'diagnostic_logger.dart';
-
 class RealtimeDbService {
   final FirebaseDatabase _db = FirebaseDatabase.instance;
 
@@ -110,10 +108,6 @@ class RealtimeDbService {
       // retry once.
       debugPrint('[RealtimeDbService] updateLiveLocation failed: $e — '
           'refreshing auth and retrying');
-      DiagnosticLogger.I.log('rtdb_live_location_err', {
-        'error': e.toString(),
-        'phase': 'first_attempt',
-      }, 'error');
       try {
         await FirebaseAuth.instance.currentUser?.getIdToken(true);
         await _db.ref(path).set(payload);

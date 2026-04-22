@@ -4,7 +4,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
 import '../offline_queue/offline_queue_manager.dart';
-import 'diagnostic_logger.dart';
 import 'realtime_db_service.dart';
 
 class ConnectivityMonitor {
@@ -50,13 +49,6 @@ class ConnectivityMonitor {
       // offline this will fail (no network) — that's fine; the last
       // successfully-written "online" state is enough for the sweep.
       _writeConnectivityState(_isOnline);
-
-      if (wasOnline != _isOnline) {
-        DiagnosticLogger.I.log('connectivity_changed', {
-          'from': wasOnline ? 'online' : 'offline',
-          'to': _isOnline ? 'online' : 'offline',
-        });
-      }
 
       if (!wasOnline && _isOnline) {
         debugPrint('[ConnectivityMonitor] Back online — draining queue');

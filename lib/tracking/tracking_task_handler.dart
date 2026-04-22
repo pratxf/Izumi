@@ -14,7 +14,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
-import '../services/diagnostic_logger.dart';
 import 'pending_location_store.dart';
 import 'sync_manager.dart';
 
@@ -82,12 +81,6 @@ class SessionTrackingTaskHandler extends TaskHandler {
     );
     await _loadContext();
     await _restoreSessionState();
-    await DiagnosticLogger.I.init();
-    DiagnosticLogger.I.setSessionId(_sessionId);
-    DiagnosticLogger.I.log('service_started', {
-      'sessionId': _sessionId,
-      'employeeId': _employeeId,
-    });
     await _startSyncManager();
     await _startActivityRecognition();
     await _sendHeartbeat();
@@ -241,10 +234,6 @@ class SessionTrackingTaskHandler extends TaskHandler {
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
-    DiagnosticLogger.I.log('service_destroyed', {
-      'isTimeout': isTimeout,
-      'sessionId': _sessionId,
-    }, 'critical');
     _activitySubscription?.cancel();
     _heartbeatTimer?.cancel();
     _activityTimeoutTimer?.cancel();
@@ -595,18 +584,8 @@ class SessionTrackingTaskHandler extends TaskHandler {
       ).timeout(const Duration(seconds: 30));
 
       if (!_isUsableFix(position)) {
-        DiagnosticLogger.I.log('gps_fix_rejected', {
-          'reason': 'accuracy_too_low',
-          'accuracy': position.accuracy,
-        });
         return;
       }
-      DiagnosticLogger.I.log('gps_fix_received', {
-        'lat': position.latitude,
-        'lng': position.longitude,
-        'accuracy': position.accuracy,
-        'speed': position.speed,
-      });
 
       // Distance quality filters (order: movement → timestamp → speed → accumulate)
       if (_lastPosition != null) {
@@ -619,10 +598,6 @@ class SessionTrackingTaskHandler extends TaskHandler {
 
         // 1. Minimum movement filter — discard GPS jitter
         if (meters < _minMovementMeters) {
-          DiagnosticLogger.I.log('gps_fix_rejected', {
-            'reason': 'movement_too_small',
-            'meters': meters,
-          });
           return;
         }
 
@@ -632,19 +607,12 @@ class SessionTrackingTaskHandler extends TaskHandler {
             .inSeconds
             .abs();
         if (timeDiffSecs <= 0) {
-          DiagnosticLogger.I.log('gps_fix_rejected', {
-            'reason': 'duplicate_timestamp',
-          });
           return;
         }
 
         // 3. Speed spike detection
         final speedMps = meters / timeDiffSecs;
         if (speedMps > _maxSpeedMps) {
-          DiagnosticLogger.I.log('gps_fix_rejected', {
-            'reason': 'speed_too_high',
-            'speedMps': speedMps,
-          });
           return;
         }
 
@@ -652,17 +620,8 @@ class SessionTrackingTaskHandler extends TaskHandler {
         // jitter that slips past the 30 m filter is not real movement. Don't
         // accumulate distance, but keep buffering the point and updating
         // RTDB so the session stays live on the dashboard.
-        if (_activityType == 'STILL') {
-          DiagnosticLogger.I.log('distance_frozen', {
-            'reason': 'activity_still',
-            'cumulativeKm': _totalDistanceKm,
-          });
-        } else {
+        if (_activityType != 'STILL') {
           _totalDistanceKm += meters / 1000;
-          DiagnosticLogger.I.log('distance_added', {
-            'segmentKm': meters / 1000,
-            'cumulativeKm': _totalDistanceKm,
-          });
         }
       }
 
