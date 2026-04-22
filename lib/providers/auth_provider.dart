@@ -200,6 +200,48 @@ class AuthProvider extends ChangeNotifier {
       debugPrint('[AuthProvider] Background user doc refresh failed: $e');
     }
 
+    // Force-refresh the ID token so custom claims mutated on the server
+    // (role changes, groupId assignment, enterprise migration) land in the
+    // live session without waiting for the ~1h natural rotation. The fast
+    // path above honoured the existing (possibly stale) cached claims for
+    // instant boot; this is the silent correction pass.
+    try {
+      final freshClaims = await _authService
+          .getUserClaims(forceRefresh: true)
+          .timeout(const Duration(seconds: 8));
+      if (freshClaims != null && !_disposed) {
+        final nextRoles = freshClaims['roles'] is List
+            ? List<String>.from(freshClaims['roles'] as List)
+            : (freshClaims['role'] is String
+                ? <String>[freshClaims['role'] as String]
+                : <String>[]);
+        final nextActiveRole = (freshClaims['activeRole'] as String?) ??
+            (freshClaims['role'] as String?) ??
+            (nextRoles.isNotEmpty ? nextRoles.first : null);
+        final nextEnterpriseId = freshClaims['enterpriseId'] as String?;
+
+        final rolesChanged =
+            (_roles?.join(',') ?? '') != nextRoles.join(',');
+        final activeRoleChanged =
+            nextActiveRole != null && nextActiveRole != _activeRole;
+        final enterpriseChanged =
+            nextEnterpriseId != null && nextEnterpriseId != _enterpriseId;
+
+        if (rolesChanged || activeRoleChanged || enterpriseChanged) {
+          debugPrint(
+              '[AuthProvider] Claims drift detected: roles $_roles → $nextRoles, '
+              'activeRole $_activeRole → $nextActiveRole, '
+              'enterpriseId $_enterpriseId → $nextEnterpriseId');
+          if (nextRoles.isNotEmpty) _roles = nextRoles;
+          if (nextActiveRole != null) _activeRole = nextActiveRole;
+          if (nextEnterpriseId != null) _enterpriseId = nextEnterpriseId;
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('[AuthProvider] Background claims refresh failed: $e');
+    }
+
     // Save FCM token
     try {
       await _notificationService.saveTokenToFirestore(firebaseUser.uid);

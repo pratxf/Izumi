@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
@@ -66,7 +67,25 @@ class TeamProvider extends ChangeNotifier {
   }
 
   Future<void> _loadTeamData(String enterpriseId, String leadId) async {
-    final groups = await _groupRepo.getGroupsByEnterprise(enterpriseId);
+    // Force a server fetch first so the lead's membership reflects the
+    // current backend state. A cache-hit can legitimately return a stale
+    // `leadIds` array (e.g. this user was promoted after the last sync)
+    // and silently fall the caller into personal-gallery mode. If the
+    // network round-trip fails, fall back to cache so offline still works.
+    List<GroupModel> groups;
+    try {
+      groups = await _groupRepo.getGroupsByEnterprise(
+        enterpriseId,
+        source: Source.server,
+      );
+    } catch (e) {
+      debugPrint(
+          '[TeamProvider] Server groups fetch failed ($e); falling back to cache');
+      groups = await _groupRepo.getGroupsByEnterprise(
+        enterpriseId,
+        source: Source.cache,
+      );
+    }
     _group = groups.where((g) => g.leadIds.contains(leadId)).firstOrNull;
 
     if (_group != null) {

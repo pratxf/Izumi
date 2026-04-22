@@ -17,6 +17,7 @@ class FirestoreService {
     String? orderBy,
     bool descending = false,
     int? limit,
+    Source? source,
   }) {
     Query query = _db.collection(collection);
 
@@ -34,6 +35,9 @@ class FirestoreService {
       query = query.limit(limit);
     }
 
+    if (source != null) {
+      return query.get(GetOptions(source: source));
+    }
     return query.get();
   }
 

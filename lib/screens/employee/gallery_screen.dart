@@ -37,12 +37,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
   DateTime? _selectedDate; // null = all dates
   bool _isTeamLead = false;
   StreamSubscription<OfflineQueueJobEvent>? _queueEventsSub;
+  AuthProvider? _authListenerTarget;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initProvider();
+      // Subscribe to auth changes so a late background claims refresh
+      // (fast-path boot read stale claims, then _backgroundRefresh bumped
+      // roles to team_lead) flips us into team mode without requiring the
+      // user to back out and re-enter the screen.
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      _authListenerTarget = auth;
+      auth.addListener(_onAuthRolesChanged);
     });
     _searchController.addListener(() {
       setState(() {
@@ -64,6 +73,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
         );
       }
     });
+  }
+
+  /// When claims drift-corrects in the background, re-run init so the
+  /// screen switches from personal → team mode (or back) automatically.
+  void _onAuthRolesChanged() {
+    if (!mounted) return;
+    final auth = _authListenerTarget;
+    if (auth == null) return;
+    if (auth.isTeamLead != _isTeamLead) {
+      _initialized = false;
+      _initProvider();
+    }
   }
 
   void _initProvider() async {
@@ -113,6 +134,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   void dispose() {
+    _authListenerTarget?.removeListener(_onAuthRolesChanged);
     _queueEventsSub?.cancel();
     _searchController.dispose();
     super.dispose();

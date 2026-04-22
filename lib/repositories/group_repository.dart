@@ -27,12 +27,16 @@ class GroupRepository {
     await _firestoreService.deleteDocument(_collection, groupId);
   }
 
-  Future<List<GroupModel>> getGroupsByEnterprise(String enterpriseId) async {
+  Future<List<GroupModel>> getGroupsByEnterprise(
+    String enterpriseId, {
+    Source? source,
+  }) async {
     final snapshot = await _firestoreService.getCollection(
       _collection,
       filters: [
         QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
       ],
+      source: source,
     );
 
     return snapshot.docs.map((doc) => GroupModel.fromFirestore(doc)).toList();
