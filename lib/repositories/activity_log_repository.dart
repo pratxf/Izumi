@@ -11,11 +11,13 @@ class ActivityLogRepository {
 
   Future<List<ActivityLogModel>> getLogsByEmployee(
     String employeeId, {
+    required String enterpriseId,
     DateTime? date,
     int? limit,
   }) async {
     return getLogsByEmployeeIds(
       [employeeId],
+      enterpriseId: enterpriseId,
       date: date,
       limit: limit,
     );
@@ -23,6 +25,7 @@ class ActivityLogRepository {
 
   Future<List<ActivityLogModel>> getLogsByEmployeeIds(
     List<String> employeeIds, {
+    required String enterpriseId,
     DateTime? date,
     DateTime? startDate,
     DateTime? endDate,
@@ -32,7 +35,12 @@ class ActivityLogRepository {
         employeeIds.where((id) => id.trim().isNotEmpty).toSet().toList();
     if (normalizedIds.isEmpty) return const [];
 
+    // `enterpriseId` MUST be the first filter. Firestore security rules gate
+    // reads on resource.data.enterpriseId; without a matching query filter
+    // the rules engine rejects the whole query with permission-denied,
+    // regardless of isOwner / isAdmin / isTeamLead.
     final filters = <QueryFilter>[
+      QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
       if (normalizedIds.length == 1)
         QueryFilter('employeeId', FilterOp.isEqualTo, normalizedIds.first)
       else
@@ -118,6 +126,7 @@ class ActivityLogRepository {
 
   Future<List<ActivityLogModel>> getLogsBySessionIds(
     List<String> sessionIds, {
+    required String enterpriseId,
     DateTime? startDate,
     DateTime? endDate,
     int? limit,
@@ -134,6 +143,7 @@ class ActivityLogRepository {
       );
 
       final filters = <QueryFilter>[
+        QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
         QueryFilter('sessionId', FilterOp.whereIn, batch),
         if (startDate != null)
           QueryFilter(
@@ -177,6 +187,7 @@ class ActivityLogRepository {
 
   Future<List<ActivityLogModel>> getLogsByEmployeeIdsUnfiltered(
     List<String> employeeIds, {
+    required String enterpriseId,
     int? limit,
   }) async {
     final normalizedIds =
@@ -193,6 +204,7 @@ class ActivityLogRepository {
       final snapshot = await _firestoreService.getCollection(
         _collection,
         filters: [
+          QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
           if (batch.length == 1)
             QueryFilter('employeeId', FilterOp.isEqualTo, batch.first)
           else
@@ -223,6 +235,7 @@ class ActivityLogRepository {
 
   Future<List<ActivityLogModel>> getLogsBySessionIdsUnfiltered(
     List<String> sessionIds, {
+    required String enterpriseId,
     int? limit,
   }) async {
     final normalizedIds =
@@ -239,6 +252,7 @@ class ActivityLogRepository {
       final snapshot = await _firestoreService.getCollection(
         _collection,
         filters: [
+          QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
           QueryFilter('sessionId', FilterOp.whereIn, batch),
         ],
         orderBy: 'timestamp',
@@ -266,6 +280,7 @@ class ActivityLogRepository {
 
   Stream<List<ActivityLogModel>> streamLogsByEmployeeIdsSince(
     List<String> employeeIds, {
+    required String enterpriseId,
     required DateTime since,
     int limit = 100,
   }) {
@@ -279,6 +294,7 @@ class ActivityLogRepository {
         .streamCollection(
           _collection,
           filters: [
+            QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
             if (normalizedIds.length == 1)
               QueryFilter('employeeId', FilterOp.isEqualTo, normalizedIds.first)
             else
@@ -300,6 +316,7 @@ class ActivityLogRepository {
 
   Stream<List<ActivityLogModel>> streamLogsBySessionIdsSince(
     List<String> sessionIds, {
+    required String enterpriseId,
     required DateTime since,
     int limit = 200,
   }) {
@@ -313,6 +330,7 @@ class ActivityLogRepository {
         .streamCollection(
           _collection,
           filters: [
+            QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
             if (normalizedIds.length == 1)
               QueryFilter('sessionId', FilterOp.isEqualTo, normalizedIds.first)
             else
@@ -348,10 +366,14 @@ class ActivityLogRepository {
             .toList());
   }
 
-  Future<DateTime?> getLatestLocationLogTimeForSession(String sessionId) async {
+  Future<DateTime?> getLatestLocationLogTimeForSession(
+    String sessionId, {
+    required String enterpriseId,
+  }) async {
     final snapshot = await _firestoreService.getCollection(
       _collection,
       filters: [
+        QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
         QueryFilter('sessionId', FilterOp.isEqualTo, sessionId),
         QueryFilter('type', FilterOp.isEqualTo, 'location_update'),
       ],

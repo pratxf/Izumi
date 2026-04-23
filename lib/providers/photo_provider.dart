@@ -48,13 +48,19 @@ class PhotoProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> loadPhotos(String employeeId) async {
+  Future<void> loadPhotos(
+    String employeeId, {
+    required String enterpriseId,
+  }) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      final remotePhotos = await _photoRepo.getPhotosByEmployee(employeeId);
+      final remotePhotos = await _photoRepo.getPhotosByEmployee(
+        employeeId,
+        enterpriseId: enterpriseId,
+      );
       _applyRemotePhotos(remotePhotos);
       await _hydrateQueuedPhotos(
         (payload) => payload['employeeId']?.toString() == employeeId,
@@ -67,7 +73,10 @@ class PhotoProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void streamPhotos(String employeeId) {
+  void streamPhotos(
+    String employeeId, {
+    required String enterpriseId,
+  }) {
     debugPrint(
         '[PhotoProvider] streamPhotos called for employeeId=$employeeId');
     if (employeeId.isEmpty) {
@@ -83,7 +92,7 @@ class PhotoProvider extends ChangeNotifier {
       },
       onError: (e) {
         debugPrint('[PhotoProvider] stream error: $e');
-        loadPhotos(employeeId);
+        loadPhotos(employeeId, enterpriseId: enterpriseId);
       },
     );
     unawaited(_hydrateQueuedPhotos(
@@ -91,7 +100,10 @@ class PhotoProvider extends ChangeNotifier {
     ));
   }
 
-  void streamTeamPhotos(List<String> employeeIds) {
+  void streamTeamPhotos(
+    List<String> employeeIds, {
+    required String enterpriseId,
+  }) {
     debugPrint(
       '[PhotoProvider] streamTeamPhotos called for ${employeeIds.length} employees',
     );
@@ -100,7 +112,10 @@ class PhotoProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     _photosSubscription =
-        _photoRepo.streamPhotosByEmployeeIds(employeeIds).listen(
+        _photoRepo.streamPhotosByEmployeeIds(
+          employeeIds,
+          enterpriseId: enterpriseId,
+        ).listen(
       (photos) {
         debugPrint(
             '[PhotoProvider] team stream received ${photos.length} photos');

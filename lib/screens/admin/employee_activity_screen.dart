@@ -68,6 +68,9 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
   int _loadVersion = 0;
   _EmployeeDayActivity? _dayActivity;
   Timer? _liveRefreshTimer;
+  /// Summary-card distance, sourced from UnifiedDataLayer.getDistance for
+  /// every day in the selected range. null = not yet resolved (card shows --).
+  double? _distanceKm;
 
   // Route map state
   List<LatLng> _routePoints = [];
@@ -115,7 +118,10 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
 
   Future<void> _loadDayData() async {
     final loadVersion = ++_loadVersion;
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _distanceKm = null;
+    });
 
     try {
       final authProvider = context.read<AuthProvider>();
@@ -124,7 +130,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         linkedEmployeeIds: _linkedIds(),
         rangeStart: _rangeStart,
         rangeEnd: _rangeEnd,
-        enterpriseId: authProvider.enterpriseId,
+        enterpriseId: authProvider.enterpriseId ?? '',
       );
 
       if (!mounted || loadVersion != _loadVersion) return;
@@ -140,6 +146,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         _isLoading = false;
       });
       _loadRouteData(feed.sessions);
+      _loadDistanceFromUdl(loadVersion, authProvider.enterpriseId);
     } catch (error, stackTrace) {
       debugPrint('[EmployeeActivityScreen] Failed to load day data: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -149,6 +156,30 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  /// Distance for the summary card comes from UnifiedDataLayer. Iterates
+  /// every day in the selected range and sums UDL.getDistance — UDL handles
+  /// the dailySummary read and the live-RTDB top-up internally.
+  Future<void> _loadDistanceFromUdl(int loadVersion, String? enterpriseId) async {
+    if (enterpriseId == null || enterpriseId.isEmpty) return;
+    double total = 0.0;
+    var cursor =
+        DateTime(_rangeStart.year, _rangeStart.month, _rangeStart.day);
+    final endDay = DateTime(_rangeEnd.year, _rangeEnd.month, _rangeEnd.day);
+    while (!cursor.isAfter(endDay)) {
+      try {
+        total += await UnifiedDataLayer.I.getDistance(
+          employeeId: widget.employeeId,
+          enterpriseId: enterpriseId,
+          date: cursor,
+        );
+      } catch (_) {}
+      cursor = cursor.add(const Duration(days: 1));
+      if (!mounted || loadVersion != _loadVersion) return;
+    }
+    if (!mounted || loadVersion != _loadVersion) return;
+    setState(() => _distanceKm = total);
   }
 
   Future<void> _loadRouteData(List<SessionModel> sessions) async {
@@ -278,12 +309,14 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
     final photos = (stats['photos'] as num?)?.toInt() ??
         _livePhotosToday(_currentLiveStats());
     final tasks = (stats['tasks'] as num?)?.toInt() ?? 0;
-    final distance = (stats['distance'] as num?)?.toDouble() ?? 0.0;
+    // Distance is no longer inherited from the parent screen — it's loaded
+    // independently via UnifiedDataLayer in _loadDistanceFromUdl. This
+    // fallback exists only to keep duration/photos/tasks visible during the
+    // first frame before loadRangeFeed returns.
 
     if ((duration == null || duration == Duration.zero) &&
         photos <= 0 &&
-        tasks <= 0 &&
-        distance <= 0) {
+        tasks <= 0) {
       return null;
     }
 
@@ -293,7 +326,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
       employeeId: widget.employeeId,
       date: _rangeStart,
       totalDuration: duration?.inSeconds ?? 0,
-      totalDistance: distance,
+      totalDistance: 0.0,
       photosCount: photos,
       tasksCompleted: tasks,
       locationsVisited: const [],
@@ -1693,15 +1726,18 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
                 : dayActivity.photoCount)
             : null);
 
-    // Route through UnifiedDataLayer.sanitizeKm so this screen matches
-    // the distance shown elsewhere (dashboard, history, analytics list).
-    final distance = UnifiedDataLayer.sanitizeKm(
-        dayActivity.summary?.totalDistance ?? 0.0);
+    // Distance comes from UnifiedDataLayer.getDistance (summed across the
+    // selected range in _loadDistanceFromUdl). While that future resolves,
+    // show -- instead of a stale inherited value.
+    final distanceKm = _distanceKm;
+    final distanceLabel = distanceKm == null
+        ? '--'
+        : (distanceKm > 0 ? '${distanceKm.toStringAsFixed(1)} km' : '--');
 
     return {
       'duration': formatDuration(totalDuration),
       'photos': '${photoCount ?? dayActivity.photoCount}',
-      'distance': distance > 0 ? '${distance.toStringAsFixed(1)} km' : '--',
+      'distance': distanceLabel,
     };
   }
 

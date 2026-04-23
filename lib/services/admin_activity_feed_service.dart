@@ -70,13 +70,13 @@ class AdminActivityFeedService {
     required Iterable<String> linkedEmployeeIds,
     required DateTime rangeStart,
     required DateTime rangeEnd,
-    String? enterpriseId,
+    required String enterpriseId,
   }) async {
     final normalizedIds = _normalizeIds(linkedEmployeeIds);
 
     // ── 1. Load sessions via shared helper (cached + multi-layer fallback)
     var sessions = await _sessionHelper.loadSessions(
-      enterpriseId: enterpriseId ?? '',
+      enterpriseId: enterpriseId,
       startDate: rangeStart,
       endDate: rangeEnd,
       employeeIds: normalizedIds,
@@ -88,7 +88,8 @@ class AdminActivityFeedService {
     final results = await Future.wait([
       _loadActivityLogs(normalizedIds, sessionIds, rangeStart, rangeEnd,
           enterpriseId: enterpriseId),
-      _loadAllPhotos(normalizedIds, sessionIds, rangeStart, rangeEnd),
+      _loadAllPhotos(normalizedIds, sessionIds, rangeStart, rangeEnd,
+          enterpriseId: enterpriseId),
     ]);
 
     final rawActivityLogs = results[0] as List<ActivityLogModel>;
@@ -143,10 +144,8 @@ class AdminActivityFeedService {
     // (pre-migration) employeeIds that employee/session-scoped queries miss.
     // mergePhotos() deduplicates by document ID so duplicates are safe.
     List<PhotoModel> enterpriseFallbackPhotos = const [];
-    final resolvedEnterpriseId = enterpriseId ??
-        (sessions.isNotEmpty ? sessions.first.enterpriseId : null) ??
-        (rawActivityLogs.isNotEmpty ? rawActivityLogs.first.enterpriseId : null);
-    if (resolvedEnterpriseId != null && resolvedEnterpriseId.isNotEmpty) {
+    final resolvedEnterpriseId = enterpriseId;
+    if (resolvedEnterpriseId.isNotEmpty) {
       try {
         final empIdSet = normalizedIds.toSet();
         final sessionIdSet = sessionIds.toSet();
@@ -233,12 +232,13 @@ class AdminActivityFeedService {
     List<String> sessionIds,
     DateTime rangeStart,
     DateTime rangeEnd, {
-    String? enterpriseId,
+    required String enterpriseId,
   }) async {
     var logsByEmployee = <ActivityLogModel>[];
     try {
       logsByEmployee = await _logRepo.getLogsByEmployeeIds(
         employeeIds,
+        enterpriseId: enterpriseId,
         startDate: rangeStart,
         endDate: rangeEnd,
         limit: 1000,
@@ -250,6 +250,7 @@ class AdminActivityFeedService {
       try {
         logsByEmployee = (await _logRepo.getLogsByEmployeeIdsUnfiltered(
           employeeIds,
+          enterpriseId: enterpriseId,
           limit: 1000,
         )).where((log) => _isInRange(log.timestamp, rangeStart, rangeEnd)).toList();
       } catch (e) {
@@ -262,6 +263,7 @@ class AdminActivityFeedService {
       try {
         logsBySession = await _logRepo.getLogsBySessionIds(
           sessionIds,
+          enterpriseId: enterpriseId,
           startDate: rangeStart,
           endDate: rangeEnd,
           limit: 1000,
@@ -273,6 +275,7 @@ class AdminActivityFeedService {
         try {
           logsBySession = (await _logRepo.getLogsBySessionIdsUnfiltered(
             sessionIds,
+            enterpriseId: enterpriseId,
             limit: 1000,
           )).where((log) => _isInRange(log.timestamp, rangeStart, rangeEnd)).toList();
         } catch (e) {
@@ -285,9 +288,7 @@ class AdminActivityFeedService {
 
     // Enterprise-wide activity log fallback — when employee/session scoped
     // queries return nothing (often due to missing composite indexes).
-    if (combined.isEmpty &&
-        enterpriseId != null &&
-        enterpriseId.isNotEmpty) {
+    if (combined.isEmpty && enterpriseId.isNotEmpty) {
       try {
         final empIdSet = employeeIds.toSet();
         final enterpriseLogs = (await _logRepo.getLogsByEnterprise(
@@ -314,12 +315,14 @@ class AdminActivityFeedService {
     List<String> employeeIds,
     List<String> sessionIds,
     DateTime rangeStart,
-    DateTime rangeEnd,
-  ) async {
+    DateTime rangeEnd, {
+    required String enterpriseId,
+  }) async {
     var photosByEmployee = <PhotoModel>[];
     try {
       photosByEmployee = await _photoRepo.getPhotosByEmployeeIds(
         employeeIds,
+        enterpriseId: enterpriseId,
         startDate: rangeStart,
         endDate: rangeEnd,
         limit: 500,
@@ -331,6 +334,7 @@ class AdminActivityFeedService {
       try {
         photosByEmployee = (await _photoRepo.getPhotosByEmployeeIdsUnfiltered(
           employeeIds,
+          enterpriseId: enterpriseId,
           limit: 500,
         )).where((photo) => _isInRange(photo.timestamp, rangeStart, rangeEnd)).toList();
       } catch (e) {
@@ -343,6 +347,7 @@ class AdminActivityFeedService {
       try {
         photosBySession = await _photoRepo.getPhotosBySessionIds(
           sessionIds,
+          enterpriseId: enterpriseId,
           startDate: rangeStart,
           endDate: rangeEnd,
           limit: 500,
@@ -354,6 +359,7 @@ class AdminActivityFeedService {
         try {
           photosBySession = (await _photoRepo.getPhotosBySessionIdsUnfiltered(
             sessionIds,
+            enterpriseId: enterpriseId,
             limit: 500,
           )).where((photo) => _isInRange(photo.timestamp, rangeStart, rangeEnd)).toList();
         } catch (e) {
@@ -367,6 +373,7 @@ class AdminActivityFeedService {
 
   Stream<AdminRecentActivityFeedData> streamRecentFeed({
     required Iterable<String> linkedEmployeeIds,
+    required String enterpriseId,
     Duration window = const Duration(hours: 24),
     int photoLimit = 24,
   }) {
@@ -435,6 +442,7 @@ class AdminActivityFeedService {
       employeeLogSub = _logRepo
           .streamLogsByEmployeeIdsSince(
             normalizedIds,
+            enterpriseId: enterpriseId,
             since: since,
             limit: 1000,
           )
@@ -457,6 +465,7 @@ class AdminActivityFeedService {
       employeePhotoSub = _photoRepo
           .streamPhotosByEmployeeIdsWithLimit(
             normalizedIds,
+            enterpriseId: enterpriseId,
             limit: photoLimit,
           )
           .listen((photos) {
@@ -492,6 +501,7 @@ class AdminActivityFeedService {
         sessionLogSub = _logRepo
             .streamLogsBySessionIdsSince(
               sessionIds,
+              enterpriseId: enterpriseId,
               since: since,
               limit: 1000,
             )
@@ -514,6 +524,7 @@ class AdminActivityFeedService {
         sessionPhotoSub = _photoRepo
             .streamPhotosBySessionIds(
               sessionIds,
+              enterpriseId: enterpriseId,
               limit: photoLimit,
             )
             .listen((photos) {
@@ -538,7 +549,10 @@ class AdminActivityFeedService {
     subscribeEmployeePhotos();
 
     sessionSub = _sessionRepo
-        .streamActiveSessionsByEmployeeIds(normalizedIds)
+        .streamActiveSessionsByEmployeeIds(
+          normalizedIds,
+          enterpriseId: enterpriseId,
+        )
         .listen((sessions) {
       final nextSessionIds = sessions
           .map((session) => session.id)
@@ -751,7 +765,10 @@ class AdminActivityFeedService {
   }) async {
     final photos = <PhotoModel>[];
     for (final session in sessions) {
-      final sessionPhotos = await _photoRepo.getPhotosBySession(session.id);
+      final sessionPhotos = await _photoRepo.getPhotosBySession(
+        session.id,
+        enterpriseId: session.enterpriseId,
+      );
       photos.addAll(
         sessionPhotos.where(
           (photo) => _isInRange(photo.timestamp, rangeStart, rangeEnd),

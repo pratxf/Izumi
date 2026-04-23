@@ -103,11 +103,13 @@ class PhotoRepository {
 
   Future<List<PhotoModel>> getPhotosByEmployee(
     String employeeId, {
+    required String enterpriseId,
     DateTime? date,
     int? limit,
   }) async {
     return getPhotosByEmployeeIds(
       [employeeId],
+      enterpriseId: enterpriseId,
       date: date,
       limit: limit,
     );
@@ -115,6 +117,7 @@ class PhotoRepository {
 
   Future<List<PhotoModel>> getPhotosByEmployeeIds(
     List<String> employeeIds, {
+    required String enterpriseId,
     DateTime? date,
     DateTime? startDate,
     DateTime? endDate,
@@ -126,7 +129,9 @@ class PhotoRepository {
 
     final results = <PhotoModel>[];
 
-    // Batch into chunks of 10 using whereIn (Firestore limit).
+    // Batch into chunks of 10 using whereIn (Firestore limit). The
+    // enterpriseId filter is mandatory — Firestore rules reject the query
+    // otherwise (see activityLogs notes).
     for (var i = 0; i < normalizedIds.length; i += 10) {
       final batch = normalizedIds.sublist(
         i,
@@ -134,6 +139,7 @@ class PhotoRepository {
       );
 
       final filters = <QueryFilter>[
+        QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
         if (batch.length == 1)
           QueryFilter('employeeId', FilterOp.isEqualTo, batch.first)
         else
@@ -227,10 +233,14 @@ class PhotoRepository {
     return snapshot.docs.map((doc) => PhotoModel.fromFirestore(doc)).toList();
   }
 
-  Future<List<PhotoModel>> getPhotosBySession(String sessionId) async {
+  Future<List<PhotoModel>> getPhotosBySession(
+    String sessionId, {
+    required String enterpriseId,
+  }) async {
     final snapshot = await _firestoreService.getCollection(
       _collection,
       filters: [
+        QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
         QueryFilter('sessionId', FilterOp.isEqualTo, sessionId),
       ],
     );
@@ -242,6 +252,7 @@ class PhotoRepository {
 
   Future<List<PhotoModel>> getPhotosBySessionIds(
     List<String> sessionIds, {
+    required String enterpriseId,
     DateTime? startDate,
     DateTime? endDate,
     int? limit,
@@ -257,6 +268,7 @@ class PhotoRepository {
         i + 10 > normalizedIds.length ? normalizedIds.length : i + 10,
       );
       final filters = <QueryFilter>[
+        QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
         if (batch.length == 1)
           QueryFilter('sessionId', FilterOp.isEqualTo, batch.first)
         else
@@ -303,6 +315,7 @@ class PhotoRepository {
 
   Future<List<PhotoModel>> getPhotosByEmployeeIdsUnfiltered(
     List<String> employeeIds, {
+    required String enterpriseId,
     int? limit,
   }) async {
     final normalizedIds =
@@ -318,6 +331,7 @@ class PhotoRepository {
       final snapshot = await _firestoreService.getCollection(
         _collection,
         filters: [
+          QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
           if (batch.length == 1)
             QueryFilter('employeeId', FilterOp.isEqualTo, batch.first)
           else
@@ -346,6 +360,7 @@ class PhotoRepository {
 
   Future<List<PhotoModel>> getPhotosBySessionIdsUnfiltered(
     List<String> sessionIds, {
+    required String enterpriseId,
     int? limit,
   }) async {
     final normalizedIds =
@@ -361,6 +376,7 @@ class PhotoRepository {
       final snapshot = await _firestoreService.getCollection(
         _collection,
         filters: [
+          QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
           if (batch.length == 1)
             QueryFilter('sessionId', FilterOp.isEqualTo, batch.first)
           else
@@ -415,6 +431,7 @@ class PhotoRepository {
 
   Stream<List<PhotoModel>> streamPhotosByEmployeeIdsWithLimit(
     List<String> employeeIds, {
+    required String enterpriseId,
     int? limit,
   }) {
     final normalized =
@@ -425,6 +442,7 @@ class PhotoRepository {
         .streamCollection(
           _collection,
           filters: [
+            QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
             if (normalized.length == 1)
               QueryFilter('employeeId', FilterOp.isEqualTo, normalized.first)
             else
@@ -440,6 +458,7 @@ class PhotoRepository {
 
   Stream<List<PhotoModel>> streamPhotosBySessionIds(
     List<String> sessionIds, {
+    required String enterpriseId,
     int? limit,
   }) {
     final normalized =
@@ -450,6 +469,7 @@ class PhotoRepository {
         .streamCollection(
           _collection,
           filters: [
+            QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
             if (normalized.length == 1)
               QueryFilter('sessionId', FilterOp.isEqualTo, normalized.first)
             else
@@ -481,8 +501,14 @@ class PhotoRepository {
             snapshot.docs.map((doc) => PhotoModel.fromFirestore(doc)).toList());
   }
 
-  Stream<List<PhotoModel>> streamPhotosByEmployeeIds(List<String> employeeIds) {
-    return streamPhotosByEmployeeIdsWithLimit(employeeIds);
+  Stream<List<PhotoModel>> streamPhotosByEmployeeIds(
+    List<String> employeeIds, {
+    required String enterpriseId,
+  }) {
+    return streamPhotosByEmployeeIdsWithLimit(
+      employeeIds,
+      enterpriseId: enterpriseId,
+    );
   }
 
   Stream<List<PhotoModel>> streamPhotosByEnterprise(String enterpriseId) {

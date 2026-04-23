@@ -27,6 +27,13 @@ class UnifiedDataLayer {
 
   static final UnifiedDataLayer I = UnifiedDataLayer._();
 
+  /// Minimum gap between `location_update` entries shown in the activity
+  /// feed. Raw GPS polls every ~60s; the feed would otherwise flood with
+  /// near-identical locations. Matches the interval used historically by
+  /// AdminActivityFeedService so analytics and dashboard feeds stay
+  /// visually identical.
+  static const Duration _locationDisplayInterval = Duration(minutes: 20);
+
   final RealtimeDbService _rtdb;
   final DailySummaryRepository _summaryRepo;
   final ActivityLogRepository _logRepo;
@@ -109,12 +116,14 @@ class UnifiedDataLayer {
     int limit = 100,
   }) async {
     try {
-      return await _logRepo.getLogsByEmployeeIds(
+      final raw = await _logRepo.getLogsByEmployeeIds(
         [employeeId],
+        enterpriseId: enterpriseId,
         startDate: from,
         endDate: to,
         limit: limit,
       );
+      return _dedupeAndThinLocationLogs(raw);
     } catch (e) {
       debugPrint('[UnifiedDataLayer] getActivityFeed failed: $e');
       return const [];
@@ -149,6 +158,7 @@ class UnifiedDataLayer {
 
     final q = FirebaseFirestore.instance
         .collection('activityLogs')
+        .where('enterpriseId', isEqualTo: enterpriseId)
         .where('employeeId', whereIn: ids)
         .where('timestamp',
             isGreaterThanOrEqualTo: Timestamp.fromDate(from))
@@ -180,11 +190,86 @@ class UnifiedDataLayer {
       // Offline or slow — proceed anyway, the stream will keep retrying.
     }
 
-    yield* q.snapshots().map(
-          (snap) => snap.docs
-              .map((d) => ActivityLogModel.fromFirestore(d))
-              .toList(),
+    yield* q.snapshots().map((snap) {
+      final raw = snap.docs
+          .map((d) => ActivityLogModel.fromFirestore(d))
+          .toList();
+      return _dedupeAndThinLocationLogs(raw);
+    });
+  }
+
+  /// Deduplicates activity logs by ID, then thins `location_update` entries
+  /// to one per 20-minute window per session. Within each window, prefers
+  /// entries with a resolved address over raw coordinates. Non-location
+  /// types (session_started/ended, photo_captured, etc.) are never thinned.
+  ///
+  /// Same implementation as AdminActivityFeedService so analytics and
+  /// dashboard feeds render identically.
+  List<ActivityLogModel> _dedupeAndThinLocationLogs(
+    List<ActivityLogModel> logs,
+  ) {
+    // Phase 1: deduplicate by ID
+    final byId = <String, ActivityLogModel>{};
+    for (final log in logs) {
+      byId[log.id] = log;
+    }
+    final deduped = byId.values.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    // Phase 2: thin location_update entries to one per 20-min window per
+    // session. Track the last kept location timestamp per session.
+    final lastKeptBySession = <String, DateTime>{};
+    final thinned = <ActivityLogModel>[];
+
+    for (final log in deduped) {
+      if (log.type != 'location_update') {
+        thinned.add(log);
+        continue;
+      }
+
+      final sessionId = log.sessionId ?? '';
+
+      final lastKept = lastKeptBySession[sessionId];
+      if (lastKept != null &&
+          log.timestamp.difference(lastKept).abs() <
+              _locationDisplayInterval) {
+        // Same window — replace previous entry if this one has a better
+        // address (resolved place name beats raw coordinates).
+        final lastIndex = thinned.lastIndexWhere(
+          (l) =>
+              l.type == 'location_update' &&
+              (l.sessionId ?? '') == sessionId,
         );
+        if (lastIndex >= 0) {
+          final existing = thinned[lastIndex];
+          if (_hasRawCoordinateDetail(existing) &&
+              !_hasRawCoordinateDetail(log)) {
+            thinned[lastIndex] = log;
+          }
+        }
+        continue;
+      }
+
+      // New window — keep this entry.
+      lastKeptBySession[sessionId] = log.timestamp;
+      thinned.add(log);
+    }
+
+    // Return newest-first to match the stream's original ordering.
+    thinned.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return thinned;
+  }
+
+  /// True when an activity log's `detail` is a raw coordinate string rather
+  /// than a resolved place name.
+  bool _hasRawCoordinateDetail(ActivityLogModel log) {
+    final detail = log.detail.trim();
+    if (detail.isEmpty) return true;
+    if (detail.startsWith('Lat:')) return true;
+    final firstChar = detail.codeUnitAt(0);
+    if (firstChar >= 48 && firstChar <= 57) return true; // 0-9
+    if (firstChar == 45) return true; // minus sign
+    return false;
   }
 
   // ==========================================================================

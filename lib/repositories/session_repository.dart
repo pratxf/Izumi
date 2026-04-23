@@ -98,6 +98,7 @@ class SessionRepository {
 
   Future<List<SessionModel>> getSessionHistoryByEmployeeIds(
     List<String> employeeIds, {
+    required String enterpriseId,
     DateTime? startDate,
     DateTime? endDate,
     int? limit,
@@ -114,6 +115,7 @@ class SessionRepository {
       );
 
       final filters = <QueryFilter>[
+        QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
         if (batch.length == 1)
           QueryFilter('employeeId', FilterOp.isEqualTo, batch.first)
         else
@@ -171,6 +173,7 @@ class SessionRepository {
 
   Future<List<SessionModel>> getSessionHistoryByEmployeeIdsUnfiltered(
     List<String> employeeIds, {
+    required String enterpriseId,
     int? limit,
   }) async {
     final normalizedIds =
@@ -187,6 +190,7 @@ class SessionRepository {
       final snapshot = await _firestoreService.getCollection(
         _collection,
         filters: [
+          QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
           if (batch.length == 1)
             QueryFilter('employeeId', FilterOp.isEqualTo, batch.first)
           else
@@ -294,8 +298,9 @@ class SessionRepository {
   }
 
   Stream<List<SessionModel>> streamActiveSessionsByEmployeeIds(
-    List<String> employeeIds,
-  ) {
+    List<String> employeeIds, {
+    required String enterpriseId,
+  }) {
     final normalizedIds =
         employeeIds.where((id) => id.trim().isNotEmpty).toSet().toList();
     if (normalizedIds.isEmpty) {
@@ -306,6 +311,7 @@ class SessionRepository {
         .streamCollection(
           _collection,
           filters: [
+            QueryFilter('enterpriseId', FilterOp.isEqualTo, enterpriseId),
             if (normalizedIds.length == 1)
               QueryFilter('employeeId', FilterOp.isEqualTo, normalizedIds.first)
             else

@@ -50,6 +50,7 @@ class SessionQueryHelper {
       try {
         sessions = await _sessionRepo.getSessionHistoryByEmployeeIds(
           employeeIds,
+          enterpriseId: enterpriseId,
           startDate: startDate,
           endDate: endDate,
           limit: limit,
@@ -64,6 +65,7 @@ class SessionQueryHelper {
       try {
         sessions = (await _sessionRepo.getSessionHistoryByEmployeeIdsUnfiltered(
           employeeIds,
+          enterpriseId: enterpriseId,
           limit: limit,
         ))
             .where((s) =>

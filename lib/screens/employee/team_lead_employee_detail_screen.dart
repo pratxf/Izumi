@@ -136,7 +136,8 @@ class _TeamLeadEmployeeDetailScreenState
 
     _photoSubscription?.cancel();
     _photoSubscription = _photoRepository
-        .streamPhotosByEmployeeIdsWithLimit(linkedIds, limit: 20)
+        .streamPhotosByEmployeeIdsWithLimit(linkedIds,
+            enterpriseId: enterpriseId, limit: 20)
         .listen((photos) {
       if (!mounted) return;
       setState(() => _photos = photos);

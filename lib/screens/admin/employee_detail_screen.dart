@@ -215,7 +215,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     // its own Firestore query, no provider-state dependency.
     _photoSubscription = _photoRepository
         .streamPhotosByEmployeeIdsWithLimit(queryIds,
-            limit: _photoPreviewLimit)
+            enterpriseId: enterpriseId, limit: _photoPreviewLimit)
         .listen((photos) {
       if (!mounted) return;
       setState(() {

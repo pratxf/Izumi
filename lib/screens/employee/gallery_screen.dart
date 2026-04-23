@@ -122,13 +122,22 @@ class _GalleryScreenState extends State<GalleryScreen> {
         // Include the team lead's own ID
         final allIds =
             memberIds.contains(userId) ? memberIds : [...memberIds, userId];
-        photoProvider.streamTeamPhotos(allIds);
+        photoProvider.streamTeamPhotos(
+          allIds,
+          enterpriseId: auth.enterpriseId ?? '',
+        );
       } else {
         // Fallback: show only own photos
-        photoProvider.streamPhotos(userId);
+        photoProvider.streamPhotos(
+          userId,
+          enterpriseId: auth.enterpriseId ?? '',
+        );
       }
     } else {
-      photoProvider.streamPhotos(userId);
+      photoProvider.streamPhotos(
+        userId,
+        enterpriseId: auth.enterpriseId ?? '',
+      );
     }
   }
 
