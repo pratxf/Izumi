@@ -15,7 +15,6 @@ import '../../widgets/navigation/app_header.dart';
 /// Shown when employee ends work session
 class EndOfDayScreen extends StatefulWidget {
   final Duration sessionDuration;
-  final double distance;
   final List<String> locations;
   final int photosCount;
   final int tasksCompleted;
@@ -23,7 +22,6 @@ class EndOfDayScreen extends StatefulWidget {
   const EndOfDayScreen({
     super.key,
     required this.sessionDuration,
-    required this.distance,
     required this.locations,
     required this.photosCount,
     required this.tasksCompleted,
@@ -35,6 +33,35 @@ class EndOfDayScreen extends StatefulWidget {
 
 class _EndOfDayScreenState extends State<EndOfDayScreen> {
   bool _isEnding = false;
+  /// Distance for the stat card and the end-of-session notification, fetched
+  /// from UnifiedDataLayer so this screen shows the same number as every
+  /// other screen for today. null = still loading (card shows --).
+  double? _distanceKm;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDistance());
+  }
+
+  Future<void> _loadDistance() async {
+    final auth = context.read<AuthProvider>();
+    final userId = auth.currentUser?.id ?? '';
+    final enterpriseId = auth.enterpriseId ?? '';
+    if (userId.isEmpty || enterpriseId.isEmpty) return;
+    try {
+      final km = await UnifiedDataLayer.I.getDistance(
+        employeeId: userId,
+        enterpriseId: enterpriseId,
+        date: DateTime.now(),
+      );
+      if (!mounted) return;
+      setState(() => _distanceKm = km);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _distanceKm = 0.0);
+    }
+  }
 
   Future<void> _confirmEndSession() async {
     setState(() => _isEnding = true);
@@ -52,9 +79,20 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
     if (!mounted) return;
 
     if (result != null) {
-      // Show local notification with session summary
+      // Show local notification with session summary. Distance comes from
+      // UDL (today total), not from the endSession return value — keeps the
+      // notification number aligned with dashboard/analytics/history. Uses
+      // the card's already-loaded value if available, otherwise fetches.
       final duration = result['sessionDuration'] as Duration;
-      final dist = UnifiedDataLayer.sanitizeKm(result['distance'] as double);
+      double dist = _distanceKm ?? 0.0;
+      try {
+        dist = await UnifiedDataLayer.I.getDistance(
+          employeeId: userId,
+          enterpriseId: enterpriseId,
+          date: DateTime.now(),
+        );
+      } catch (_) {}
+      if (!mounted) return;
       final hours = duration.inHours;
       final minutes = duration.inMinutes % 60;
       final durationText = hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
@@ -180,8 +218,9 @@ class _EndOfDayScreenState extends State<EndOfDayScreen> {
                                     child: _buildStatCard(
                                       icon: AppIcons.location,
                                       label: 'Total Distance',
-                                      value:
-                                          '${UnifiedDataLayer.sanitizeKm(widget.distance).toStringAsFixed(1)} km',
+                                      value: _distanceKm == null
+                                          ? '--'
+                                          : '${_distanceKm!.toStringAsFixed(1)} km',
                                     ),
                                   ),
                                 ],

@@ -314,7 +314,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     context.push('/employee/end-of-day', extra: {
       'sessionDuration': session.sessionDuration,
-      'distance': session.distance,
       'locations': session.currentLocation.isNotEmpty
           ? [session.currentLocation]
           : <String>[],
