@@ -66,7 +66,13 @@ export const onSessionLocationCreated = onDocumentCreated(
       sessionId,
       orgId: session.enterpriseId,
       type: "location_update",
-      title: location.title?.trim() || "Location Update",
+      // Do NOT propagate the source subcollection entry's title. The first
+      // location per session is written client-side as a `check_in` with
+      // `title: "Session Started"` so session start has a fallback location
+      // if the activityLog write gets retried; but the mirrored activityLog
+      // doc is type `location_update` and its heading must be consistent
+      // with every other location entry.
+      title: "Tracked location",
       detail:
         address ||
         (lat != null && lng != null ? `${lat}, ${lng}` : "Tracked location"),

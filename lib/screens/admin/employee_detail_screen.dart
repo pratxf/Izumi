@@ -584,33 +584,8 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       type: AppHeaderType.secondary,
       showAvatar: false,
       actions: [
-        _buildRefreshButton(),
-        const SizedBox(width: 8),
         _buildStatusPill(status),
       ],
-    );
-  }
-
-  /// Small glass-style refresh button matching the header's back-arrow
-  /// visual (40×40, 14px radius, glassPrimary background). Taps trigger
-  /// [_refreshAll] — same flow as pull-to-refresh.
-  Widget _buildRefreshButton() {
-    return GestureDetector(
-      onTap: () => _refreshAll(),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: AppColors.glassPrimary,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Icon(
-          AppIcons.refresh,
-          size: 18,
-          color: AppColors.textPrimary,
-        ),
-      ),
     );
   }
 
@@ -883,57 +858,145 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       );
     }
 
-    // Sort descending (newest first)
-    final sorted = List<ActivityLogModel>.from(_activityLogs)
-      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    // Group by sessionId. Logs with no sessionId go into a synthetic "other"
+    // bucket that's always rendered last.
+    const String otherKey = '__other__';
+    final bySession = <String, List<ActivityLogModel>>{};
+    for (final log in _activityLogs) {
+      final key = (log.sessionId ?? '').isEmpty ? otherKey : log.sessionId!;
+      bySession.putIfAbsent(key, () => []).add(log);
+    }
 
-    return Column(
-      children: List.generate(sorted.length, (index) {
-        final log = sorted[index];
-        final isLast = index == sorted.length - 1;
+    // Sort events within each session ASC (oldest-first) so session_started
+    // appears at the top and session_ended at the bottom of each group.
+    for (final group in bySession.values) {
+      group.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    }
 
-        IconData icon;
-        Color color;
-        switch (log.type) {
-          case 'session_start':
-          case 'session_started':
-            icon = AppIcons.clock;
-            color = AppColors.success;
-            break;
-          case 'session_end':
-          case 'session_ended':
-          case 'session_auto_ended':
-            icon = AppIcons.close_circle;
-            color = AppColors.critical;
-            break;
-          case 'location_update':
-            icon = AppIcons.location;
-            color = AppColors.primary;
-            break;
-          case 'photo_captured':
-            icon = AppIcons.camera;
-            color = AppColors.primary;
-            break;
-          case 'task_started':
-          case 'task_completed':
-            icon = AppIcons.tick_circle;
-            color = const Color(0xFF7C3AED); // purple
-            break;
-          default:
-            icon = AppIcons.activity;
-            color = AppColors.primary;
-        }
+    // Session groups ordered DESC by earliest timestamp — newest session
+    // first. The "other" bucket (null sessionId) always renders last.
+    final orderedKeys = bySession.keys.where((k) => k != otherKey).toList()
+      ..sort((a, b) {
+        final ta = bySession[a]!.first.timestamp;
+        final tb = bySession[b]!.first.timestamp;
+        return tb.compareTo(ta);
+      });
+    if (bySession.containsKey(otherKey)) {
+      orderedKeys.add(otherKey);
+    }
 
-        return _buildTimelineItem(
-          icon: icon,
-          color: color,
-          title: log.title,
-          time: log.formattedFeedTime,
-          description: _resolveActivityDetail(log),
-          isLast: isLast,
-          log: log,
-        );
-      }),
+    final children = <Widget>[];
+    for (var gi = 0; gi < orderedKeys.length; gi++) {
+      final key = orderedKeys[gi];
+      final group = bySession[key]!;
+      final isLastGroup = gi == orderedKeys.length - 1;
+
+      // Session header — skip for the "other" bucket, which just rolls up
+      // any orphaned logs without decoration.
+      if (key != otherKey) {
+        children.add(_buildSessionHeader(group, isFirstGroup: gi == 0));
+      }
+
+      for (var li = 0; li < group.length; li++) {
+        final log = group[li];
+        final isLastInGroup = li == group.length - 1;
+        final isLastOverall = isLastGroup && isLastInGroup;
+        children.add(_buildActivityTimelineItem(log, isLast: isLastOverall));
+      }
+    }
+
+    return Column(children: children);
+  }
+
+  Widget _buildSessionHeader(
+    List<ActivityLogModel> group, {
+    required bool isFirstGroup,
+  }) {
+    final first = group.first;
+    final last = group.last;
+
+    String endLabel;
+    switch (last.type) {
+      case 'session_auto_ended':
+        endLabel = 'auto-ended';
+        break;
+      case 'session_end':
+      case 'session_ended':
+        endLabel = last.formattedFeedTime;
+        break;
+      default:
+        endLabel = 'in progress';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: EdgeInsets.only(top: isFirstGroup ? 0 : 16, bottom: 8),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        'Session · ${first.formattedFeedTime} → $endLabel',
+        style: AppTypography.bodySmall.copyWith(
+          color: AppColors.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActivityTimelineItem(
+    ActivityLogModel log, {
+    required bool isLast,
+  }) {
+    IconData icon;
+    Color color;
+    switch (log.type) {
+      case 'session_start':
+      case 'session_started':
+        icon = AppIcons.clock;
+        color = AppColors.success;
+        break;
+      case 'session_end':
+      case 'session_ended':
+      case 'session_auto_ended':
+        icon = AppIcons.close_circle;
+        color = AppColors.critical;
+        break;
+      case 'location_update':
+        icon = AppIcons.location;
+        color = AppColors.primary;
+        break;
+      case 'photo_captured':
+        icon = AppIcons.camera;
+        color = AppColors.primary;
+        break;
+      case 'task_started':
+      case 'task_completed':
+        icon = AppIcons.tick_circle;
+        color = const Color(0xFF7C3AED); // purple
+        break;
+      default:
+        icon = AppIcons.activity;
+        color = AppColors.primary;
+    }
+
+    // Some location_update logs in Firestore have their `title` field
+    // mislabeled as "Session Started" (data-quality issue at the write
+    // path). Canonicalise by type so the timeline never shows the wrong
+    // heading regardless of what the doc says.
+    final displayTitle =
+        log.type == 'location_update' ? 'Tracked location' : log.title;
+
+    return _buildTimelineItem(
+      icon: icon,
+      color: color,
+      title: displayTitle,
+      time: log.formattedFeedTime,
+      description: _resolveActivityDetail(log),
+      isLast: isLast,
+      log: log,
     );
   }
 
