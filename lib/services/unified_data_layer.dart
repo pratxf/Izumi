@@ -168,24 +168,7 @@ class UnifiedDataLayer {
     // Prime the local Firestore cache with a one-shot server fetch so the
     // stream's first emission has real data instead of an empty cache.
     try {
-      final primary =
-          await q.get(const GetOptions(source: Source.server));
-      if (primary.docs.isEmpty && enterpriseId.isNotEmpty) {
-        // Fallback: enterprise-wide prime for cases where the narrow
-        // employeeId query comes back empty (index propagation delay,
-        // data-shape drift). We don't consume this result — the goal is
-        // just to populate the SDK's local cache.
-        try {
-          await FirebaseFirestore.instance
-              .collection('activityLogs')
-              .where('enterpriseId', isEqualTo: enterpriseId)
-              .where('timestamp',
-                  isGreaterThanOrEqualTo: Timestamp.fromDate(from))
-              .orderBy('timestamp', descending: true)
-              .limit(200)
-              .get(const GetOptions(source: Source.server));
-        } catch (_) {}
-      }
+      await q.get(const GetOptions(source: Source.server));
     } catch (_) {
       // Offline or slow — proceed anyway, the stream will keep retrying.
     }

@@ -827,6 +827,18 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
                 ),
               ),
               const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  _feedError ?? '',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.critical,
+                    fontFamily: 'monospace',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 8),
               TextButton(
                 onPressed: _refreshAll,
                 child: const Text('Tap to retry'),

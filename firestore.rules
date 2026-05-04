@@ -66,6 +66,7 @@ service cloud.firestore {
     // Check if a user is in the team lead's group
     function isInMyGroup(userId) {
       return isTeamLead() &&
+        getGroupId() != null &&
         exists(/databases/$(database)/documents/groups/$(getGroupId())) &&
         userId in get(/databases/$(database)/documents/groups/$(getGroupId())).data.memberIds;
     }
@@ -122,11 +123,11 @@ service cloud.firestore {
     // Sessions Collection
     // =============================================
     match /sessions/{sessionId} {
-      // Read: Own session OR admin in same enterprise OR team lead reading group member session
+      // Read: Own session OR admin in same enterprise OR team lead in same enterprise
       allow read: if isAuthenticated() &&
         (isOwner(resource.data.employeeId) ||
          (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
-         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId) && isInMyGroup(resource.data.employeeId)));
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId)));
 
       // Create: Only the session owner (employeeId must match auth uid)
       allow create: if isAuthenticated() &&
@@ -153,11 +154,11 @@ service cloud.firestore {
     // Photos Collection
     // =============================================
     match /photos/{photoId} {
-      // Read: Own photos OR admin in same enterprise OR team lead reading group member photos
+      // Read: Own photos OR admin in same enterprise OR team lead in same enterprise
       allow read: if isAuthenticated() &&
         (isOwner(resource.data.employeeId) ||
          (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
-         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId) && isInMyGroup(resource.data.employeeId)));
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId)));
 
       // Create: Only the photo owner (employeeId must match auth uid)
       allow create: if isAuthenticated() &&
@@ -218,11 +219,11 @@ service cloud.firestore {
     // Daily Summaries Collection
     // =============================================
     match /dailySummaries/{summaryId} {
-      // Read: Own summaries OR admin in same enterprise OR team lead reading group member summaries
+      // Read: Own summaries OR admin in same enterprise OR team lead in same enterprise
       allow read: if isAuthenticated() &&
         (isOwner(resource.data.employeeId) ||
          (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
-         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId) && isInMyGroup(resource.data.employeeId)));
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId)));
 
       // Write: Only Cloud Functions (no client writes allowed)
       allow write: if false;
@@ -295,11 +296,11 @@ service cloud.firestore {
     // Activity Logs Collection
     // =============================================
     match /activityLogs/{logId} {
-      // Read: Own logs OR admin in same enterprise OR team lead reading group member logs
+      // Read: Own logs OR admin in same enterprise OR team lead in same enterprise
       allow read: if isAuthenticated() &&
         (isOwner(resource.data.employeeId) ||
          (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
-         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId) && isInMyGroup(resource.data.employeeId)));
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId)));
 
       // Create: Only the log owner (employeeId must match auth uid)
       allow create: if isAuthenticated() &&

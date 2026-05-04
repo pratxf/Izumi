@@ -534,6 +534,18 @@ class _TeamLeadEmployeeDetailScreenState
                   style: AppTypography.bodySmall
                       .copyWith(color: AppColors.textTertiary)),
               const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  _feedError ?? '',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.critical,
+                    fontFamily: 'monospace',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 8),
               TextButton(
                 onPressed: () {
                   setState(() {

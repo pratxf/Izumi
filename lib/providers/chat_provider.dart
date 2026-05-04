@@ -493,6 +493,9 @@ class ChatProvider extends ChangeNotifier {
     required String senderId,
     required String senderName,
     String? caption,
+    double? latitude,
+    double? longitude,
+    String? address,
   }) async {
     _isSending = true;
     notifyListeners();
@@ -512,6 +515,9 @@ class ChatProvider extends ChangeNotifier {
         type: 'image',
         imageUrl: imageUrl,
         caption: caption,
+        latitude: (latitude != null && latitude != 0.0) ? latitude : null,
+        longitude: (longitude != null && longitude != 0.0) ? longitude : null,
+        address: (address?.isNotEmpty == true) ? address : null,
         createdAt: DateTime.now(),
         replyToId: reply?.id,
         replyToSenderName: reply?.senderName,

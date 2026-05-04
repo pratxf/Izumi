@@ -31,6 +31,8 @@ class ImageDetailScreen extends StatefulWidget {
   final double? longitude;
   final bool isVerified;
   final String? heroTag;
+  final bool showCoordinatesInOverlay;
+  final bool showGeoOverlay;
 
   const ImageDetailScreen({
     super.key,
@@ -50,6 +52,8 @@ class ImageDetailScreen extends StatefulWidget {
     this.longitude,
     this.isVerified = false,
     this.heroTag,
+    this.showCoordinatesInOverlay = true,
+    this.showGeoOverlay = true,
   });
 
   @override
@@ -227,35 +231,33 @@ class _ImageDetailScreenState extends State<ImageDetailScreen> {
                 // Hero image
                 _buildHeroImage(),
 
-                // Bottom gradient for text readability
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 220,
-                  child: IgnorePointer(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black87,
-                          ],
+                if (widget.showGeoOverlay) ...[
+                  // Bottom gradient for text readability
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 220,
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Colors.black87],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-
-                // GPS + timestamp overlay
-                Positioned(
-                  left: 14,
-                  right: 14,
-                  bottom: 14,
-                  child: _buildGeoOverlay(),
-                ),
+                  // GPS + timestamp overlay
+                  Positioned(
+                    left: 14,
+                    right: 14,
+                    bottom: 14,
+                    child: _buildGeoOverlay(),
+                  ),
+                ],
 
                 // Top-right metadata badges
                 Positioned(
@@ -348,7 +350,7 @@ class _ImageDetailScreenState extends State<ImageDetailScreen> {
             ],
           ),
         if (hasLocation) const SizedBox(height: 6),
-        if (hasCoords)
+        if (hasCoords && widget.showCoordinatesInOverlay)
           Row(
             children: [
               const Icon(AppIcons.gps, size: 12, color: Colors.white70),
@@ -364,7 +366,7 @@ class _ImageDetailScreenState extends State<ImageDetailScreen> {
               ),
             ],
           ),
-        if (hasCoords) const SizedBox(height: 4),
+        if (hasCoords && widget.showCoordinatesInOverlay) const SizedBox(height: 4),
         Row(
           children: [
             const Icon(AppIcons.clock, size: 12, color: Colors.white70),

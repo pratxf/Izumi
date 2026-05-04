@@ -330,6 +330,9 @@ class PhotoProvider extends ChangeNotifier {
           if (thumbnailUrl.isNotEmpty) 'thumbnailUrl': thumbnailUrl,
           if (shareCaption != null) 'caption': shareCaption,
           'createdAt': Timestamp.fromDate(now),
+          if (latitude != 0.0) 'latitude': latitude,
+          if (longitude != 0.0) 'longitude': longitude,
+          if (location.isNotEmpty) 'address': location,
         });
       }
 
@@ -398,7 +401,12 @@ class PhotoProvider extends ChangeNotifier {
 
       return photo;
     } catch (e) {
-      _error = e.toString();
+      if (e is FirebaseException) {
+        debugPrint('[PhotoProvider] upload error — plugin:${e.plugin} code:${e.code} message:${e.message}');
+        _error = '[${e.plugin}/${e.code}] ${e.message ?? e.toString()}';
+      } else {
+        _error = e.toString();
+      }
       _optimisticPhotosByRequestId[clientRequestId] = localPhoto.copyWith(
         uploadStatus: UploadStatus.error,
       );

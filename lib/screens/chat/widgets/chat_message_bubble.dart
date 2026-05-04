@@ -8,6 +8,7 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../models/chat_message_model.dart';
 import '../../../models/upload_status.dart';
+import '../../employee/image_detail_screen.dart';
 import 'swipe_to_reply_wrapper.dart';
 
 class ChatMessageBubble extends StatelessWidget {
@@ -238,7 +239,9 @@ class ChatMessageBubble extends StatelessWidget {
 
   Widget _buildImageContent(BuildContext context) {
     final metadata = _ImageCaptionMetadata.fromCaption(message.caption);
-    final displayLocation = metadata.location ?? 'Location unavailable';
+    final displayLocation = message.address?.isNotEmpty == true
+        ? message.address
+        : metadata.location;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,52 +294,53 @@ class ChatMessageBubble extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Positioned(
-                    left: 12,
-                    bottom: 12,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          constraints: const BoxConstraints(maxWidth: 180),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.28),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.14),
+                  if (displayLocation != null)
+                    Positioned(
+                      left: 12,
+                      bottom: 12,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            constraints: const BoxConstraints(maxWidth: 180),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                AppIcons.location,
-                                size: 12,
-                                color: Colors.white,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.28),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.14),
                               ),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  displayLocation,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTypography.small.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  AppIcons.location,
+                                  size: 12,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    displayLocation,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.small.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -643,9 +647,29 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   void _showFullScreenImage(BuildContext context, String imageUrl) {
+    final meta = _ImageCaptionMetadata.fromCaption(message.caption);
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FullScreenImage(imageUrl: imageUrl),
+      PageRouteBuilder(
+        barrierColor: Colors.black,
+        pageBuilder: (_, __, ___) => ImageDetailScreen(
+          imageUrl: imageUrl,
+          thumbnailUrl: message.thumbnailUrl,
+          location: message.address ?? meta.location ?? '',
+          capturedBy: message.senderName,
+          employeeId: message.senderId,
+          timestamp: message.createdAt,
+          latitude: message.latitude,
+          longitude: message.longitude,
+          name: meta.primaryName,
+          notes: meta.notes,
+          showCoordinatesInOverlay: false,
+          showGeoOverlay: false,
+        ),
+        transitionsBuilder: (_, animation, __, child) => FadeTransition(
+          opacity: animation,
+          child: child,
+        ),
+        transitionDuration: const Duration(milliseconds: 200),
       ),
     );
   }
@@ -710,36 +734,3 @@ class _ImageCaptionMetadata {
   }
 }
 
-class FullScreenImage extends StatelessWidget {
-  final String imageUrl;
-
-  const FullScreenImage({super.key, required this.imageUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 0,
-      ),
-      body: Center(
-        child: InteractiveViewer(
-          child: Image.network(
-            imageUrl,
-            fit: BoxFit.contain,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return const Center(
-                child: CircularProgressIndicator(
-                  color: AppColors.primary,
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-}

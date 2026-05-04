@@ -383,6 +383,9 @@ class OfflineQueueManager {
           break;
       }
     } catch (error, stackTrace) {
+      if (error is FirebaseException) {
+        debugPrint('[OfflineQueueManager] Firebase error — plugin:${error.plugin} code:${error.code} message:${error.message}');
+      }
       debugPrint(
         '[OfflineQueueManager] Job ${job.id} (${job.type.name}) FAILED: $error\n$stackTrace',
       );
@@ -589,6 +592,9 @@ class OfflineQueueManager {
         thumbnailUrl: thumbnailUrl.isNotEmpty ? thumbnailUrl : null,
         caption: shareCaption,
         createdAt: createdAt,
+        latitude: (payload['latitude'] as num?)?.toDouble(),
+        longitude: (payload['longitude'] as num?)?.toDouble(),
+        address: payload['location']?.toString(),
       );
       batch.set(messageRef, sharedMessage.toFirestore());
     }

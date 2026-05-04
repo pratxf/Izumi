@@ -194,6 +194,9 @@ class _ChatCameraScreenState extends State<ChatCameraScreen> {
         senderId: userId,
         senderName: userName,
         caption: note.isEmpty ? null : note,
+        latitude: _lat,
+        longitude: _lng,
+        address: _locationName != 'Fetching location...' ? _locationName : null,
       );
 
       if (!success) {
