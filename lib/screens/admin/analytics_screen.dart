@@ -607,13 +607,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         icon: AppIcons.clock,
                         value: stats['duration'] as String? ?? '0m',
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       _StatChip(
                         icon: AppIcons.routing_2,
                         value:
                             '${analytics.getEmployeeDistance(emp.id).toStringAsFixed(1)} km',
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
+                      _StatChip(
+                        icon: AppIcons.camera,
+                        value: '${(stats['photos'] as int?) ?? 0}',
+                      ),
+                      const SizedBox(width: 8),
                       _StatChip(
                         icon: AppIcons.calendar_tick,
                         value: '${analytics.getEmployeeLeaveCount(emp.id)} L',

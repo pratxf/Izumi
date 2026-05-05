@@ -3,7 +3,7 @@ name: izumi
 description: Izumi BioSciences
 publish_to: 'none'
 
-version: 1.0.71+71
+version: 1.0.72+72
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
