@@ -611,12 +611,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       _StatChip(
                         icon: AppIcons.routing_2,
                         value:
-                            '${((stats['distance'] as double?) ?? 0).toStringAsFixed(1)} km',
+                            '${analytics.getEmployeeDistance(emp.id).toStringAsFixed(1)} km',
                       ),
                       const SizedBox(width: 12),
                       _StatChip(
-                        icon: AppIcons.camera,
-                        value: '${(stats['photos'] as int?) ?? 0}',
+                        icon: AppIcons.calendar_tick,
+                        value: '${analytics.getEmployeeLeaveCount(emp.id)} L',
                       ),
                     ],
                   ),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../models/daily_summary_model.dart';
@@ -32,6 +33,7 @@ class AnalyticsProvider extends ChangeNotifier {
   final Map<String, List<ActivityLogModel>> _employeeLogs = {};
   Map<String, Map<String, dynamic>> _activeStatsData = {};
   Map<String, int> _employeePhotoCounts = {};
+  Map<String, int> _employeeLeaveCounts = {};
   /// Per-employee distance for the currently-loaded range, computed via
   /// UnifiedDataLayer-compatible logic in [_computeEmployeeDistance] and
   /// rebuilt on every [_recomputeTotals] pass.
@@ -107,6 +109,7 @@ class AnalyticsProvider extends ChangeNotifier {
     _employeePhotoCounts.removeWhere((id, _) => !snap.contains(id));
     _employeeLogs.removeWhere((id, _) => !snap.contains(id));
     _activeStatsData.removeWhere((id, _) => !snap.contains(id));
+    _employeeLeaveCounts.removeWhere((id, _) => !snap.contains(id));
     _actualTotalPhotos =
         _employeePhotoCounts.values.fold<int>(0, (a, b) => a + b);
   }
@@ -219,6 +222,9 @@ class AnalyticsProvider extends ChangeNotifier {
       // Load actual photo counts from the photos collection so totals
       // aren't limited to what dailySummaries recorded.
       _loadPhotoCounts(enterpriseId, dateRange.$1, dateRange.$2);
+
+      // Load leave counts for the current date range.
+      _loadLeaveCounts(enterpriseId, dateRange.$1, dateRange.$2);
 
       // Proactively load session fallback so analytics isn't blank while
       // waiting for the dailySummaries stream to emit.
@@ -458,6 +464,40 @@ class AnalyticsProvider extends ChangeNotifier {
       debugPrint('[AnalyticsProvider] _loadPhotoCounts error: $e');
     }
   }
+
+  Future<void> _loadLeaveCounts(
+    String enterpriseId,
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    try {
+      String dateKey(DateTime d) =>
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final startKey = dateKey(startDate);
+      final endKey = dateKey(endDate);
+
+      final snap = await FirebaseFirestore.instance
+          .collection('leaves')
+          .where('enterpriseId', isEqualTo: enterpriseId)
+          .where('date', isGreaterThanOrEqualTo: startKey)
+          .where('date', isLessThanOrEqualTo: endKey)
+          .get();
+
+      final counts = <String, int>{};
+      for (final doc in snap.docs) {
+        final empId = doc.data()['employeeId'] as String? ?? '';
+        if (empId.isEmpty || !_shouldIncludeEmployee(empId)) continue;
+        counts[empId] = (counts[empId] ?? 0) + 1;
+      }
+      _employeeLeaveCounts = counts;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[AnalyticsProvider] _loadLeaveCounts error: $e');
+    }
+  }
+
+  int getEmployeeLeaveCount(String employeeId) =>
+      _employeeLeaveCounts[employeeId] ?? 0;
 
   void _processLogs(List<ActivityLogModel> allLogs) {
     _employeeLogs.clear();

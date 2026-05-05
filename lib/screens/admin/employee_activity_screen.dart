@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -71,6 +72,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
   /// Summary-card distance, sourced from UnifiedDataLayer.getDistance for
   /// every day in the selected range. null = not yet resolved (card shows --).
   double? _distanceKm;
+  int _leaveCount = 0;
 
   // Route map state
   List<LatLng> _routePoints = [];
@@ -147,6 +149,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
       });
       _loadRouteData(feed.sessions);
       _loadDistanceFromUdl(loadVersion, authProvider.enterpriseId);
+      _loadLeaveCount(loadVersion, authProvider.enterpriseId);
     } catch (error, stackTrace) {
       debugPrint('[EmployeeActivityScreen] Failed to load day data: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -180,6 +183,25 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
     }
     if (!mounted || loadVersion != _loadVersion) return;
     setState(() => _distanceKm = total);
+  }
+
+  Future<void> _loadLeaveCount(int loadVersion, String? enterpriseId) async {
+    if (enterpriseId == null || enterpriseId.isEmpty) return;
+    try {
+      String dateKey(DateTime d) =>
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final snap = await FirebaseFirestore.instance
+          .collection('leaves')
+          .where('enterpriseId', isEqualTo: enterpriseId)
+          .where('employeeId', isEqualTo: widget.employeeId)
+          .where('date', isGreaterThanOrEqualTo: dateKey(_rangeStart))
+          .where('date', isLessThanOrEqualTo: dateKey(_rangeEnd))
+          .get();
+      if (!mounted || loadVersion != _loadVersion) return;
+      setState(() => _leaveCount = snap.docs.length);
+    } catch (e) {
+      debugPrint('[EmployeeActivityScreen] _loadLeaveCount error: $e');
+    }
   }
 
   Future<void> _loadRouteData(List<SessionModel> sessions) async {
@@ -826,10 +848,10 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
             ),
             _statDivider(),
             _buildStatItem(
-              icon: AppIcons.camera,
-              color: AppColors.info,
-              label: 'Photos',
-              value: stats['photos']!,
+              icon: AppIcons.calendar_tick,
+              color: const Color(0xFFE8A838),
+              label: 'Leave',
+              value: stats['leave']!,
             ),
           ],
         ),
@@ -1738,6 +1760,7 @@ class _EmployeeActivityScreenState extends State<EmployeeActivityScreen> {
       'duration': formatDuration(totalDuration),
       'photos': '${photoCount ?? dayActivity.photoCount}',
       'distance': distanceLabel,
+      'leave': '$_leaveCount',
     };
   }
 

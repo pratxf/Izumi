@@ -293,6 +293,26 @@ service cloud.firestore {
     }
 
     // =============================================
+    // Leaves Collection
+    // =============================================
+    match /leaves/{leaveId} {
+      // Read: Own leaves OR admin in same enterprise OR team lead in same enterprise
+      allow read: if isAuthenticated() &&
+        (isOwner(resource.data.employeeId) ||
+         (isAdmin() && belongsToEnterprise(resource.data.enterpriseId)) ||
+         (isTeamLead() && belongsToEnterprise(resource.data.enterpriseId)));
+
+      // Create: Any authenticated user marking their own leave
+      allow create: if isAuthenticated() &&
+        isOwner(request.resource.data.employeeId) &&
+        belongsToEnterprise(request.resource.data.enterpriseId);
+
+      // Delete: Admin only
+      allow delete: if isAuthenticated() &&
+        isAdmin() && belongsToEnterprise(resource.data.enterpriseId);
+    }
+
+    // =============================================
     // Activity Logs Collection
     // =============================================
     match /activityLogs/{logId} {
