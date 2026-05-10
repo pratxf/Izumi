@@ -1,29 +1,20 @@
 /**
- * sweepSignalLostSessions — Scheduled backup auto-end sweep.
+ * sweepSignalLostSessions — Scheduled backup sweep.
  *
  * Runs every 10 minutes. Three responsibilities, in order:
  *
- *   1. Connectivity-aware auto-end (primary safety net for the
- *      on_presence_offline trigger). For each active session where presence
- *      is NOT active/break, apply the same decision tree the trigger uses:
- *         - lastConnectivity.state == "offline" && changedAt < 2h
- *           → keep alive, mark presence "offline_tracking"
- *         - lastConnectivity.state == "offline" && changedAt ≥ 2h → auto-end
- *         - lastConnectivity.state == "online" && heartbeat ≥ 45 m → auto-end
- *         - no lastConnectivity hint → fallback heartbeat ≥ 90 m → auto-end
+ *   1. Connectivity-aware session health pass. For each active session where
+ *      presence is NOT active/break, apply this decision tree:
+ *         - offline && changedAt < 8h  → keep alive, mark "offline_tracking"
+ *         - offline && changedAt ≥ 8h  → silent FCM kick first; auto-end only
+ *                                         if kick was already sent > 15 min ago
+ *         - online && heartbeat ≥ 45m  → write "signal_lost", keep alive;
+ *                                         WorkManager watchdog handles restart
+ *         - no lastConnectivity hint   → same as online path above
  *
- *   2. Hard 16-hour cutoff for zombie sessions. Any session with status
- *      "active" or "signal_lost" whose startTime is > 16 h ago is force-ended
- *      regardless of heartbeat / presence state. This is the last safety net
- *      against a session that has somehow kept its heartbeat alive forever
- *      (e.g. clock drift, stuck emulator).
+ *   2. Hard 16-hour cutoff for zombie sessions.
  *
- *   3. Orphaned RTDB cleanup. activeStats / sessionHeartbeat / liveLocations
- *      nodes whose corresponding Firestore session is no longer active get
- *      nulled out so the dashboard doesn't show ghost employees.
- *
- * Every auto-end also fires an FCM push to the affected employee so they
- * know to start a new session when they're back.
+ *   3. Orphaned RTDB cleanup.
  */
 
 import {onSchedule} from "firebase-functions/v2/scheduler";
@@ -33,8 +24,11 @@ import {sendNotification} from "../utils/send_notification";
 
 const HEARTBEAT_STALE_FALLBACK_MS = 90 * 60 * 1000;
 const HEARTBEAT_STALE_ONLINE_MS = 45 * 60 * 1000;
-const OFFLINE_GRACE_MS = 2 * 60 * 60 * 1000;
+const OFFLINE_GRACE_MS = 8 * 60 * 60 * 1000;
 const MAX_SESSION_DURATION_MS = 16 * 60 * 60 * 1000;
+// How long to wait after sending a silent FCM kick before auto-ending.
+// Must be >= one sweep cycle (10 min) so the device has a chance to respond.
+const KICK_GRACE_MS = 15 * 60 * 1000;
 
 type LastConnectivity = {
   state?: "online" | "offline";
@@ -61,6 +55,7 @@ type SessionDoc = {
   totalDistance?: number;
   photosCount?: number;
   tasksCompleted?: number;
+  kickSentAt?: admin.firestore.Timestamp;
 };
 
 export const sweepSignalLostSessions = onSchedule(
@@ -130,18 +125,87 @@ export const sweepSignalLostSessions = onSchedule(
         shouldEnd = true;
         reason = "offline_grace_exceeded";
       } else if (lastConn?.state === "online") {
+        // Device has internet but heartbeat is stale — app process is dead.
+        // Mark signal_lost so the dashboard reflects this, but keep the session
+        // alive. WorkManager watchdog will attempt a restart. The 16h cutoff
+        // below is the only auto-end for this path.
         if (heartbeatAgeMs >= HEARTBEAT_STALE_ONLINE_MS) {
-          shouldEnd = true;
-          reason = "online_but_heartbeat_stale";
+          await rtdb
+            .ref(`presence/${enterpriseId}/${userId}/status`)
+            .set("signal_lost");
+          keptCount++;
         }
+        continue;
       } else {
+        // No lastConnectivity hint (legacy client) — same policy as online path.
         if (heartbeatAgeMs >= HEARTBEAT_STALE_FALLBACK_MS) {
-          shouldEnd = true;
-          reason = "heartbeat_stale_fallback";
+          await rtdb
+            .ref(`presence/${enterpriseId}/${userId}/status`)
+            .set("signal_lost");
+          keptCount++;
         }
+        continue;
       }
 
       if (!shouldEnd) continue;
+
+      // ── Silent FCM kick before auto-ending (offline path only) ───────────
+      // Send a high-priority data-only message to wake the device. If the app
+      // responds and restarts tracking, the next sweep cycle will see the
+      // heartbeat fresh and skip this session. Only auto-end if we already sent
+      // a kick and the device still hasn't responded after KICK_GRACE_MS.
+      const kickSentAt = (session as SessionDoc).kickSentAt?.toMillis();
+
+      if (kickSentAt && (now - kickSentAt) < KICK_GRACE_MS) {
+        keptCount++;
+        logger.info("sweep: kick sent recently, waiting for device response.", {
+          enterpriseId, userId, sessionId: sessionDoc.id,
+          kickAgeMs: now - kickSentAt,
+        });
+        continue;
+      }
+
+      if (!kickSentAt) {
+        // First time we're about to auto-end this session — send kick first.
+        const userSnap = await db.collection("users").doc(userId).get();
+        const fcmToken = userSnap.data()?.fcmToken as string | undefined;
+
+        if (fcmToken) {
+          try {
+            await admin.messaging().send({
+              token: fcmToken,
+              android: {priority: "high", ttl: 60000},
+              apns: {
+                payload: {aps: {contentAvailable: true}},
+                headers: {"apns-priority": "5"},
+              },
+              data: {
+                action: "RESTART_TRACKING",
+                sessionId: sessionDoc.id,
+                enterpriseId,
+                employeeId: userId,
+              },
+            });
+
+            await sessionDoc.ref.update({
+              kickSentAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            keptCount++;
+            logger.info("sweep: silent kick sent, deferring auto-end.", {
+              enterpriseId, userId, sessionId: sessionDoc.id,
+            });
+            continue;
+          } catch (e) {
+            logger.warn("sweep: FCM kick failed, proceeding to auto-end.", {
+              userId, error: e instanceof Error ? e.message : String(e),
+            });
+            // Fall through to auto-end
+          }
+        }
+        // No FCM token — fall through to auto-end immediately
+      }
+      // kickSentAt exists and KICK_GRACE_MS has expired — fall through to auto-end
 
       const autoEnded = await db.runTransaction(async (tx) => {
         const fresh = await tx.get(sessionDoc.ref);
@@ -164,6 +228,7 @@ export const sweepSignalLostSessions = onSchedule(
           notes: `Auto-ended by sweep: ${reason}.`,
           autoEndReason: reason,
           autoEndSource: "sweep_signal_lost_sessions",
+          kickSentAt: admin.firestore.FieldValue.delete(),
         });
 
         const activityRef = db.collection("activityLogs").doc();

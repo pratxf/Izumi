@@ -32,7 +32,8 @@ class RealtimeDbService {
   }
 
   /// Registers an onDisconnect handler that sets presence to offline when
-  /// the RTDB connection drops.
+  /// the RTDB connection drops. Also stamps lastConnectivity so the server
+  /// sweep can distinguish "network lost" (offline) from "app dead" (signal_lost).
   Future<void> setupOfflineOnDisconnect({
     required String enterpriseId,
     required String userId,
@@ -42,6 +43,10 @@ class RealtimeDbService {
       'status': 'offline',
       'lastSeen': ServerValue.timestamp,
       'currentSessionId': currentSessionId,
+      'lastConnectivity': {
+        'state': 'offline',
+        'changedAt': ServerValue.timestamp,
+      },
     });
   }
 

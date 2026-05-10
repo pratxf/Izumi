@@ -48,12 +48,14 @@ class SessionRepository {
     // Distance is intentionally NOT written here. onSessionComplete
     // (Cloud Function) recalculates totalDistance from the raw location
     // trail and is the single source of truth for completed-session distance.
+    // kickSentAt is cleared so it doesn't linger on completed sessions.
     await _firestoreService.updateDocument(_collection, sessionId, {
       'endTime': Timestamp.fromDate(DateTime.now()),
       'status': 'ended',
       'totalDuration': totalDuration,
       'photosCount': photosCount,
       'tasksCompleted': tasksCompleted,
+      'kickSentAt': FieldValue.delete(),
     });
   }
 

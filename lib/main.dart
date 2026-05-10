@@ -23,11 +23,12 @@ import 'providers/analytics_provider.dart';
 import 'providers/team_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/enterprise_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'services/connectivity_monitor.dart';
 import 'tracking/tracking_foreground_service.dart';
 
 /// Must match pubspec `version:`. Bumped in lockstep with release builds.
-const String kAppVersion = '1.0.67+67';
+const String kAppVersion = '1.0.73+73';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -36,6 +37,28 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
   } catch (_) {}
+
+  if (message.data['action'] == 'RESTART_TRACKING') {
+    final sessionId = message.data['sessionId'] as String?;
+    if (sessionId == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final storedSessionId = prefs.getString('needs_resume_session_id');
+      if (storedSessionId != sessionId) return;
+
+      TrackingForegroundService.initialize();
+      await TrackingForegroundService.ensureTrackingRunning(
+        enterpriseId: message.data['enterpriseId'] ?? '',
+        employeeId: message.data['employeeId'] ?? '',
+        sessionId: sessionId,
+        startTimeMs: prefs.getInt('needs_resume_started_at_ms') ??
+            DateTime.now().millisecondsSinceEpoch,
+      );
+      await TrackingForegroundService.requestImmediateHeartbeat();
+    } catch (e) {
+      debugPrint('[BGHandler] RESTART_TRACKING failed: $e');
+    }
+  }
 }
 
 void main() async {

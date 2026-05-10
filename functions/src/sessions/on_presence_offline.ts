@@ -1,19 +1,21 @@
 /**
  * onPresenceOffline - RTDB Trigger
  *
- * Auto-ends active sessions only when there is strong evidence the app is
- * actually dead, not just temporarily disconnected from the network.
+ * Keeps sessions alive aggressively. Only auto-ends when there is strong,
+ * multi-signal evidence the session is unrecoverable. OEM kills and network
+ * drops must NEVER auto-end a session prematurely.
  *
  * Decision tree (in order):
- *   1. presence.lastConnectivity.state == "offline" AND changedAt < 2h ago
- *      → KEEP ALIVE. Mark presence.status = "offline_tracking" so admins see
- *        the employee is in a no-network zone but still working.
- *   2. presence.lastConnectivity.state == "offline" AND changedAt ≥ 2h ago
- *      → AUTO-END. Something is genuinely wrong.
+ *   1. presence.lastConnectivity.state == "offline" AND changedAt < 8h ago
+ *      → KEEP ALIVE. Mark presence.status = "offline_tracking".
+ *   2. presence.lastConnectivity.state == "offline" AND changedAt ≥ 8h ago
+ *      → AUTO-END. Device has been unreachable for 8 hours.
  *   3. presence.lastConnectivity.state == "online" AND heartbeat stale ≥ 45m
- *      → AUTO-END. App is dead despite having internet.
+ *      → Write signal_lost to presence and RETURN. Never auto-end here.
+ *        The sweep (every 10 min) and WorkManager watchdog handle recovery.
+ *        Hard 16h cutoff in the sweep is the only auto-end for this case.
  *   4. lastConnectivity field absent (older client)
- *      → fall back to the legacy threshold (heartbeat stale ≥ 90m).
+ *      → Same as case 3: write signal_lost and return. No auto-end.
  */
 
 import { onValueWritten } from "firebase-functions/v2/database";
@@ -27,7 +29,7 @@ const HEARTBEAT_STALE_FALLBACK_MS = 90 * 60 * 1000;
 const HEARTBEAT_STALE_ONLINE_MS = 45 * 60 * 1000;
 // Maximum time a session may stay alive after the device went offline. Beyond
 // this, assume the device is genuinely lost / dead and end the session.
-const OFFLINE_GRACE_MS = 2 * 60 * 60 * 1000;
+const OFFLINE_GRACE_MS = 8 * 60 * 60 * 1000;
 
 type LastConnectivity = {
   state?: "online" | "offline";
@@ -67,11 +69,11 @@ export const onPresenceOffline = onValueWritten(
     const before = event.data.before.val() as PresenceRecord | null;
     const after = event.data.after.val() as PresenceRecord | null;
 
-    // Trigger when status transitions INTO either offline or signal_lost.
-    // signal_lost is set by the foreground task's onDestroy (FIX 6) when the
-    // service is killed; the same decision tree applies.
-    const isTerminalish = (s?: string) =>
-      s === "offline" || s === "signal_lost";
+    // Trigger only when status transitions INTO "offline".
+    // signal_lost is now written more frequently by the sweep as a
+    // "stale but alive" marker — re-triggering on every sweep write would
+    // create a feedback loop. The sweep owns the signal_lost → auto-end path.
+    const isTerminalish = (s?: string) => s === "offline";
     if (!after || !isTerminalish(after.status)) return;
     if (isTerminalish(before?.status)) return;
 
@@ -157,25 +159,33 @@ export const onPresenceOffline = onValueWritten(
         { enterpriseId, userId, sessionId, offlineForMs },
       );
     } else if (lastConnectivity?.state === "online") {
-      // Device claims it has internet but heartbeat is stale → app is dead.
-      if (ageMs < HEARTBEAT_STALE_ONLINE_MS) {
+      // Device has internet but heartbeat is stale → app process is dead.
+      // Write signal_lost so the dashboard shows the right status, but do NOT
+      // auto-end. The WorkManager watchdog and sweep handle recovery.
+      // The 16h hard cutoff in the sweep is the only auto-end for this path.
+      if (ageMs >= HEARTBEAT_STALE_ONLINE_MS) {
+        await rtdb.ref(`presence/${enterpriseId}/${userId}`).update({
+          status: "signal_lost",
+        });
         logger.info(
-          "onPresenceOffline: Online + heartbeat fresh; no auto-end.",
+          "onPresenceOffline: online + stale heartbeat → signal_lost, kept alive.",
           { enterpriseId, userId, sessionId, heartbeatAgeMs: ageMs },
         );
-        return;
       }
+      return; // Never auto-end here.
     } else {
-      // No lastConnectivity hint → legacy fallback path.
-      if (ageMs < HEARTBEAT_STALE_FALLBACK_MS) {
-        logger.info("onPresenceOffline: Heartbeat fresh; no auto-end.", {
-          enterpriseId,
-          userId,
-          sessionId,
-          heartbeatAgeMs: ageMs,
+      // No lastConnectivity hint → legacy client. Same policy: mark signal_lost
+      // and let the sweep / watchdog recover. No auto-end from this trigger.
+      if (ageMs >= HEARTBEAT_STALE_FALLBACK_MS) {
+        await rtdb.ref(`presence/${enterpriseId}/${userId}`).update({
+          status: "signal_lost",
         });
-        return;
+        logger.info(
+          "onPresenceOffline: no connectivity hint + stale heartbeat → signal_lost.",
+          { enterpriseId, userId, sessionId, heartbeatAgeMs: ageMs },
+        );
       }
+      return; // Never auto-end here either.
     }
 
     await db.runTransaction(async (tx) => {

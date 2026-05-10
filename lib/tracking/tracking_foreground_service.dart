@@ -6,6 +6,7 @@ import 'package:flutter_activity_recognition/flutter_activity_recognition.dart'
     as ar;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/app_colors.dart';
 
 import 'tracking_task_handler.dart';
@@ -111,6 +112,13 @@ class TrackingForegroundService {
         value: employeeName,
       );
     }
+
+    // Mark tracking as active so the WorkManager watchdog knows there is a
+    // session that should be running. Cleared in stopTracking().
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('izumi_tracking_active', true);
+    } catch (_) {}
 
     final isRunning = await FlutterForegroundTask.isRunningService;
     if (isRunning) {
@@ -219,6 +227,13 @@ class TrackingForegroundService {
         FlutterForegroundTask.removeData(key: _startedAtKey),
         FlutterForegroundTask.removeData(key: _sessionStatusKey),
       ]);
+
+      // Clear the watchdog flag so the WorkManager worker no-ops when
+      // there is no active session.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('izumi_tracking_active');
+      } catch (_) {}
     }
 
     if (await FlutterForegroundTask.isRunningService) {

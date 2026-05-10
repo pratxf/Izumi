@@ -33,8 +33,9 @@ SessionTrackingTaskHandler.onStart()
         |
         +---> onRepeatEvent (every 60s) --> _pollLocation()
         +---> Activity recognition --> adjust poll interval
-        +---> Heartbeat timer (every 25 min) --> RTDB presence
+        +---> Heartbeat timer (every 15 min) --> RTDB presence + session validation
         +---> SyncManager flush (every 20 min or 20 locations)
+        +---> 7 PM IST reminder (one-shot timer, UTC-computed)
 ```
 
 ## Components
@@ -92,24 +93,37 @@ Every GPS fix is validated before acceptance:
 
 | Filter | Threshold | Purpose |
 |--------|-----------|---------|
-| Accuracy | <= 100m | Reject poor GPS fixes |
-| Movement | >= 15m | Discard stationary noise |
-| Speed | <= 100 m/s (~360 km/h) | Reject impossible jumps |
+| Accuracy | <= 40m | Reject poor GPS fixes |
+| Movement | >= 30m | Discard stationary noise |
+| Speed | <= 90 km/h | Reject impossible jumps |
+
+STILL-mode fixes are accepted for position updates but their distance contribution is excluded to prevent jitter inflation.
 
 **Heartbeat:**
-- Sent every **25 minutes** to RTDB
+- Sent every **15 minutes** to RTDB
 - Updates `presence/{enterpriseId}/{employeeId}` with status and lastSeen
 - Updates `sessionHeartbeat/{enterpriseId}/{employeeId}` with sessionId and lastSeen
-- Used by dashboard to detect stale/dead sessions
+- Each heartbeat also validates the Firestore session is still active (guards against stale foreground service)
+- Used by dashboard and server sweep to detect stale/dead sessions
 
-**onDestroy Auto-End Logic:**
-1. Checks if context was cleared from shared storage (normal end) — skips auto-end
-2. Checks if session < 30 seconds old (likely a restart) — skips auto-end
-3. Flushes remaining location buffer
-4. Writes session end to Firestore (status: `auto_ended`)
-5. Writes activity log entry
-6. Sets RTDB presence to `signal_lost`
-7. Sends local push notification to employee
+**7 PM IST Daily Reminder:**
+- A one-shot timer scheduled on each service start fires at 19:00 IST (calculated in UTC to avoid device-local timezone drift)
+- Sends a local push notification reminding the employee to end their session if still active
+
+**onDestroy Behavior (FIX 6 — OEM Kill Recovery):**
+
+`onDestroy` does **NOT** auto-end the session. It signals for recovery instead:
+
+1. Checks if context was cleared (normal end) — skips entirely
+2. Checks if session < 30 seconds old (likely a service restart) — skips
+3. Sets RTDB `presence.status` to `signal_lost`
+4. Persists a `needs_resume` hint (with timestamp) to SharedPreferences
+
+On next app open, `SessionProvider.loadActiveSession` reads the hint:
+- Gap < 2 hours → silently resumes tracking (restarts foreground service, rebinds connectivity)
+- Gap ≥ 2 hours → properly ends the session (`auto_ended`, reason: `oem_kill`)
+
+`sweepSignalLostSessions` (runs every 10 min server-side) is the safety net for devices that never reopen the app.
 
 ### 3. Sync Manager (`sync_manager.dart`)
 
@@ -126,13 +140,15 @@ Manages the buffer of pending GPS locations and flushes them to Firestore.
 **Flush Operation:**
 1. Reads all pending locations from SQLite
 2. Reverse-geocodes latest location (5s timeout)
-3. Creates Firestore batch:
-   - Location doc in `sessions/{sessionId}/locations/{docId}`
-   - Updates session `totalDistance` and `lastSyncAt`
-   - Activity log entry for location update
-4. Commits batch
+3. Creates Firestore batch (max 490 location docs per batch, 1 slot reserved for session update):
+   - Location docs in `sessions/{sessionId}/locations/{docId}`
+   - Updates session `lastSyncAt` (client does **not** write `totalDistance` — server recalculates trusted distance via Haversine on session complete)
+   - One activity log entry for the flush (latest position only, not per-point)
+4. Commits batch (splits into multiple batches if > 490 locations)
 5. Deletes flushed rows from SQLite
 6. Fires sync event to main app
+
+On reconnect after offline period, `SyncManager` validates the Firestore session is still active before restoring presence — prevents zombie sessions from coming back online.
 
 **Reverse Geocoding:**
 - Uses `geocoding` package
@@ -143,13 +159,19 @@ Manages the buffer of pending GPS locations and flushes them to Firestore.
 
 SQLite persistence layer for offline-first location tracking.
 
-Backed by the shared `AppDatabase` (`app_database.dart`), currently at schema version **4**. The same database also hosts the `offline_jobs` table used by `OfflineQueueManager` for chat/send retries. v3 shipped a bug where fresh installs skipped the `idempotency_key` column on `offline_jobs`; v4 fixes `_createOfflineJobsTable` to include `idempotency_key TEXT` plus a unique index, and the `oldVersion < 4` migration re-runs `_addIdempotencyKeyColumn` (ALTER TABLE) to patch broken v3 installs.
+Backed by the shared `AppDatabase` (`app_database.dart`), currently at schema version **6**. The same database also hosts the `offline_jobs` table used by `OfflineQueueManager` for chat/send retries.
+
+**Schema history:**
+- v1–2: `pending_locations` + `offline_jobs`
+- v3: Added `session_state`; also added `idempotency_key` column to `offline_jobs`
+- v4–5: Fixed `idempotency_key` for fresh installs that missed it
+- v6: Dropped `diagnostic_logs` table (current)
 
 `OfflineQueueManager` hardening:
-- `_staleProcessingTimeout` reduced from 60s to **30s**.
-- `start()` now runs `_cleanupStuckJobsOnStartup()` BEFORE the first `processQueue()`: orphaned `processing` jobs are reset to `pending` with retryCount=0, and `error` jobs whose retryCount >= maxRetries are marked `failed`.
+- `_staleProcessingTimeout` is **30s**.
+- `start()` runs `_cleanupStuckJobsOnStartup()` before the first `processQueue()`: orphaned `processing` jobs reset to `pending` (retryCount=0); exhausted `error` jobs marked `failed`.
 - `_nextEligibleJob` defensively flips exhausted error jobs to `failed` before iterating.
-- `clearFailedChatJobs()` deletes permanently-failed chat jobs and is invoked from `ChatConversationScreen.initState` as a safety net.
+- `clearFailedChatJobs()` deletes permanently-failed chat jobs; called from `ChatConversationScreen.initState`.
 - `_processChatJob` calls `ChatRepository.sendMessage(groupId, message)` without a documentId; dedup uses `clientRequestId` in the payload.
 
 **Tables:**
@@ -202,30 +224,36 @@ Handles the case where the user swipes the app from recent apps. The Flutter eng
 
 ### Start Session
 ```
-1. Check location permissions
-2. Get current position (10s timeout, fallback to last known)
-3. Reverse geocode address
-4. Create Firestore session doc {status: active, startTime, employeeId, enterpriseId}
-5. Parallel:
-   - Set RTDB presence to active
-   - Setup onDisconnect for signal_lost
+1. DeviceHealthMonitor.runAllChecks() — block start if location-always / battery
+   optimization / notifications (Android 13+) are missing
+2. Validate location permission
+3. Get current position (10s timeout, fallback to last known)
+4. Reverse geocode address
+5. Reset RTDB activeStats and clear any stale nodes from prior sessions
+6. Create Firestore session doc {status: active, startTime, employeeId, enterpriseId}
+7. Clear stale SQLite pending_locations from any prior session
+8. Write session_started activity log (fire-and-forget)
+9. Parallel:
+   - Set RTDB presence to active + setup onDisconnect → signal_lost
    - Update live location in RTDB
-   - Start foreground tracking service
-6. Write check-in location to session/locations subcollection
-7. Start native Android task guard
+   - Start foreground tracking service (TrackingForegroundService.startTracking)
+10. Write check-in location to session/locations subcollection
+11. Start native Android task guard (SessionTaskGuard.start)
+12. Bind connectivity monitor; clear FIX-6 needs_resume flag from SharedPreferences
 ```
 
 ### End Session
 ```
-1. Final flush of location buffer (waits up to 25s)
-2. Stop foreground service (clear context so onDestroy skips auto-end)
+1. Final flush of location buffer (waits up to 5s)
+2. Stop foreground service — marks context as 'ending' first (race condition guard),
+   then clears context so onDestroy skips FIX-6 signal_lost path
 3. Stop native Android task guard
 4. Clear RTDB onDisconnect handler
 5. Update Firestore session: endTime, status=completed, totalDuration, totalDistance
 6. Set RTDB presence to offline
 7. Clear activeStats, heartbeat, liveLocation from RTDB
 8. Write check-out location to session/locations subcollection
-9. Write daily summary
+9. Write session_ended activity log; upsert daily summary
 ```
 
 ## RTDB Paths
@@ -239,12 +267,12 @@ Handles the case where the user swipes the app from recent apps. The Flutter eng
 
 ## Stale Session Detection
 
-The dashboard provider detects dead sessions using two signals:
+The dashboard provider detects dead sessions using two client-side signals:
 
 | Signal | Threshold | Meaning |
 |--------|-----------|---------|
 | Live location age | > 25 min | GPS polling stopped |
-| Heartbeat age | > 35 min | Foreground service died |
+| Heartbeat age | > 35 min | Foreground service died (heartbeat fires every 15 min) |
 
 If BOTH are stale, status is set to `signal_lost` regardless of RTDB presence status.
 

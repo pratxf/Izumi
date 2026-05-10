@@ -778,8 +778,9 @@ class SessionProvider extends ChangeNotifier {
   // ── FIX 6: resume-after-OEM-kill helpers ───────────────────────────────
 
   /// Maximum gap between service kill and app reopen at which we'll silently
-  /// resume the session. Beyond this, the session is ended properly.
-  static const Duration _resumeMaxGap = Duration(hours: 2);
+  /// resume the session. Matches the server's 8h offline grace period so a
+  /// device killed by an OEM for several hours still resumes on next open.
+  static const Duration _resumeMaxGap = Duration(hours: 8);
 
   Future<_ResumeAction> _evaluateResumeHint(SessionModel session) async {
     try {

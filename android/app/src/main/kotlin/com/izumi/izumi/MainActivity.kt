@@ -4,14 +4,38 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.TimeUnit
 
 class MainActivity : FlutterActivity() {
     private lateinit var lifecycleChannel: MethodChannel
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        scheduleTrackingWatchdog()
+    }
+
+    private fun scheduleTrackingWatchdog() {
+        val request = PeriodicWorkRequestBuilder<TrackingWatchdogWorker>(
+            15, TimeUnit.MINUTES,
+        )
+            .addTag("tracking_watchdog")
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "tracking_watchdog",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request,
+        )
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

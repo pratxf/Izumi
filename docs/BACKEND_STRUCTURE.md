@@ -1,6 +1,6 @@
 # Izumi Backend - How It Works
 
-**Last Updated:** April 2026
+**Last Updated:** May 2026
 **Stack:** Firebase (Cloud Functions v2, Firestore, Realtime DB, Cloud Storage, FCM)
 **Runtime:** Node.js 22, TypeScript
 **Region:** asia-south1 (India)
@@ -111,24 +111,32 @@ What it does:
 
 What it does:
 1. Reads all location docs from `/sessions/{sessionId}/locations`
-2. Calculates **trusted distance** using Haversine formula with outlier filtering:
-   - Rejects segments > 100 km
-   - Rejects speeds > 120 km/h
-3. Calculates total session duration
-4. Gathers unique location names visited
-5. Creates/updates `/dailySummaries/{employeeId}_{YYYY-MM-DD}` (merges with existing to avoid double-counting)
-6. Runs in transaction to handle retries safely
-7. All dates computed in IST (UTC+5:30)
+2. Pre-filters: drops fixes with `accuracy > 50 m`
+3. Calculates **trusted distance** using Haversine formula with outlier filtering:
+   - Rejects segments > **10 km**
+   - Rejects implied speeds > **90 km/h**
+4. Calculates total session duration
+5. Gathers unique location names visited
+6. Creates/updates `/dailySummaries/{employeeId}_{YYYY-MM-DD}` — re-sums ALL completed sessions for the same IST day to keep the daily total correct after corrections
+7. Runs in transaction to handle retries safely
+8. All dates computed in IST (UTC+5:30)
 
 #### `onPresenceOffline`
 **File:** `functions/src/sessions/on_presence_offline.ts`
 **Trigger:** RTDB node written at `presence/{enterpriseId}/{userId}`
 
-What it does: When presence changes, checks if the user's session should be auto-ended.
-1. Checks if `sessionHeartbeat` is stale (>= 60 min) — avoids killing sessions where app is running in background
-2. If stale: updates Firestore session to `auto_ended` (reason: `app_killed_or_disconnected`)
-3. Creates activity log entry
-4. Cleans up RTDB: removes `activeStats`, `sessionHeartbeat`
+What it does: When presence changes, applies a multi-signal decision tree to decide whether to auto-end the session.
+
+**Decision tree (in order):**
+1. `lastConnectivity.state == "offline"` AND `changedAt < 2 h ago` → keep alive, mark presence as `"offline_tracking"`
+2. `lastConnectivity.state == "offline"` AND `changedAt ≥ 2 h ago` → auto-end
+3. `lastConnectivity.state == "online"` AND heartbeat stale ≥ **45 min** → auto-end (app dead despite network)
+4. No `lastConnectivity` field (legacy client) → heartbeat stale ≥ **90 min** → auto-end
+
+On auto-end:
+- Updates Firestore session to `auto_ended` (reason: `app_killed_or_disconnected`)
+- Creates activity log entry
+- Cleans up RTDB: removes `activeStats`, `sessionHeartbeat`
 
 #### `onSessionLocationCreated`
 **File:** `functions/src/sessions/on_session_location_created.ts`
@@ -628,13 +636,19 @@ Behavior:
 
 ### Signal Lost Auto-End
 ```
-1. sweepSignalLostSessions runs every 30 min
-2. Checks RTDB: presence.lastSeen, sessionHeartbeat.lastSeen, liveLocations.updatedAt
-3. If all stale >60 min OR session >16 hours:
+1. sweepSignalLostSessions runs every 10 min (cron: */10 * * * *, IST)
+2. Applies the same connectivity-aware decision tree as onPresenceOffline:
+   - offline + changedAt < 2h  → keep alive (offline_tracking)
+   - offline + changedAt ≥ 2h  → auto-end
+   - online + heartbeat ≥ 45m  → auto-end (app dead despite network)
+   - no lastConnectivity field  → heartbeat ≥ 90m → auto-end
+3. Additionally force-ends any session where startTime > 16 hours ago (zombie cutoff)
+4. On auto-end:
    - Updates session: status -> "auto_ended", reason -> "signal_lost"
-   - Cleans up RTDB nodes
-   - Notifies employee
+   - Cleans up RTDB nodes (activeStats, sessionHeartbeat, liveLocations)
+   - Notifies employee via FCM
    - Triggers onSessionEnded + onSessionComplete
+5. Orphan cleanup: nulls RTDB nodes for employees with no active Firestore session
 ```
 
 ### Photo Upload
@@ -692,7 +706,7 @@ Behavior:
 | `connectivity_monitor.dart` | Singleton network state monitor with online/offline stream |
 | `chat_repository.dart` | Firestore chat reads/writes. `sendMessage(groupId, message)` always uses `.add()` (auto-generated ID) so retries cannot collide with the `allow create` rule; dedup happens via `clientRequestId` in the payload. |
 | `offline_queue_manager.dart` | SQLite-backed job queue for chat sends and other offline-tolerant writes. Processes jobs with retry/backoff, marks exhausted jobs as `failed`. Exposes `clearFailedChatJobs()` (called from `ChatConversationScreen.initState`). `_processChatJob` calls `ChatRepository.sendMessage(groupId, message)` without a documentId. Stale-processing timeout: 30s. On `start()`, runs `_cleanupStuckJobsOnStartup()` which resets orphaned `processing` jobs to `pending` (retryCount=0) and marks `error` jobs past maxRetries as `failed`, before the first `processQueue()`. `_nextEligibleJob` also defensively flips exhausted error jobs to `failed` before iterating. |
-| `app_database.dart` | SQLite database wrapper. `_databaseVersion = 4`. v3 had a bug where fresh installs omitted the `idempotency_key` column in `_createOfflineJobsTable`, causing `DatabaseException: no column named idempotency_key` on every chat send. v4 fixes `_createOfflineJobsTable` to include `idempotency_key TEXT` plus a unique index, and the `oldVersion < 4` migration re-runs `_addIdempotencyKeyColumn` (ALTER TABLE) to patch broken v3 installs. |
+| `app_database.dart` | SQLite database wrapper. `_databaseVersion = 6`. v3 added `session_state` and `idempotency_key`; v4–5 fixed fresh-install omission of that column; v6 dropped `diagnostic_logs` table. |
 | `admin_activity_feed_service.dart` | Activity log queries with session/photo/location merging and deduplication |
 | `session_query_helper.dart` | Optimized session queries with 5-layer fallback chain |
 | `query_cache.dart` | Singleton cache for session and photo query results (2 min TTL) |

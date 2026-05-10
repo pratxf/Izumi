@@ -59,6 +59,10 @@ class SessionTrackingTaskHandler extends TaskHandler {
   int _activityConfidence = 0;
   bool _pollInFlight = false;
 
+  /// Timestamp (ms) of the last point actually written to SQLite.
+  /// Used to enforce the 20-minute proof-of-presence force-save.
+  int _lastSavedPointMs = 0;
+
   // Quality filter constants
   // Tightened to reduce GPS-jitter-driven distance inflation. The first fix
   // is always accepted (see [_isUsableFix]) so stationary/indoor sessions
@@ -587,7 +591,14 @@ class SessionTrackingTaskHandler extends TaskHandler {
         return;
       }
 
+      // Proof-of-presence: force-save a point every 20 minutes regardless of
+      // movement. This confirms the employee was at a location even when still.
+      final bool forcePresenceUpdate = _lastSavedPointMs == 0 ||
+          (DateTime.now().millisecondsSinceEpoch - _lastSavedPointMs) >=
+              const Duration(minutes: 20).inMilliseconds;
+
       // Distance quality filters (order: movement → timestamp → speed → accumulate)
+      bool isPresencePoint = false;
       if (_lastPosition != null) {
         final meters = Geolocator.distanceBetween(
           _lastPosition!.latitude,
@@ -596,9 +607,12 @@ class SessionTrackingTaskHandler extends TaskHandler {
           position.longitude,
         );
 
-        // 1. Minimum movement filter — discard GPS jitter
-        if (meters < _minMovementMeters) {
-          return;
+        final bool isStationary = meters < _minMovementMeters;
+
+        // 1. Minimum movement filter — discard GPS jitter.
+        // Bypassed when the 20-minute proof-of-presence window is due.
+        if (!forcePresenceUpdate && isStationary) {
+          return; // genuinely stationary and within 20 min window, skip
         }
 
         // 2. Timestamp validity — reject fixes with duplicate/invalid timestamps
@@ -623,6 +637,12 @@ class SessionTrackingTaskHandler extends TaskHandler {
         if (_activityType != 'STILL') {
           _totalDistanceKm += meters / 1000;
         }
+
+        // Flag force-saved stationary points so the dashboard can distinguish
+        // them from genuine movement points.
+        if (forcePresenceUpdate && isStationary) {
+          isPresencePoint = true;
+        }
       }
 
       _lastPosition = position;
@@ -636,11 +656,15 @@ class SessionTrackingTaskHandler extends TaskHandler {
         accuracy: position.accuracy,
         speed: position.speed,
         heading: position.heading,
-        activityType: _activityType,
+        activityType: isPresencePoint
+            ? '${_activityType}_PRESENCE'
+            : _activityType,
         activityConfidence: _activityConfidence,
         cumulativeDistanceKm: _totalDistanceKm,
         capturedAtMs: position.timestamp.millisecondsSinceEpoch,
       );
+
+      _lastSavedPointMs = position.timestamp.millisecondsSinceEpoch;
 
       // Persist distance to session state for crash recovery
       unawaited(_pendingLocationStore.updateSessionDistance(_totalDistanceKm));
