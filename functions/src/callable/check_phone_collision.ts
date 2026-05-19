@@ -106,16 +106,31 @@ export const checkPhoneCollision = onCall(
       authDocEnterpriseId &&
       authDocEnterpriseId !== callerEnterpriseId
     ) {
+      // Firestore doc exists in a different enterprise — genuine cross-enterprise
+      // collision. Hard block: admin must resolve outside this screen.
       verdict = "otherEnterpriseAuth";
       message =
         "This phone number is already in use by another account in a different enterprise.";
     } else if (
       authEnterpriseIdClaim &&
-      authEnterpriseIdClaim !== callerEnterpriseId
+      authEnterpriseIdClaim !== callerEnterpriseId &&
+      authDocEnterpriseId !== null
     ) {
+      // Claim points to a different enterprise AND a Firestore doc still exists
+      // there — same hard block as above.
       verdict = "otherEnterpriseAuth";
       message =
         "This phone number is already in use by another account in a different enterprise.";
+    } else if (
+      authEnterpriseIdClaim &&
+      authEnterpriseIdClaim !== callerEnterpriseId &&
+      authDocEnterpriseId === null
+    ) {
+      // Stale claim from a different enterprise but no Firestore doc anywhere —
+      // the old account was deleted. Safe to reclaim.
+      verdict = "unknownAuth";
+      message =
+        "A previous account for this phone exists but its user record has been removed. Clean up and create fresh?";
     } else if (authEnterpriseIdClaim === callerEnterpriseId) {
       verdict = "orphanAuthSameEnterprise";
       message =
