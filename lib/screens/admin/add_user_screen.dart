@@ -185,19 +185,11 @@ class _AddUserScreenState extends State<AddUserScreen> {
       final verdict = collision['verdict'] as String? ?? 'none';
       final collisionMessage = collision['message'] as String? ?? '';
 
-      if (verdict == 'otherEnterpriseAuth') {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(collisionMessage)),
-          );
-        }
-        setState(() => _isLoading = false);
-        return;
-      }
-
       if (verdict == 'orphanAuthSameEnterprise' ||
-          verdict == 'unknownAuth') {
+          verdict == 'unknownAuth' ||
+          verdict == 'otherEnterpriseAuth') {
         if (!mounted) return;
+        final isOtherEnterprise = verdict == 'otherEnterpriseAuth';
         final shouldClean = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -206,13 +198,18 @@ class _AddUserScreenState extends State<AddUserScreen> {
               borderRadius: BorderRadius.circular(24),
             ),
             title: Text(
-              'Old account found',
+              isOtherEnterprise ? 'Account conflict' : 'Old account found',
               style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
             ),
             content: Text(
-              '$collisionMessage\n\n'
-              'The old Firebase Auth record (UID: ${collision['authUid']}) '
-              'will be deleted before this user is created.',
+              isOtherEnterprise
+                  ? 'This phone number is linked to an account in another enterprise. '
+                    'This can happen if the person previously signed in on a different setup. '
+                    'Proceeding will delete the old account and create a fresh one here.\n\n'
+                    'Only continue if you are sure this person belongs to your enterprise.'
+                  : '$collisionMessage\n\n'
+                    'The old Firebase Auth record (UID: ${collision['authUid']}) '
+                    'will be deleted before this user is created.',
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -230,7 +227,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
                 child: Text(
-                  'Clean up & create',
+                  isOtherEnterprise ? 'Transfer & create' : 'Clean up & create',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.primary,
                     fontWeight: FontWeight.bold,
@@ -248,7 +245,11 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
         final cleanup = FirebaseFunctions.instanceFor(region: 'asia-south1')
             .httpsCallable('adminCleanup');
-        await cleanup.call({'phone': fullPhone, 'deleteOnly': true});
+        await cleanup.call({
+          'phone': fullPhone,
+          'deleteOnly': true,
+          if (isOtherEnterprise) 'force': true,
+        });
       }
 
       final user = UserModel(

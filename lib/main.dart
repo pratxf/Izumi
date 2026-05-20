@@ -28,7 +28,7 @@ import 'services/connectivity_monitor.dart';
 import 'tracking/tracking_foreground_service.dart';
 
 /// Must match pubspec `version:`. Bumped in lockstep with release builds.
-const String kAppVersion = '1.0.73+73';
+const String kAppVersion = '1.0.74+74';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {

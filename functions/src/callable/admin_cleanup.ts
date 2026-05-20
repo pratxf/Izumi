@@ -21,6 +21,9 @@ export const adminCleanup = onCall(
     const name = request.data?.name as string | undefined;
     const role = request.data?.role as string || "employee";
     const deleteOnly = request.data?.deleteOnly === true;
+    // force: admin explicitly confirmed they want to reclaim a number that
+    // belongs to a different enterprise (e.g. user signed in via test build).
+    const force = request.data?.force === true;
     const enterpriseId = request.auth.token.enterpriseId as string;
 
     if (!phone) throw new HttpsError("invalid-argument", "phone required");
@@ -48,10 +51,7 @@ export const adminCleanup = onCall(
       const uidDocEnterpriseMatch =
         uidDoc.exists && uidDoc.data()?.enterpriseId === enterpriseId;
 
-      if (claimsEnterpriseMatch || uidDocEnterpriseMatch || !uidDoc.exists) {
-        // Safe to delete: either the Auth user is explicitly in this
-        // enterprise, or it's an orphan Auth record with no Firestore doc
-        // anywhere (pure zombie — allowed to clean up).
+      if (claimsEnterpriseMatch || uidDocEnterpriseMatch || !uidDoc.exists || force) {
         await admin.auth().deleteUser(authUser.uid);
         results.push(`Deleted Auth user: ${authUser.uid}`);
 
